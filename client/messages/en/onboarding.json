@@ -1,0 +1,17 @@
+{
+  "title": "Onboarding Tour",
+  "sections": "Sections",
+  "sectionCount": "{count} sections",
+  "regenerate": "Regenerate",
+  "regenerating": "Regenerating…",
+  "unknownError": "Unknown error",
+  "generate": {
+    "title": "Generate onboarding tour",
+    "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
+    "cta": "Generate onboarding tour",
+    "generating": "Generating…"
+  },
+  "loadError": {
+    "title": "Couldn’t load the onboarding tour"
+  }
+}

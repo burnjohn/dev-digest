@@ -1,0 +1,101 @@
+{
+  "page": {
+    "crumbLab": "Skills Lab",
+    "crumbSkills": "Skills",
+    "heading": "Skills",
+    "addSkill": "Add Skill",
+    "searchPlaceholder": "Search skills…",
+    "loadError": "Could not load skills.",
+    "menu": {
+      "fromFile": "Import from file",
+      "fromUrl": "Import from URL",
+      "community": "Search community skills…"
+    },
+    "empty": {
+      "title": "No skills yet",
+      "body": "Import a skill from a file, a URL, or the community catalog.",
+      "cta": "Import from file"
+    },
+    "selectPrompt": {
+      "title": "Select a skill",
+      "body": "Pick a skill on the left to preview its body."
+    }
+  },
+  "detail": {
+    "crumbSkill": "Skill",
+    "back": "← All skills",
+    "loadError": "Could not load this skill.",
+    "notFound": {
+      "title": "Skill not found",
+      "body": "It may have been deleted."
+    }
+  },
+  "drawer": {
+    "title": "Add a skill",
+    "subtitle": "Import from a file, a URL, or search vetted community skills",
+    "tabs": {
+      "file": "From file",
+      "url": "From URL",
+      "community": "Community"
+    },
+    "importFailed": "Import failed"
+  },
+  "file": {
+    "nameLabel": "Skill name",
+    "nameHint": "Optional — derived from the first heading if blank.",
+    "namePlaceholder": "pr-quality-rubric",
+    "bodyLabel": "Skill body (Markdown)",
+    "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions (§11).",
+    "bodyPlaceholder": "# Rule\nDescribe the rule…",
+    "importing": "Importing…",
+    "import": "Import skill",
+    "success": "Imported \"{name}\" (stored as untrusted data)."
+  },
+  "url": {
+    "label": "Skill URL",
+    "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
+    "placeholder": "https://example.com/skills/security.md",
+    "fetching": "Fetching…",
+    "import": "Import from URL",
+    "success": "Imported \"{name}\". Disabled until you vet + enable it."
+  },
+  "community": {
+    "searchPlaceholder": "Search community skills (e.g. security)…",
+    "allLanguages": "All languages",
+    "loadError": "Could not load community skills",
+    "retry": "Retry",
+    "noMatch": {
+      "title": "No matching skills",
+      "body": "Try a different search term."
+    },
+    "importing": "Importing…",
+    "import": "Import"
+  },
+  "listItem": {
+    "needsVetting": "needs vetting",
+    "vettingTitle": "Untrusted source — vet before enabling (§11)",
+    "type": {
+      "rubric": "rubric",
+      "convention": "convention",
+      "security": "security",
+      "custom": "custom"
+    },
+    "source": {
+      "manual": "Manual",
+      "extracted": "Extracted",
+      "community": "Community",
+      "imported_url": "Imported"
+    }
+  },
+  "preview": {
+    "untrustedBadge": "untrusted source",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "save": "Save",
+    "edit": "Edit",
+    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent (§11).",
+    "bodyLabel": "Skill body (Markdown)",
+    "bodyHint": "Saving a changed body creates a new immutable version.",
+    "version": "v{version}"
+  }
+}

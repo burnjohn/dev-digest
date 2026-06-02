@@ -1,0 +1,28 @@
+{
+  "name": "@devdigest/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DevDigest MCP server (stdio) + local pre-push review CLI (L04). Exposes read_pr, grep_repo, read_file, review_diff, read_memory, blast_radius as MCP tools for Claude Code / Cursor, and a `devdigest review` pre-push command that reviews the working diff.",
+  "bin": {
+    "devdigest": "./dist/cli.js",
+    "devdigest-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev:server": "tsx src/server.ts",
+    "dev:cli": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

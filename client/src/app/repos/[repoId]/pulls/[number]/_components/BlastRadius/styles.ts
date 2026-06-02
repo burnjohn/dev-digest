@@ -1,0 +1,73 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the Blast Radius viewer (extracted from inline styles). */
+export const s = {
+  root: { display: "flex", flexDirection: "column", gap: 14 } satisfies CSSProperties,
+  emptySummary: { fontSize: 14, color: "var(--text-secondary)" } satisfies CSSProperties,
+  headerRow: { display: "flex", alignItems: "center", gap: 14 } satisfies CSSProperties,
+  summary: { display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" } satisfies CSSProperties,
+  stat: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    color: "var(--text-secondary)",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  statIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
+  statValue: { color: "var(--text-primary)", fontWeight: 650 } satisfies CSSProperties,
+  viewToggle: {
+    marginLeft: "auto",
+    display: "flex",
+    gap: 5,
+    background: "var(--bg-hover)",
+    borderRadius: 6,
+    padding: 2,
+  } satisfies CSSProperties,
+  toggleBtn: (active: boolean): CSSProperties => ({
+    border: "none",
+    background: active ? "var(--bg-elevated)" : "transparent",
+    color: active ? "var(--text-primary)" : "var(--text-muted)",
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "4px 12px",
+    borderRadius: 5,
+    cursor: "pointer",
+    textTransform: "capitalize",
+  }),
+  summaryText: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  tree: { display: "flex", flexDirection: "column", gap: 2 } satisfies CSSProperties,
+  treeEmpty: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
+  // DownstreamNode
+  node: { borderRadius: 6 } satisfies CSSProperties,
+  nodeHeader: (open: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 8px",
+    borderRadius: 6,
+    cursor: "pointer",
+    background: open ? "var(--bg-hover)" : "transparent",
+  }),
+  chevron: (open: boolean): CSSProperties => ({
+    color: "var(--text-muted)",
+    transform: open ? "rotate(90deg)" : "none",
+    transition: "transform .12s",
+  }),
+  nodeIcon: { color: "var(--accent)" } satisfies CSSProperties,
+  nodeSymbol: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  nodeCallerCount: { fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" } satisfies CSSProperties,
+  callerList: {
+    padding: "5px 0 10px 24px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  } satisfies CSSProperties,
+  callerRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 } satisfies CSSProperties,
+  callerIcon: { color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,
+  callerName: { color: "var(--text-secondary)" } satisfies CSSProperties,
+  badgeRow: { display: "flex", gap: 8, flexWrap: "wrap", padding: "8px 0 0 24px" } satisfies CSSProperties,
+  cronBadgeRow: { display: "flex", gap: 8, flexWrap: "wrap", padding: "5px 0 0 24px" } satisfies CSSProperties,
+  // BlastGraph
+  graphEmpty: { fontSize: 13, color: "var(--text-muted)", padding: 14 } satisfies CSSProperties,
+  graphSvg: { maxWidth: "100%" } satisfies CSSProperties,
+} as const;

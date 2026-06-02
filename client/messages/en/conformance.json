@@ -1,0 +1,25 @@
+{
+  "report": {
+    "loading": "Loading conformance…",
+    "emptyTitle": "No conformance check yet",
+    "emptyBody": "Compare this PR against a Project Context spec (PRD). DevDigest classifies each requirement as implemented, missing, or scope creep.",
+    "runCheck": "Run conformance check",
+    "runningCheck": "Running check…",
+    "prdTitle": "PRD: {title}",
+    "comparing": "Comparing PR <pr>{prNumber}</pr> against <spec>{specId}</spec>",
+    "complete": "COMPLETE",
+    "reRunCheck": "Re-run check",
+    "reRunning": "Re-running…",
+    "columns": {
+      "implemented": "Implemented",
+      "missing": "Missing",
+      "scopeCreep": "Scope creep"
+    },
+    "none": "None"
+  },
+  "page": {
+    "crumbPullRequests": "Pull Requests",
+    "crumbConformance": "Conformance",
+    "loadingPr": "Loading PR…"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+.turbo/
+.pnpm-store/
+*.log
+.devdigest/cache/
+clones/
+playwright-report/
+test-results/

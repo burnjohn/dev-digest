@@ -1,0 +1,32 @@
+{
+  "title": "Agent Performance",
+  "subtitle": "Accept-rate is the headline quality signal · cost shown as a breakdown",
+  "loadError": "Could not load agent performance.",
+  "summary": {
+    "totalRuns": "Total runs",
+    "avgAcceptRate": "Avg accept-rate",
+    "totalCost": "Total cost",
+    "mostActive": "Most active"
+  },
+  "costByAgent": "Cost by agent",
+  "costByModel": "Cost by model",
+  "noCost": "No cost recorded yet.",
+  "sort": {
+    "acceptRate": "accept-rate",
+    "runs": "runs",
+    "cost": "cost"
+  },
+  "table": {
+    "agent": "Agent",
+    "accept": "Accept",
+    "runs": "Runs",
+    "findings": "Findings",
+    "cost": "Cost",
+    "trend": "Trend"
+  },
+  "empty": {
+    "title": "No agent runs yet",
+    "body": "Run a review (manually) to populate per-agent performance."
+  },
+  "perAgent": "Per-agent"
+}

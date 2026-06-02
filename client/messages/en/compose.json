@@ -1,0 +1,21 @@
+{
+  "reviewDrawer": {
+    "title": "Compose Review",
+    "subtitle": "Post a GitHub review as yourself (PAT)",
+    "inlineComments": "Inline comments",
+    "cancel": "Cancel",
+    "post": "Post review to GitHub",
+    "posting": "Posting…",
+    "postedWithId": "Review posted to GitHub · id {id}.",
+    "posted": "Review posted to GitHub.",
+    "verdictLabel": "Verdict",
+    "verdicts": {
+      "approve": "Approve",
+      "comment": "Comment",
+      "requestChanges": "Request changes"
+    },
+    "reviewBody": "Review body",
+    "markdownEditable": "markdown · editable",
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}"
+  }
+}

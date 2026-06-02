@@ -1,0 +1,84 @@
+{
+  "dashboard": {
+    "defaultTitle": "Eval Dashboard",
+    "loading": "Loading eval metrics…",
+    "casesSummary": "{count, plural, one {# eval case} other {# eval cases}} · gold set · {runs, plural, one {# run} other {# runs}}",
+    "configure": "Configure eval cases →",
+    "runEval": "Run eval ({count})",
+    "running": "Running…",
+    "metricTrend": "Metric trend",
+    "recentRuns": "Recent runs",
+    "noRuns": "No runs yet. Create an eval case and run it.",
+    "metrics": {
+      "recall": "RECALL",
+      "precision": "PRECISION",
+      "citationAccuracy": "CITATION ACCURACY"
+    },
+    "legend": {
+      "recall": "Recall",
+      "precision": "Precision",
+      "citation": "Citation"
+    },
+    "table": {
+      "ranAt": "Ran at",
+      "recall": "Recall",
+      "precision": "Precision",
+      "citation": "Citation",
+      "pass": "Pass",
+      "cost": "Cost"
+    },
+    "pass": "pass",
+    "fail": "fail"
+  },
+  "caseEditor": {
+    "newCase": "New eval case",
+    "caseTitle": "Eval case · {name}",
+    "runCase": "Run case",
+    "running": "Running…",
+    "save": "Save",
+    "saving": "Saving…",
+    "nameLabel": "Name",
+    "namePlaceholder": "stripe-key-leak",
+    "inputLabel": "Input",
+    "tabs": {
+      "diff": "Diff",
+      "prMeta": "PR meta"
+    },
+    "diffPlaceholder": "--- a/src/config.ts\n+++ b/src/config.ts\n@@ -10,6 +10,7 @@\n+  stripeKey: \"sk_live_...\"",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Add Stripe integration",
+    "bodyLabel": "Body",
+    "bodyPlaceholder": "Wire up payments via Stripe SDK.",
+    "preview": "Preview",
+    "expectedOutput": "Expected output",
+    "validJson": "valid JSON",
+    "invalidJson": "invalid JSON",
+    "lastRunPassed": "Last run passed",
+    "lastRunFailed": "Last run failed",
+    "resultSummary": "recall {recall}% · precision {precision}% · citation {citation}% · {duration}s"
+  },
+  "evalsTab": {
+    "metricsTitle": "Eval metrics",
+    "metricsSubtitle": "Recall / Precision / Citation for this agent's eval cases",
+    "casesHeading": "Eval cases",
+    "newCase": "New case",
+    "loadingCases": "Loading cases…",
+    "emptyCases": "No eval cases yet. Create one to assert this agent's expected findings on a sample diff.",
+    "neverRun": "never run",
+    "passed": "passed",
+    "failed": "failed",
+    "recallSuffix": " · recall {recall}%",
+    "run": "Run",
+    "running": "Running…",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "page": {
+    "crumbSkillsLab": "Skills Lab",
+    "crumbEvalDashboard": "Eval Dashboard",
+    "crumbAgents": "Agents",
+    "crumbEvals": "Evals",
+    "crumbNewCase": "New case",
+    "crumbEvalCase": "Eval case"
+  }
+}

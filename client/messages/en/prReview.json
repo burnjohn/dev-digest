@@ -1,0 +1,89 @@
+{
+  "finding": {
+    "accepted": "accepted",
+    "dismissed": "dismissed",
+    "suggestedFix": "Suggested fix",
+    "accept": "Accept",
+    "dismiss": "Dismiss",
+    "learn": "Learn",
+    "replyToAuthor": "Reply to author",
+    "replyPlaceholder": "Reply to the author about this finding…",
+    "sendReply": "Send reply",
+    "cancel": "Cancel"
+  },
+  "trifecta": {
+    "lethal": "LETHAL TRIFECTA — ALL 3 PRESENT",
+    "components": "TRIFECTA COMPONENTS",
+    "privateData": "Private data",
+    "untrustedInput": "Untrusted input",
+    "exfilPath": "Exfil path"
+  },
+  "verdict": {
+    "requestChanges": "Request changes",
+    "approve": "Approve",
+    "comment": "Comment",
+    "findingsCount": "{count} findings",
+    "blockers": " · {count} blockers",
+    "prScore": "PR SCORE"
+  },
+  "panel": {
+    "hideLowConfidence": "Hide low confidence",
+    "noMatchTitle": "No findings match",
+    "noMatchBody": "Adjust the filters above, or run a review to generate findings."
+  },
+  "runReview": {
+    "runAll": "Run all enabled agents",
+    "configureAgents": "Configure agents…",
+    "running": "Running…",
+    "runReview": "Run Review"
+  },
+  "runStatus": {
+    "elapsed": "Running · {count} agent(s)"
+  },
+  "smartDiff": {
+    "coreLabel": "Core",
+    "wiringLabel": "Wiring",
+    "boilerplateLabel": "Boilerplate",
+    "largeTitle": "This PR is large ({lines} changed lines)",
+    "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
+    "filesCount": "{count} files",
+    "findingLines": "{count} finding-lines",
+    "groupedByRole": "Smart Diff · grouped by role"
+  },
+  "list": {
+    "breadcrumb": "Pull Requests",
+    "title": "Pull Requests",
+    "summary": "{open} open · {needsReview} need review",
+    "loading": "Loading pull requests…",
+    "status": {
+      "needsReview": "Needs review",
+      "reviewed": "Reviewed",
+      "stale": "Stale",
+      "open": "Open",
+      "closed": "Closed",
+      "merged": "Merged"
+    },
+    "filter": {
+      "all": "All",
+      "needsReview": "Needs review",
+      "reviewed": "Reviewed",
+      "stale": "Stale"
+    },
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "columns": {
+      "pullRequest": "Pull request",
+      "author": "Author",
+      "size": "Size",
+      "diff": "Diff",
+      "status": "Status",
+      "files": "Files"
+    },
+    "filesCount": "{count} files",
+    "errorTitle": "Couldn’t load pull requests",
+    "errorBody": "The engine returned an error.",
+    "emptyTitle": "No pull requests",
+    "emptyAllBody": "No open PRs found for this repo yet. Refresh to sync from GitHub.",
+    "emptyStatusBody": "No PRs with status “{status}”."
+  }
+}

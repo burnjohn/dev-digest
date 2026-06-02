@@ -1,0 +1,22 @@
+{
+  "title": "Project Context",
+  "chunks": "{count} chunks",
+  "reindex": "Re-index",
+  "indexing": "Indexing…",
+  "indexStatus": "Index status: {status}",
+  "loadError": "Couldn’t load specs",
+  "kb": "{kb}kb",
+  "empty": {
+    "title": "No spec files yet",
+    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+  },
+  "mode": {
+    "preview": "preview",
+    "edit": "edit"
+  },
+  "editor": {
+    "loadError": "Couldn’t load spec",
+    "save": "Save",
+    "saving": "Saving…"
+  }
+}

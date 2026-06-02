@@ -1,0 +1,16 @@
+{
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "close": "Close",
+    "import": "Import",
+    "export": "Export",
+    "run": "Run"
+  },
+  "states": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet",
+    "error": "Something went wrong"
+  }
+}

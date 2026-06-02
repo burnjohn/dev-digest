@@ -1,0 +1,79 @@
+{
+  "card": {
+    "noDescription": "No description",
+    "skillCount": "{count} skills"
+  },
+  "list": {
+    "breadcrumbLab": "Skills Lab",
+    "breadcrumb": "Agents",
+    "title": "Agents",
+    "subtitle": "User-created reviewers. Each = provider + model + system prompt + linked skills.",
+    "searchPlaceholder": "Search agents…",
+    "addAgent": "Add Agent",
+    "createFromScratch": "Create from scratch",
+    "loadError": "Could not load agents.",
+    "emptyTitle": "No agents yet",
+    "emptyBody": "An agent is a configured reviewer — a model, a prompt, and the skills it uses. Create one to start reviewing.",
+    "emptyCta": "Create your first agent"
+  },
+  "create": {
+    "title": "Create agent",
+    "subtitle": "An agent is a configured reviewer — a model, a prompt, and the skills it uses.",
+    "cancel": "Cancel",
+    "create": "Create agent",
+    "creating": "Creating…",
+    "defaultName": "New Agent",
+    "defaultSystemPrompt": "You are a code reviewer. Examine the diff and return at most 5 high-value findings, each citing an exact file:line.",
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "Security Reviewer",
+      "description": "Description",
+      "descriptionPlaceholder": "What this agent reviews",
+      "provider": "Provider",
+      "model": "Model",
+      "systemPrompt": "System prompt"
+    }
+  },
+  "editor": {
+    "loadErrorTitle": "Couldn’t load this agent",
+    "loadErrorBody": "The agent could not be loaded.",
+    "agentFallback": "Agent",
+    "listTitle": "Agents",
+    "add": "Add",
+    "createFromScratch": "Create from scratch",
+    "disabled": "disabled",
+    "runOnPr": "Run on a PR…",
+    "tabs": {
+      "config": "Config",
+      "skills": "Skills",
+      "evals": "Evals",
+      "stats": "Stats",
+      "ci": "CI"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "name": "Name",
+    "description": "Description",
+    "provider": "Provider",
+    "model": "Model",
+    "modelHint": "Models are loaded dynamically from the provider's /models.",
+    "systemPrompt": "System prompt",
+    "systemPromptHint": "Loaded as the static system message. Enabled skills are appended below it.",
+    "outputSchema": "Output schema",
+    "outputSchemaOption": "Standard findings JSON",
+    "save": "Save agent",
+    "saving": "Saving…",
+    "saved": "Saved (v{version})"
+  },
+  "skills": {
+    "title": "Skills",
+    "enabledCount": "{linked} of {total} enabled",
+    "filterPlaceholder": "Filter skills…",
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+  },
+  "mount": {
+    "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  }
+}

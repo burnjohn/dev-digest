@@ -1,0 +1,50 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for ConventionCard (extracted from inline styles). */
+export const s = {
+  card: (accepted: boolean): CSSProperties => ({
+    border: "1px solid var(--border)",
+    borderRadius: 9,
+    background: "var(--bg-elevated)",
+    padding: 18,
+    marginBottom: 14,
+    opacity: accepted ? 0.7 : 1,
+  }),
+  row: { display: "flex", gap: 16 } satisfies CSSProperties,
+  main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  rule: { fontSize: 15, fontWeight: 600, fontStyle: "italic", lineHeight: 1.4 } satisfies CSSProperties,
+  evidence: { marginTop: 12, borderRadius: 7, border: "1px solid var(--border)", overflow: "hidden" } satisfies CSSProperties,
+  evidenceHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 12px",
+    background: "var(--bg-surface)",
+    borderBottom: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  copyIcon: { color: "var(--text-muted)", cursor: "pointer" } satisfies CSSProperties,
+  snippet: {
+    margin: 0,
+    padding: "12px 14px",
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: "var(--text-primary)",
+    background: "var(--code-bg)",
+    overflow: "auto",
+    whiteSpace: "pre-wrap",
+  } satisfies CSSProperties,
+  confidenceRow: { display: "flex", alignItems: "center", gap: 12, marginTop: 12 } satisfies CSSProperties,
+  confidenceLabel: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  confidenceBar: { width: 90 } satisfies CSSProperties,
+  confidenceValue: { fontSize: 12, color: "var(--text-secondary)" } satisfies CSSProperties,
+  actionCol: { display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, width: 150 } satisfies CSSProperties,
+  acceptedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--ok)",
+    padding: "8px 0",
+  } satisfies CSSProperties,
+} as const;

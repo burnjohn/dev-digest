@@ -1,0 +1,87 @@
+{
+  "runs": {
+    "emptyTitle": "No CI runs yet",
+    "emptyBody": "Once you export an agent to CI, every automated review shows up here.",
+    "title": "CI Runs",
+    "subtitle": "Agent reviews executed inside CI · not local runs",
+    "autoRefresh": "auto-refresh on",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "filters": {
+      "last7Days": "Last 7 days",
+      "allAgents": "All agents",
+      "allRepos": "All repos",
+      "allStatuses": "All statuses"
+    },
+    "table": {
+      "timestamp": "Timestamp",
+      "pullRequest": "Pull request",
+      "source": "Source",
+      "findings": "Findings",
+      "cost": "Cost",
+      "status": "Status"
+    },
+    "view": "View",
+    "status": {
+      "succeeded": "Succeeded",
+      "noFindings": "No findings",
+      "failed": "Failed",
+      "running": "Running"
+    }
+  },
+  "exportWizard": {
+    "title": "Export to CI",
+    "subtitle": "Run {agentName} automatically on pull requests",
+    "thisAgent": "this agent",
+    "back": "Back",
+    "continue": "Continue",
+    "install": "Install",
+    "installing": "Installing…",
+    "steps": {
+      "target": "Target",
+      "preview": "Preview",
+      "configure": "Configure",
+      "install": "Install"
+    },
+    "targets": {
+      "gha": "GitHub Actions",
+      "circle": "CircleCI",
+      "jenkins": "Jenkins",
+      "cli": "Generic CLI",
+      "ghaDesc": "Runs on pull_request events",
+      "circleDesc": "config.yml job",
+      "jenkinsDesc": "Pipeline stage",
+      "cliDesc": "devdigest review --pr"
+    },
+    "recommended": "recommended",
+    "repoLabel": "Target repository",
+    "repoHint": "owner/name — the repo to add the workflow to",
+    "repoPlaceholder": "acme/payments-api",
+    "filesToCreate": "FILES TO CREATE",
+    "generating": "Generating…",
+    "editable": "editable",
+    "triggerLabel": "Trigger",
+    "postResultsLabel": "Post results as",
+    "postAs": {
+      "githubReview": "GitHub review",
+      "prComment": "PR comment",
+      "none": "None (exit code only)"
+    },
+    "blockMergeTitle": "Block merge on findings",
+    "blockMergeDesc": "Requires a GitHub App — not available with PAT in local mode",
+    "installCardTitle": "Open a PR with these files",
+    "installCardBody": "DevDigest opens a PR in {repo} titled “Add DevDigest CI review” with the {count} generated files.",
+    "ownerRepo": "owner/repo",
+    "secretNote": "Add {key} to the repo's Actions secrets before the workflow runs."
+  },
+  "ciTab": {
+    "heading": "Continuous Integration",
+    "subtitle": "Run this agent automatically on pull requests in a target repo.",
+    "exportToCi": "Export to CI",
+    "empty": "Not deployed to CI yet. Use “Export to CI” to open a PR that adds the workflow + agent artifacts.",
+    "installed": "installed {date}"
+  },
+  "page": {
+    "crumb": "CI Runs"
+  }
+}

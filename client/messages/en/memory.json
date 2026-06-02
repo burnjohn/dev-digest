@@ -1,0 +1,55 @@
+{
+  "page": {
+    "crumb": "Memory",
+    "heading": "Memory",
+    "count": "{count, plural, one {# entry} other {# entries}} · pgvector · semantic",
+    "searchPlaceholder": "Search memory…",
+    "filterBadge": "filter",
+    "loadError": "Could not load memory.",
+    "empty": {
+      "title": "No memory matches",
+      "body": "Memory is created by the 'Learn' action on findings and by retrieval-backed agents. Adjust filters to see more."
+    },
+    "filters": {
+      "scope": "Scope",
+      "kind": "Kind",
+      "freshness": "Freshness",
+      "showStale": "Show stale (>60d)"
+    }
+  },
+  "scope": {
+    "repo": "repo",
+    "global": "global",
+    "team": "team"
+  },
+  "kind": {
+    "decision": "decision",
+    "convention": "convention",
+    "preference": "preference",
+    "fact": "fact",
+    "learning": "learning"
+  },
+  "card": {
+    "neverUsed": "never used",
+    "usedToday": "used today",
+    "usedDayAgo": "used 1d ago",
+    "usedDaysAgo": "used {days}d ago"
+  },
+  "detail": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "contentLabel": "Content",
+    "kindLabel": "Kind",
+    "scopeLabel": "Scope",
+    "save": "Save",
+    "cancel": "Cancel",
+    "stat": {
+      "confidence": "CONFIDENCE",
+      "scope": "SCOPE",
+      "updated": "UPDATED"
+    },
+    "sourceContexts": "Source contexts",
+    "noSources": "No source contexts recorded.",
+    "prLabel": "PR #{pr}"
+  }
+}

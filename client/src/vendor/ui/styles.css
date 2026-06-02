@@ -1,0 +1,293 @@
+@import "tailwindcss";
+
+/* ===========================================================
+   DevDigest — design tokens & base (ported 1:1 from prototype)
+   Dark primary, light secondary. Function-first, hard edges.
+   Theming via [data-theme="dark|light"] on <html>.
+   =========================================================== */
+
+:root,
+[data-theme="dark"] {
+  --bg-primary: #0a0a0a;
+  --bg-surface: #141414;
+  --bg-elevated: #1c1c1c;
+  --bg-hover: #242424;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+  --text-primary: #ededed;
+  --text-secondary: #999999;
+  --text-muted: #6a6a6a;
+  --accent: #3b82f6;
+  --accent-hover: #2f6fd6;
+  --accent-bg: rgba(59, 130, 246, 0.12);
+  --accent-text: #93bbfc;
+
+  --crit: #ef4444;
+  --crit-bg: rgba(239, 68, 68, 0.12);
+  --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.12);
+  --sugg: #3b82f6;
+  --sugg-bg: rgba(59, 130, 246, 0.12);
+  --info: #6b7280;
+  --info-bg: rgba(107, 114, 128, 0.12);
+
+  --ok: #10b981;
+  --ok-bg: rgba(16, 185, 129, 0.12);
+  --pending: #f59e0b;
+  --failed: #ef4444;
+  --stale: #6b7280;
+
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --shadow-drawer: -8px 0 32px rgba(0, 0, 0, 0.45);
+  --code-add: rgba(16, 185, 129, 0.1);
+  --code-del: rgba(239, 68, 68, 0.1);
+  --code-add-text: #10b981;
+  --code-del-text: #ef4444;
+  --code-bg: #0c0c0c;
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-surface: #fafafa;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f2f2f2;
+  --border: #e6e6e6;
+  --border-strong: #d4d4d4;
+  --text-primary: #18181b;
+  --text-secondary: #595964;
+  --text-muted: #8a8a92;
+  --accent: #2563eb;
+  --accent-hover: #1d4fd0;
+  --accent-bg: rgba(37, 99, 235, 0.08);
+  --accent-text: #1d4fd0;
+
+  --crit: #dc2626;
+  --crit-bg: rgba(220, 38, 38, 0.08);
+  --warn: #d97706;
+  --warn-bg: rgba(217, 119, 6, 0.1);
+  --sugg: #2563eb;
+  --sugg-bg: rgba(37, 99, 235, 0.08);
+  --info: #6b7280;
+  --info-bg: rgba(107, 114, 128, 0.1);
+
+  --ok: #059669;
+  --ok-bg: rgba(5, 150, 105, 0.08);
+  --pending: #d97706;
+  --failed: #dc2626;
+  --stale: #9ca3af;
+
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.18);
+  --shadow-drawer: -8px 0 32px rgba(0, 0, 0, 0.12);
+  --code-add: rgba(5, 150, 105, 0.09);
+  --code-del: rgba(220, 38, 38, 0.08);
+  --code-add-text: #059669;
+  --code-del-text: #dc2626;
+  --code-bg: #f6f8fa;
+}
+
+/* ---- Tailwind v4 theme: expose tokens as utilities (bg-*, text-*, border-*) ---- */
+@theme inline {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-hover: var(--bg-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-text: var(--accent-text);
+  --color-crit: var(--crit);
+  --color-crit-bg: var(--crit-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-sugg: var(--sugg);
+  --color-sugg-bg: var(--sugg-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-code-bg: var(--code-bg);
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.006em;
+}
+
+#root,
+#__next {
+  height: 100%;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-feature-settings: "calt" 1, "zero" 1;
+}
+
+/* ---- density ---- */
+[data-density="compact"] {
+  --row-pad: 6px;
+  --card-pad: 12px;
+  --gap: 8px;
+}
+[data-density="regular"] {
+  --row-pad: 9px;
+  --card-pad: 16px;
+  --gap: 12px;
+}
+[data-density="comfy"] {
+  --row-pad: 13px;
+  --card-pad: 22px;
+  --gap: 16px;
+}
+:root {
+  --card-pad: 16px;
+}
+
+/* ---- scrollbars ---- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--bg-primary);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+::selection {
+  background: var(--accent-bg);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+/* focus ring (WCAG AA) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+/* utility */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes ddspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ddpulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes ddslidein {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes ddfadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ddpop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ddshimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: ddshimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

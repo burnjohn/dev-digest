@@ -1,0 +1,61 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for MemoryDetail + its Stat sub-component. */
+export const s = {
+  panel: {
+    width: 320,
+    flexShrink: 0,
+    borderLeft: "1px solid var(--border)",
+    padding: 20,
+    background: "var(--bg-surface)",
+    overflow: "auto",
+  } satisfies CSSProperties,
+  header: { display: "flex", alignItems: "center", gap: 8, marginBottom: 16 } satisfies CSSProperties,
+  kindChip: (color: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    fontSize: 12,
+    fontWeight: 600,
+    color,
+    background: color + "1a",
+    padding: "2px 10px",
+    borderRadius: 4,
+    textTransform: "capitalize",
+  }),
+  headerActions: { marginLeft: "auto", display: "flex", gap: 5 } satisfies CSSProperties,
+  editActions: { display: "flex", gap: 10 } satisfies CSSProperties,
+  content: { fontSize: 14, lineHeight: 1.55, color: "var(--text-primary)" } satisfies CSSProperties,
+  statRow: {
+    display: "flex",
+    gap: 18,
+    margin: "18px 0",
+    paddingBottom: 18,
+    borderBottom: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    marginBottom: 12,
+  } satisfies CSSProperties,
+  sourceList: { display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
+  noSources: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
+  sourceCard: {
+    padding: "10px 12px",
+    borderRadius: 7,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  prLabel: { fontSize: 12, color: "var(--accent-text)" } satisfies CSSProperties,
+  sourceContext: { fontSize: 13, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.4 } satisfies CSSProperties,
+  statLabel: { fontSize: 12, color: "var(--text-muted)", marginBottom: 4 } satisfies CSSProperties,
+  statValue: (color?: string): CSSProperties => ({
+    fontSize: 15,
+    fontWeight: 600,
+    textTransform: "capitalize",
+    color: color ?? "var(--text-primary)",
+  }),
+} as const;

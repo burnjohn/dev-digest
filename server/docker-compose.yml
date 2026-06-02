@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: devdigest-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devdigest
+      POSTGRES_PASSWORD: devdigest
+      POSTGRES_DB: devdigest
+    ports:
+      - "5432:5432"
+    volumes:
+      - devdigest_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devdigest -d devdigest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  devdigest_pgdata:

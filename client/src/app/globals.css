@@ -1,0 +1,24 @@
+/* App global stylesheet.
+   The design-system styles.css already does `@import "tailwindcss"` and defines
+   the @theme token layer + base resets, so we just re-export it here and add
+   web fonts. */
+@import "../vendor/ui/styles.css";
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: local("Inter");
+}
+
+@keyframes ddToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

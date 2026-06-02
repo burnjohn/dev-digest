@@ -1,0 +1,18 @@
+{
+  "stat": {
+    "symbols": "symbols",
+    "callers": "callers",
+    "endpoints": "endpoints",
+    "crons": "cron/jobs"
+  },
+  "view": {
+    "tree": "tree",
+    "graph": "graph"
+  },
+  "callerCount": "{count} callers",
+  "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "graph": {
+    "empty": "No downstream callers to graph.",
+    "ariaLabel": "Blast radius graph"
+  }
+}

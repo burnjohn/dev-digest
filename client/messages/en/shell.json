@@ -1,0 +1,33 @@
+{
+  "commandPalette": {
+    "goTo": "Go to {label}",
+    "goToSettings": "Go to Settings",
+    "switchTheme": "Switch to {theme} theme",
+    "themeAppearanceGroup": "Appearance",
+    "globalGroup": "GLOBAL"
+  },
+  "theme": {
+    "dark": "dark",
+    "light": "light"
+  },
+  "nav": {
+    "pulls": "Pull Requests",
+    "onboarding-tour": "Onboarding Tour",
+    "context": "Project Context",
+    "skills": "Skills",
+    "agents": "Agents",
+    "conventions": "Conventions",
+    "eval": "Eval Dashboard",
+    "memory": "Memory",
+    "multi-agent": "Multi-Agent Review",
+    "agent-performance": "Agent Performance",
+    "ci-runs": "CI Runs"
+  },
+  "featurePlaceholder": {
+    "defaultBody": "This screen is owned by {owner}. The app shell, routing, theming and data layer are wired — {owner} fills in the screen here."
+  },
+  "diffViewer": {
+    "noDiffText": "No diff text available (binary or unfetched patch).",
+    "noChangedFiles": "No changed files."
+  }
+}

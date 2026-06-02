@@ -1,0 +1,123 @@
+{
+  "viewTrace": "View trace",
+  "finding": {
+    "trifecta": "trifecta"
+  },
+  "column": {
+    "noFindings": "No findings.",
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}"
+  },
+  "conflicts": {
+    "title": "Where agents disagree",
+    "onlyConflicts": "Show only conflicts",
+    "empty": "No conflicts — the agents agree on every flagged location.",
+    "didNotFlag": "did not flag"
+  },
+  "tabs": {
+    "noSummary": "No summary."
+  },
+  "trace": {
+    "configuration": "Configuration",
+    "stats": "Stats",
+    "promptAssembly": "Prompt assembly",
+    "toolCalls": "Tool calls",
+    "rawOutput": "Raw output",
+    "noToolCalls": "No tool calls recorded.",
+    "collapse": "collapse",
+    "expand": "expand",
+    "config": {
+      "model": "Model",
+      "provider": "Provider",
+      "memoryPulled": "Memory pulled",
+      "specsRead": "Specs read",
+      "items": "{count, plural, one {# item} other {# items}}",
+      "none": "none"
+    },
+    "stat": {
+      "duration": "DURATION",
+      "tokens": "TOKENS",
+      "cost": "COST",
+      "findings": "FINDINGS"
+    },
+    "prompt": {
+      "system": "System",
+      "skills": "Skills (dynamic)",
+      "memory": "Memory (dynamic)",
+      "user": "User / diff (dynamic)"
+    },
+    "tools": {
+      "args": "args",
+      "result": "result",
+      "previewTruncated": "(preview truncated)"
+    }
+  },
+  "drawer": {
+    "title": "Agent run · {agent}",
+    "run": "Run",
+    "pr": "PR #{number}",
+    "running": "running",
+    "completed": "completed",
+    "copyRawOutput": "Copy raw output",
+    "tracePending": "Trace is written when the run completes — see the Live log tab.",
+    "loadingTrace": "Loading trace…",
+    "noTrace": "No trace available yet."
+  },
+  "stats": {
+    "na": "n/a",
+    "empty": {
+      "title": "No runs yet",
+      "body": "Run this agent on a PR to populate accept-rate, findings volume, cost and latency aggregates."
+    },
+    "metric": {
+      "acceptRate": "ACCEPT RATE",
+      "dismissRate": "DISMISS RATE",
+      "runs": "RUNS",
+      "avgFindingsPerRun": "AVG FINDINGS/RUN",
+      "totalCost": "TOTAL COST",
+      "avgCostPerRun": "AVG COST/RUN",
+      "avgLatency": "AVG LATENCY"
+    },
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "findingOutcomes": "Finding outcomes",
+    "outcome": {
+      "accepted": "Accepted",
+      "dismissed": "Dismissed",
+      "pending": "Pending"
+    },
+    "sharePct": "({pct}%)",
+    "findingsBySeverity": "Findings by severity",
+    "findingsTrend": "FINDINGS TREND",
+    "costAndLatency": "Cost & latency",
+    "moreRunsNeeded": "more runs needed"
+  },
+  "severity": {
+    "critical": "Critical",
+    "warning": "Warning",
+    "suggestion": "Suggestion"
+  },
+  "page": {
+    "title": "Multi-Agent Review",
+    "subtitle": "this PR through every enabled agent in parallel",
+    "selectPr": "Select PR",
+    "prItem": "#{number} · {title}",
+    "view": {
+      "columns": "columns",
+      "tabs": "tabs"
+    },
+    "runAll": "Run all agents",
+    "running": "Running…",
+    "meta": "{count} agents · fan-out via p-queue · {duration}s total · {cost}",
+    "noAgents": {
+      "title": "Enable agents to run reviews",
+      "body": "Multi-agent review runs the PR through every enabled agent in parallel. You have no agents enabled yet.",
+      "cta": "Go to Agents"
+    },
+    "noRun": {
+      "title": "No multi-agent run yet",
+      "bodyReady": "Run all enabled agents on this PR to see N columns + conflicts.",
+      "bodySelect": "Select a PR to begin.",
+      "cta": "Run all agents"
+    },
+    "crumb": "Multi-Agent Review"
+  }
+}

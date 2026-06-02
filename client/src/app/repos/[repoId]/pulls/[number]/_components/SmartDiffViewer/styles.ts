@@ -1,0 +1,66 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for SmartDiffViewer (extracted from inline styles). */
+export const s = {
+  root: { display: "flex", flexDirection: "column", gap: 18 } satisfies CSSProperties,
+  nudge: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 14,
+    padding: 16,
+    borderRadius: 10,
+    border: "1px solid var(--warn)",
+    background: "var(--warn-bg)",
+  } satisfies CSSProperties,
+  nudgeIcon: { color: "var(--warn)", flexShrink: 0, marginTop: 1 } satisfies CSSProperties,
+  nudgeBody: { flex: 1 } satisfies CSSProperties,
+  nudgeTitle: { fontSize: 14, fontWeight: 700, color: "var(--warn)" } satisfies CSSProperties,
+  nudgeText: {
+    fontSize: 13,
+    color: "var(--text-secondary)",
+    marginTop: 5,
+    lineHeight: 1.5,
+  } satisfies CSSProperties,
+  splitList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 10,
+  } satisfies CSSProperties,
+  splitRow: { display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
+  splitIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
+  splitName: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  groupHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+  groupLabel: (color: string): CSSProperties => ({ fontSize: 13, fontWeight: 700, color }),
+  fileList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    padding: "12px 14px",
+    border: "1px solid var(--border)",
+    borderRadius: 7,
+    background: "var(--bg-surface)",
+  } satisfies CSSProperties,
+  fileRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 13,
+  } satisfies CSSProperties,
+  fileIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
+  filePath: { flex: 1 } satisfies CSSProperties,
+  fileStat: { fontSize: 12 } satisfies CSSProperties,
+  addCount: { color: "var(--code-add-text)" } satisfies CSSProperties,
+  delCount: { color: "var(--code-del-text)" } satisfies CSSProperties,
+  fileFlag: { fontSize: 12, color: "var(--crit)", fontWeight: 600 } satisfies CSSProperties,
+  footer: {
+    marginTop: 5,
+    display: "flex",
+    justifyContent: "flex-end",
+  } satisfies CSSProperties,
+} as const;

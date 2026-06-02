@@ -1,0 +1,63 @@
+/* RunReviewDropdown — ported from components2.jsx.
+   "Run all enabled agents" / a specific agent → kicks off POST /pulls/:id/review
+   and hands the resulting runIds up so the parent can stream SSE live status. */
+"use client";
+
+import React from "react";
+import { useTranslations } from "next-intl";
+import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
+import { useAgents } from "../../../../../../../lib/hooks/agents";
+import { useRunReview } from "../../../../../../../lib/hooks/reviews";
+import { DROPDOWN_WIDTH } from "./constants";
+
+export function RunReviewDropdown({
+  prId,
+  size = "sm",
+  kind = "primary",
+  onRunsStarted,
+}: {
+  prId: string;
+  size?: "sm" | "md" | "lg";
+  kind?: "primary" | "secondary";
+  onRunsStarted?: (runIds: string[]) => void;
+}) {
+  const t = useTranslations("prReview");
+  const { data: agents } = useAgents();
+  const run = useRunReview();
+  const enabled = (agents ?? []).filter((a) => a.enabled);
+
+  const kick = async (opts: { all?: boolean; agentId?: string }) => {
+    const res = await run.mutateAsync({ prId, ...opts });
+    onRunsStarted?.(res.runs.map((r) => r.run_id));
+  };
+
+  const items: DropdownItemDef[] = [
+    {
+      label: t("runReview.runAll"),
+      icon: "Play",
+      onClick: () => kick({ all: true }),
+    },
+    { divider: true },
+    ...enabled.map((a) => ({
+      label: a.name,
+      icon: "Cpu" as const,
+      hint: a.model,
+      onClick: () => kick({ agentId: a.id }),
+    })),
+    { divider: true },
+    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => undefined },
+  ];
+
+  return (
+    <Dropdown
+      width={DROPDOWN_WIDTH}
+      align="right"
+      items={items}
+      trigger={
+        <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles">
+          {run.isPending ? t("runReview.running") : t("runReview.runReview")}
+        </Button>
+      }
+    />
+  );
+}
