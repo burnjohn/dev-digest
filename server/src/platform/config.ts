@@ -29,6 +29,8 @@ export type AppConfig = {
   webPort: number;
   /** Absolute path where repos are cloned (~/.devdigest/workspace by default). */
   cloneDir: string;
+  /** Absolute path to the writable secrets store (BYO keys from the UI). */
+  secretsPath: string;
   nodeEnv: 'development' | 'test' | 'production';
   logLevel: string;
   /** Allowed CORS origin for the Next.js dev server. */
@@ -45,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     apiPort: parsed.API_PORT,
     webPort: parsed.WEB_PORT,
     cloneDir,
+    secretsPath: join(homedir(), '.devdigest', 'secrets.json'),
     nodeEnv: parsed.NODE_ENV,
     logLevel: parsed.LOG_LEVEL ?? (parsed.NODE_ENV === 'test' ? 'silent' : 'info'),
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,

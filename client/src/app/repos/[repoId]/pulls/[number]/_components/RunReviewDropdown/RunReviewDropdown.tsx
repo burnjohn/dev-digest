@@ -4,6 +4,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
 import { useAgents } from "../../../../../../../lib/hooks/agents";
@@ -22,30 +23,40 @@ export function RunReviewDropdown({
   onRunsStarted?: (runIds: string[]) => void;
 }) {
   const t = useTranslations("prReview");
+  const router = useRouter();
   const { data: agents } = useAgents();
   const run = useRunReview();
-  const enabled = (agents ?? []).filter((a) => a.enabled);
+  const all = agents ?? [];
+  const hasEnabled = all.some((a) => a.enabled);
 
   const kick = async (opts: { all?: boolean; agentId?: string }) => {
     const res = await run.mutateAsync({ prId, ...opts });
     onRunsStarted?.(res.runs.map((r) => r.run_id));
   };
 
+  // List EVERY agent (not just enabled) so they're always visible; a specific
+  // agent can be run regardless of its enabled flag. "Run all" still targets
+  // only enabled agents.
+  const agentItems: DropdownItemDef[] = all.length
+    ? all.map((a) => ({
+        label: a.name,
+        icon: "Cpu" as const,
+        hint: a.enabled ? a.model : `${a.model} · disabled`,
+        onClick: () => kick({ agentId: a.id }),
+      }))
+    : [{ label: "No agents yet — create one", icon: "Plus", muted: true, onClick: () => router.push("/agents") }];
+
   const items: DropdownItemDef[] = [
     {
       label: t("runReview.runAll"),
       icon: "Play",
+      ...(hasEnabled ? {} : { muted: true }),
       onClick: () => kick({ all: true }),
     },
     { divider: true },
-    ...enabled.map((a) => ({
-      label: a.name,
-      icon: "Cpu" as const,
-      hint: a.model,
-      onClick: () => kick({ agentId: a.id }),
-    })),
+    ...agentItems,
     { divider: true },
-    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => undefined },
+    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push("/agents") },
   ];
 
   return (

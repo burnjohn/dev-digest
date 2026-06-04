@@ -210,4 +210,9 @@ export type SecretKey =
 
 export interface SecretsProvider {
   get(key: SecretKey): Promise<string | undefined>;
+  /**
+   * Persist a secret (BYO key entered via the UI). Optional — read-only
+   * providers (e.g. the env-only MVP backend) may omit it.
+   */
+  set?(key: SecretKey, value: string): Promise<void>;
 }

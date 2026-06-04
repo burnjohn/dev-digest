@@ -31,8 +31,8 @@ export default function HomePage() {
           <EmptyState
             icon="GitBranch"
             title="No repositories yet"
-            body="Connect your keys and add a repository to start reviewing pull requests."
-            cta="Start onboarding"
+            body="Add a repository to start reviewing pull requests. Set your API keys once in Settings → API Keys."
+            cta="Add repository"
             onCta={() => router.push("/onboarding")}
           />
         ) : (

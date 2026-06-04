@@ -20,7 +20,7 @@ function KeyRow({ label, provider, hint }: { label: string; provider: ConnTestPr
   const run = async () => {
     setRes(null);
     try {
-      const r = await test.mutateAsync(provider);
+      const r = await test.mutateAsync({ provider, key: val.trim() || undefined });
       setRes({ ok: r.ok, message: r.message });
     } catch (e) {
       setRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });

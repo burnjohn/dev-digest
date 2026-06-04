@@ -15,13 +15,23 @@ export function useSpecs(repoId: string | null | undefined) {
   });
 }
 
+/** Index lifecycle statuses that mean a reindex is actively running. */
+const RUNNING_STATUSES = ["parsing", "embedding", "cloning"];
+
 /** GET /repos/:id/context/status → live IndexStatus. Polls while indexing. */
 export function useIndexStatus(repoId: string | null | undefined, poll: boolean) {
   return useQuery({
     queryKey: ["context-status", repoId],
     queryFn: () => api.get<IndexStatus>(`/repos/${repoId}/context/status`),
     enabled: !!repoId,
-    refetchInterval: poll ? 800 : false,
+    // Self-terminating poll: keep refetching only while the index is actively
+    // running. Terminal states (done/idle/error) stop it — so a sticky "error"
+    // (e.g. repo not cloned yet) can't loop forever.
+    refetchInterval: (query) => {
+      if (!poll) return false;
+      const s = query.state.data?.status;
+      return s && RUNNING_STATUSES.includes(s) ? 800 : false;
+    },
   });
 }
 

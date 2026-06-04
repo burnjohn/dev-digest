@@ -131,7 +131,14 @@ export default async function pullsRoutes(app: FastifyInstance) {
       }
       await container.db
         .update(t.pullRequests)
-        .set({ body: detail.body ?? null })
+        .set({
+          body: detail.body ?? null,
+          // Diff stats aren't on GitHub's PR-list payload — backfill them from
+          // the detail fetch so the Pull Requests list shows real size/files.
+          additions: detail.additions,
+          deletions: detail.deletions,
+          filesCount: detail.files_count,
+        })
         .where(eq(t.pullRequests.id, pr.id));
 
       return { ...detail, id: pr.id };

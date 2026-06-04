@@ -7,7 +7,7 @@ import {
 } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
-import { GITHUB_PROVIDER } from './constants.js';
+import { GITHUB_PROVIDER, SECRET_KEY_BY_PROVIDER } from './constants.js';
 import { rowsToSettings } from './helpers.js';
 
 /**
@@ -51,8 +51,17 @@ export default async function settingsRoutes(app: FastifyInstance) {
   });
 
   app.post('/settings/test-connection', async (req): Promise<ConnTestResult> => {
-    const { provider } = ConnTestRequest.parse(req.body);
+    const { provider, key } = ConnTestRequest.parse(req.body);
     try {
+      // If the UI supplied a key, persist it (BYO key) before testing so the
+      // test reflects — and the rest of the app can use — the new value.
+      if (key) {
+        if (!container.secrets.set) {
+          return { provider, ok: false, message: 'Secrets backend is read-only' };
+        }
+        await container.secrets.set(SECRET_KEY_BY_PROVIDER[provider], key);
+        container.invalidateSecretCaches();
+      }
       if (provider === GITHUB_PROVIDER) {
         const gh = await container.github();
         const login = await gh.currentLogin();

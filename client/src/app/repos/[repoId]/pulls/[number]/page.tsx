@@ -33,7 +33,7 @@ import WhyTimelineDrawer from "./_components/WhyTimelineDrawer";
 import ConformanceReport from "./conformance/_components/ConformanceReport";
 import ComposeReviewDrawer from "./_components/ComposeReviewDrawer";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
-import { usePullDetail } from "../../../../../lib/hooks";
+import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { usePrReviews, usePrIntent, useSmartDiff } from "../../../../../lib/hooks/reviews";
 import { useActiveRepo } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
@@ -58,9 +58,13 @@ export default function PRDetailPage() {
   const router = useRouter();
   const { repoId, number } = params;
   const { activeRepo } = useActiveRepo();
-  const { data: pr, isLoading, isError, error, refetch } = usePullDetail(number);
+  // The route is keyed by PR number, but every PR API is keyed by the row's
+  // uuid — resolve number → uuid via the (cached) pulls list before fetching.
+  const { data: pulls, isLoading: pullsLoading } = usePulls(repoId);
+  const prId = pulls?.find((p) => p.number === Number(number))?.id ?? null;
+  const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
 
-  const prId = pr?.id ?? null;
+  const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews } = usePrReviews(prId);
   const { data: intent } = usePrIntent(prId);
   const { data: smartDiff } = useSmartDiff(prId);

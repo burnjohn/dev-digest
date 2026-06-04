@@ -24,7 +24,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
-        "content-type": "application/json",
+        // Only declare a JSON body when one is actually sent — otherwise a
+        // body-less POST/PUT (e.g. tour generate, refresh, reindex) trips
+        // Fastify's "Body cannot be empty when content-type is application/json".
+        ...(init?.body != null ? { "content-type": "application/json" } : {}),
         ...(init?.headers ?? {}),
       },
     });

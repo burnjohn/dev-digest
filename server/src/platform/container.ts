@@ -11,7 +11,7 @@ import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
 import { JobRunner } from './jobs.js';
 import { runBus, type RunBus } from './sse.js';
-import { EnvSecretsProvider } from '../adapters/secrets/env.js';
+import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
@@ -56,7 +56,7 @@ export class Container {
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
     this.db = db;
-    this.secrets = overrides.secrets ?? new EnvSecretsProvider();
+    this.secrets = overrides.secrets ?? new LocalSecretsProvider(config.secretsPath);
     this.auth = overrides.auth ?? new LocalNoAuthProvider(db);
     this.runBus = runBus;
     this.jobs = new JobRunner(db);
@@ -111,5 +111,15 @@ export class Container {
     const openai = await this.llm('openai');
     this._embedder = new OpenAIEmbedder(openai);
     return this._embedder;
+  }
+
+  /**
+   * Drop cached provider clients so the next resolve picks up changed secrets.
+   * Call after persisting a new API key/PAT via SecretsProvider.set.
+   */
+  invalidateSecretCaches(): void {
+    this.llmCache.clear();
+    this._github = undefined;
+    this._embedder = undefined;
   }
 }

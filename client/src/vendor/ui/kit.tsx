@@ -196,6 +196,10 @@ export interface DropdownItemDef {
   muted?: boolean;
   divider?: boolean;
   onClick?: () => void;
+  /** Optional trailing remove (trash) action shown on the right of the row. */
+  onRemove?: () => void;
+  /** Accessible label/tooltip for the trailing remove action. */
+  removeLabel?: string;
 }
 
 export function Dropdown({
@@ -280,6 +284,29 @@ function DropdownItem({ it, onClose }: { it: DropdownItemDef; onClose: () => voi
       {I && <I size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
       <span style={{ flex: 1 }}>{it.label}</span>
       {it.hint && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{it.hint}</span>}
+      {it.onRemove && (
+        <span
+          role="button"
+          aria-label={it.removeLabel ?? "Remove"}
+          title={it.removeLabel ?? "Remove"}
+          onClick={(e) => {
+            e.stopPropagation();
+            it.onRemove!();
+            onClose();
+          }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 3,
+            borderRadius: 5,
+            color: "var(--text-muted)",
+            flexShrink: 0,
+          }}
+        >
+          <Icon.Trash size={13} />
+        </span>
+      )}
     </button>
   );
 }

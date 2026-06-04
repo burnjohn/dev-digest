@@ -34,8 +34,10 @@ export function useUpdateSettings() {
 
 export function useTestConnection() {
   return useMutation({
-    mutationFn: (provider: ConnTestProvider) =>
-      api.post<ConnTestResult>("/settings/test-connection", { provider }),
+    mutationFn: (input: ConnTestProvider | { provider: ConnTestProvider; key?: string }) => {
+      const body = typeof input === "string" ? { provider: input } : input;
+      return api.post<ConnTestResult>("/settings/test-connection", body);
+    },
   });
 }
 
@@ -63,6 +65,14 @@ export function useRefreshRepo() {
       qc.invalidateQueries({ queryKey: ["repos"] });
       qc.invalidateQueries({ queryKey: ["pulls", repoId] });
     },
+  });
+}
+
+export function useDeleteRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) => api.del<{ deleted: string }>(`/repos/${repoId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["repos"] }),
   });
 }
 

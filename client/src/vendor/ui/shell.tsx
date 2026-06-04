@@ -41,6 +41,10 @@ export interface ShellContext {
   onToggleTheme?: () => void;
   onOpenCommandPalette?: () => void;
   onSelectRepo?: (id: string) => void;
+  /** Invoked when the user picks "Add repository…" in the repo switcher. */
+  onAddRepo?: () => void;
+  /** Invoked when the user removes a repo via the trash action in the switcher. */
+  onRemoveRepo?: (id: string) => void;
   onRefresh?: () => void;
   prCount?: number;
 }
@@ -123,9 +127,12 @@ export function RepoSwitcher({ ctx }: { ctx: ShellContext }) {
       label: r.full_name,
       icon: "GitBranch" as const,
       onClick: () => ctx.onSelectRepo?.(r.id),
+      ...(ctx.onRemoveRepo
+        ? { onRemove: () => ctx.onRemoveRepo!(r.id), removeLabel: `Remove ${r.full_name}` }
+        : {}),
     })),
     ...(ctx.repos && ctx.repos.length ? [{ divider: true }] : []),
-    { label: "Add repository…", icon: "Plus", muted: true },
+    { label: "Add repository…", icon: "Plus", muted: true, onClick: () => ctx.onAddRepo?.() },
   ];
   return (
     <Dropdown
@@ -188,7 +195,7 @@ export function Sidebar({ ctx }: { ctx: ShellContext }) {
   return (
     <aside
       style={{
-        width: 224,
+        width: 264,
         flexShrink: 0,
         background: "var(--bg-surface)",
         borderRight: "1px solid var(--border)",

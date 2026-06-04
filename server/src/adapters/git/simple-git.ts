@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { join } from 'node:path';
-import { mkdir, readFile, access } from 'node:fs/promises';
+import { mkdir, readFile, access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -17,7 +17,15 @@ import { parseUnifiedDiff } from './diff-parser.js';
  * `<cloneDir>/<owner>/<repo>`. We NEVER execute repo code — only git ops.
  */
 export class SimpleGitClient implements GitClient {
-  constructor(private cloneDir: string) {}
+  constructor(private cloneDir: string) {
+    // Force non-interactive auth so an unauthenticated/private clone fails in
+    // ~1s with a clear error instead of hanging on a credential prompt until the
+    // job timeout. Set on process.env (inherited by git subprocesses) rather
+    // than via simple-git's .env(), which inspects and rejects vars like
+    // PAGER/EDITOR present in the shell environment.
+    process.env.GIT_TERMINAL_PROMPT ??= '0';
+    process.env.GCM_INTERACTIVE ??= 'never';
+  }
 
   clonePathFor(repo: RepoRef): string {
     return join(this.cloneDir, repo.owner, repo.name);
@@ -44,6 +52,9 @@ export class SimpleGitClient implements GitClient {
       await simpleGit(dest).fetch();
       return { path: dest };
     }
+    // A prior clone may have timed out mid-write, leaving a partial dir without
+    // a .git — git clone refuses a non-empty dest, so clear it first.
+    if (await this.exists(dest)) await rm(dest, { recursive: true, force: true });
     const args: string[] = [];
     if (opts?.depth) args.push('--depth', String(opts.depth));
     if (opts?.branch) args.push('--branch', opts.branch);
