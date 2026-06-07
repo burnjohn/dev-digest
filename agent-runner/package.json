@@ -1,0 +1,29 @@
+{
+  "name": "@devdigest/agent-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DevDigest CI runner — the I/O wrapper that runs the reviewer-core engine in CI. M1: a local dev-harness (local.ts) that reviews a fixture diff with one agent and prints findings, with no GitHub. Later: action.yml entry that pulls the PR diff, posts a review, and writes devdigest-result.json.",
+  "scripts": {
+    "local": "tsx src/local.ts",
+    "review": "tsx src/review-cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "package": "ncc build src/main.ts -o dist --source-map --no-source-map-register",
+    "build": "tsc --noEmit -p tsconfig.json && npm run package",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "octokit": "^4.0.3",
+    "openai": "^4.77.0",
+    "yaml": "^2.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vercel/ncc": "^0.38.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

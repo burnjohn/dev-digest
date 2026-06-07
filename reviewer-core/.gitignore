@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# This package never emits JS (consumed as source via tsx / vitest / ncc).
+# Guard against stray tsc output shadowing the .ts sources.
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts

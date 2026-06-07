@@ -1,0 +1,7 @@
+diff --git a/src/config.ts b/src/config.ts
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -10,3 +10,4 @@
+   port: 3000,
++  stripeKey: "sk_live_abc123def456",
+   redisUrl: x,

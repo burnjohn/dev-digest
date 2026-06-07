@@ -1,0 +1,35 @@
+# Copy this to `.github/workflows/devdigest-review.yml` at your repo root.
+#
+# Uses the action LOCALLY from this monorepo (`./agent-runner`) — no separate
+# publish needed. Requires the committed bundle (`agent-runner/dist/index.js`,
+# built via `npm run package`) and a repo Actions secret OPENROUTER_API_KEY.
+name: DevDigest Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Same-repo branch PRs (your own fork) get secrets + a writable token.
+# External-fork PRs do not — the post step is skipped (no key leak).
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./agent-runner
+        with:
+          agent: security-reviewer # or `agents:` (one per line) / `all: true`
+          post: github-review
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devdigest-result
+          path: devdigest-result.json
+          if-no-files-found: ignore

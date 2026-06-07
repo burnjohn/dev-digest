@@ -1,0 +1,36 @@
+name: 'DevDigest Review'
+description: 'Run DevDigest reviewer agents (reviewer-core engine) on a pull request via cheap OpenRouter models.'
+author: 'DevDigest'
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+
+inputs:
+  agent:
+    description: 'Agent slug to run (resolves .devdigest/agents/<slug>.yaml).'
+    required: false
+  agents:
+    description: 'Multiple agent slugs, one per line (overrides `agent`).'
+    required: false
+  all:
+    description: 'Run every agent in .devdigest/agents.'
+    required: false
+    default: 'false'
+  post:
+    description: 'How to post results: github-review | none.'
+    required: false
+    default: 'github-review'
+  devdigest-dir:
+    description: 'Root of the committed agent config.'
+    required: false
+    default: '.devdigest'
+
+outputs:
+  findings:
+    description: 'Total grounded findings across all agents.'
+  result-path:
+    description: 'Path to the written devdigest-result.json artifact.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

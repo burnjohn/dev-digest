@@ -1,0 +1,9 @@
+node_modules/
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+# NOTE: dist/ is NOT ignored — a published GitHub Action runs the committed
+# dist/index.js bundle (built via `npm run package`). Commit it on release.
+# The root .gitignore ignores `dist/` globally; re-include ours here.
+!dist/
+!dist/**

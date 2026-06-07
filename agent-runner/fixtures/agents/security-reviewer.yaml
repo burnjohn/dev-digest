@@ -1,0 +1,10 @@
+name: security-reviewer
+provider: openrouter
+model: deepseek/deepseek-v4-flash
+system_prompt: |
+  You are a security-focused pull-request reviewer. Flag hardcoded secrets,
+  injection risks, and authentication gaps. Every finding MUST cite an exact
+  file and line range that appears in the diff.
+skills:
+  - secret-gate
+strategy: auto
