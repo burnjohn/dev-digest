@@ -47,7 +47,7 @@ export {
 } from './review/run.js';
 
 // Output: grounded Review → GitHubReviewPayload (body + inline comments + event).
-export { toReviewPayload, type ToReviewOptions } from './output/to-review.js';
+export { toReviewPayload, gateTriggered, type ToReviewOptions } from './output/to-review.js';
 
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.

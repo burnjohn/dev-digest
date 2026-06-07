@@ -42,28 +42,35 @@ export class OctokitRunnerGitHub implements RunnerGitHub {
     payload: GitHubReviewPayload,
   ): Promise<{ id: string }> {
     const comments = payload.comments?.map((c) => ({ path: c.path, line: c.line, body: c.body }));
-    const submit = (event: GitHubReviewPayload['event']) =>
+    const submit = (event: GitHubReviewPayload['event'], withComments: boolean) =>
       this.octokit.rest.pulls.createReview({
         owner,
         repo,
         pull_number: prNumber,
         body: payload.body,
         event,
-        comments,
+        ...(withComments && comments?.length ? { comments } : {}),
       });
+    const is422 = (e: unknown) => (e as { status?: number }).status === 422;
     try {
-      const res = await submit(payload.event);
+      const res = await submit(payload.event, true);
       return { id: String(res.data.id) };
     } catch (err) {
-      // GitHub forbids APPROVE / REQUEST_CHANGES on your OWN pull request (422).
-      // In the course model (you review your own fork's PR), fall back to a
-      // COMMENT review so the findings still land.
-      const status = (err as { status?: number }).status;
-      if (status === 422 && payload.event !== 'COMMENT') {
-        const res = await submit('COMMENT');
+      if (!is422(err)) throw err;
+      // Recovery 1 — GitHub forbids APPROVE / REQUEST_CHANGES on your OWN PR (the
+      // course model: you review your own fork's PR). Downgrade to COMMENT but
+      // keep the inline comments so findings still land on their lines.
+      try {
+        const res = await submit('COMMENT', true);
+        return { id: String(res.data.id) };
+      } catch (err2) {
+        if (!is422(err2)) throw err2;
+        // Recovery 2 — an inline comment targets a line GitHub can't resolve
+        // ("Line could not be resolved"); one bad line rejects the whole review.
+        // Post body-only so every finding still appears in the summary.
+        const res = await submit('COMMENT', false);
         return { id: String(res.data.id) };
       }
-      throw err;
     }
   }
 }

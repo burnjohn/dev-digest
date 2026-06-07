@@ -104,6 +104,9 @@ export async function run(): Promise<void> {
   const llm = new OpenRouterProvider(orKey);
 
   const parts: { agent: string; findings: Finding[]; costUsd: number | null; durationMs: number }[] = [];
+  // Agents whose review tripped the CI gate (event === REQUEST_CHANGES) — these
+  // fail the check after the artifact is written (see `ci_fail_on` policy).
+  const blocking: string[] = [];
   for (const slug of slugs) {
     const agent = await loadAgent(join(agentsDir, `${slug}.yaml`), skillsDir);
     if (agent.missingSkills.length > 0) {
@@ -127,6 +130,7 @@ export async function run(): Promise<void> {
       costUsd: result.outcome.costUsd,
       durationMs: Date.now() - t0,
     });
+    if (result.payload.event === 'REQUEST_CHANGES') blocking.push(agent.manifest.name);
   }
 
   const artifact = buildArtifact(parts, prNumber);
@@ -136,6 +140,15 @@ export async function run(): Promise<void> {
   core.info(
     `Done — ${artifact.findings_count} finding(s) across ${slugs.length} agent(s); wrote ${ARTIFACT_FILE}.`,
   );
+
+  // Fail the check (red ✗) only when an agent's gate tripped — `ci_fail_on`
+  // decides this deterministically from severities. The artifact is already
+  // written and the review posted; upload-artifact runs with `if: always()`.
+  if (blocking.length > 0) {
+    core.setFailed(
+      `Changes requested by ${blocking.length} agent(s): ${blocking.join(', ')} (ci_fail_on gate).`,
+    );
+  }
 }
 
 // Run only when executed as the action entry (not when imported by tests).

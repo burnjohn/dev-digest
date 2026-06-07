@@ -21,7 +21,7 @@ export interface GroundingResult {
 }
 
 /** Build a quick lookup of file → set of new-side line numbers covered by hunks. */
-function buildLineIndex(diff: UnifiedDiff): Map<string, Set<number>> {
+export function buildLineIndex(diff: UnifiedDiff): Map<string, Set<number>> {
   const idx = new Map<string, Set<number>>();
   for (const f of diff.files) {
     const set = new Set<number>();

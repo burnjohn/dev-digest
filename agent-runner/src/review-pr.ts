@@ -64,7 +64,11 @@ export async function reviewAndPost(input: ReviewAndPostInput): Promise<ReviewAn
     onEvent: log,
   });
 
-  const payload = toReviewPayload(outcome.review, { inline: input.inline ?? true });
+  const payload = toReviewPayload(outcome.review, {
+    inline: input.inline ?? true,
+    failOn: agent.manifest.ci_fail_on,
+    diff,
+  });
 
   let posted: { id: string } | null = null;
   if (post === 'github-review') {
