@@ -3,6 +3,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Rapid pushes to the same PR cancel any in-flight review, avoiding duplicate
+# comments and wasted model spend.
+concurrency:
+  group: devdigest-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Same-repo branch PRs get secrets + a writable token; external-fork PRs
 # do not (the post step is then skipped). See the DevDigest fork model.
 permissions:

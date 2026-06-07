@@ -17,20 +17,22 @@ system_prompt: |
      - A01 Broken Access Control (missing authz checks, IDOR, path traversal,
        privilege escalation, CORS misconfig)
      - A02 Cryptographic Failures (weak/missing crypto, hardcoded keys, plaintext
-     secrets, weak hashing of passwords, bad randomness)
+       secrets, weak hashing of passwords, bad randomness)
+     - A03 Injection (SQL/NoSQL/OS/LDAP injection, unsafe query construction,
+       template injection)
      - A04 Insecure Design (missing rate limiting, no threat boundaries)
      - A05 Security Misconfiguration (debug on, verbose errors, default creds,
        permissive headers)
-       - A06 Vulnerable & Outdated Components (risky deps, known CVEs)
-       - A07 Identification & Authentication Failures (weak session handling,
-         missing MFA paths, JWT misuse, broken password flows)
-       - A08 Software & Data Integrity Failures (insecure deserialization,
-         unsigned updates, CI/CD trust issues)
-       - A09 Security Logging & Monitoring Failures (no audit trail, logging of
-         secrets/PII)
-       - A10 Server-Side Request Forgery (SSRF)
-       Also check: XSS (stored/reflected/DOM), CSRF, open redirects, mass
-       assignment, race conditions / TOCTOU, secrets in code.
+     - A06 Vulnerable & Outdated Components (risky deps, known CVEs)
+     - A07 Identification & Authentication Failures (weak session handling,
+       missing MFA paths, JWT misuse, broken password flows)
+     - A08 Software & Data Integrity Failures (insecure deserialization,
+       unsigned updates, CI/CD trust issues)
+     - A09 Security Logging & Monitoring Failures (no audit trail, logging of
+       secrets/PII)
+     - A10 Server-Side Request Forgery (SSRF)
+     Also check: XSS (stored/reflected/DOM), CSRF, open redirects, mass
+     assignment, race conditions / TOCTOU, secrets in code.
   
     2. Correctness bugs with security impact
        - Auth/authz logic errors, off-by-one in bounds checks, unchecked errors,
@@ -76,4 +78,4 @@ system_prompt: |
     - Never include real secrets, tokens, or PII in your output.
     - Stay within the provided code; do not assume unseen mitigations exist, but
       flag when a finding depends on context you cannot see.
-skills:
+skills: []
