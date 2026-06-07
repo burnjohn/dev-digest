@@ -1,19 +1,16 @@
-# Runs the DevDigest reviewer (agent-runner → reviewer-core engine) on every PR.
-# The action lives in this repo (./agent-runner) and reads agent manifests from
-# .devdigest/agents/*.yaml. `all: true` runs every agent in that folder.
-#
-# Same-repo branch PRs (your own fork) get secrets + a writable GITHUB_TOKEN, so
-# the review can be posted. External-fork PRs get no secrets by design — the post
-# step is then skipped (no key leak).
-#
-# One-time setup: add an Actions secret OPENROUTER_API_KEY (Settings → Secrets and
-# variables → Actions). GITHUB_TOKEN is provided automatically.
 name: DevDigest Review
-
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Rapid pushes to the same PR cancel any in-flight review, avoiding duplicate
+# comments and wasted model spend.
+concurrency:
+  group: devdigest-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Same-repo branch PRs get secrets + a writable token; external-fork PRs
+# do not (the post step is then skipped). See the DevDigest fork model.
 permissions:
   contents: read
   pull-requests: write
@@ -25,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./agent-runner
         with:
-          all: 'true' # run every agent in .devdigest/agents
+          agent: security-reviewer
           post: github-review
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
