@@ -1,8 +1,8 @@
 /**
  * DevDigestClient — thin typed wrapper over the DevDigest HTTP engine
- * (apps/api). The MCP server and the pre-push CLI both go through this so the
- * tools stay a single, runnable surface that reuses the existing services
- * (no logic is re-implemented here).
+ * (apps/api). The MCP server goes through this so the tools stay a single,
+ * runnable surface that reuses the existing services (no logic is
+ * re-implemented here).
  *
  * Base URL: DEVDIGEST_API_BASE env (default http://localhost:3001).
  */
@@ -81,8 +81,6 @@ export class DevDigestClient {
   /**
    * review_diff — run the Structured Reviewer on a PR. The engine review
    * endpoint streams over SSE; here we kick it off and return the run id(s).
-   * The pre-push CLI uses local-diff review (see cli.ts) which posts the
-   * working diff for a one-shot structured review.
    */
   runReview(prId: string, body: { agentId?: string; all?: boolean } = { all: true }): Promise<unknown> {
     return this.req(`/pulls/${encodeURIComponent(prId)}/review`, {

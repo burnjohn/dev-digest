@@ -1,8 +1,8 @@
 /**
- * Local working-tree helpers for the MCP tools / pre-push CLI.
+ * Local working-tree helpers for the MCP tools.
  *
  * These operate on the developer's checkout (no engine round-trip) so that
- * `grep_repo`, `read_file`, and the pre-push `review_diff` work against
+ * `grep_repo`, `read_file`, and the working/push `review_diff` work against
  * uncommitted changes — exactly what you want before pushing.
  */
 import { spawnSync } from 'node:child_process';
