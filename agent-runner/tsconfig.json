@@ -22,7 +22,11 @@
       "@devdigest/shared": ["../server/src/vendor/shared/index.ts"],
       "@devdigest/shared/*": ["../server/src/vendor/shared/*"],
       "@devdigest/reviewer-core": ["../reviewer-core/src/index.ts"],
-      "@devdigest/reviewer-core/*": ["../reviewer-core/src/*"]
+      "@devdigest/reviewer-core/*": ["../reviewer-core/src/*"],
+      "zod": ["./node_modules/zod"],
+      "zod/*": ["./node_modules/zod/*"],
+      "openai": ["./node_modules/openai"],
+      "openai/*": ["./node_modules/openai/*"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
