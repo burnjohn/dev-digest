@@ -1,20 +1,19 @@
 import type { FastifyInstance } from 'fastify';
-import { FindingActionKind, RunRequest } from '@devdigest/shared';
+import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
 
 /**
- * A2 — reviews module (§12, owner A2).
- *   POST /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs+reviews
- *   GET  /runs/:id/events                            → SSE stream of RunEvent (replay-first)
- *   GET  /runs/:id/trace                             → the single-document RunTrace (basic; A5 enriches)
- *   GET  /pulls/:id/reviews                          → persisted reviews + findings for a PR
- *   GET  /pulls/:id/intent                           → derived PR intent (in/out of scope)
- *   GET  /pulls/:id/smart-diff                       → Smart Diff groups + split nudge
- *   POST /findings/:id/(accept|dismiss|learn|reply)  → finding actions (learn→memory)
+ * reviews module.
+ *   POST   /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs
+ *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
+ *   GET    /runs/:id/trace                             → the single-document RunTrace
+ *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
+ *   POST   /findings/:id/(accept|dismiss)              → finding actions
  */
+const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
 export default async function reviewsRoutes(app: FastifyInstance) {
   const { container } = app;
   const service = new ReviewService(container);
@@ -120,18 +119,6 @@ export default async function reviewsRoutes(app: FastifyInstance) {
     return service.reviewsForPull(workspaceId, req.params.id);
   });
 
-  app.get<{ Params: { id: string } }>('/pulls/:id/intent', async (req) => {
-    const { workspaceId } = await getContext(container, req);
-    const intent = await service.getIntent(workspaceId, req.params.id);
-    if (!intent) throw new NotFoundError('No intent derived for this PR yet');
-    return { pr_id: req.params.id, ...intent };
-  });
-
-  app.get<{ Params: { id: string } }>('/pulls/:id/smart-diff', async (req) => {
-    const { workspaceId } = await getContext(container, req);
-    return service.smartDiff(workspaceId, req.params.id);
-  });
-
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete<{ Params: { id: string } }>('/reviews/:id', async (req) => {
     const { workspaceId } = await getContext(container, req);
@@ -140,16 +127,12 @@ export default async function reviewsRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // ---- Finding actions ----------------------------------------------------
-  for (const action of FindingActionKind.options) {
-    app.post<{ Params: { id: string }; Body: { reply?: string } }>(
-      `/findings/:id/${action}`,
-      async (req) => {
-        const { workspaceId } = await getContext(container, req);
-        const reply = (req.body ?? {}).reply;
-        const result = await service.actOnFinding(workspaceId, req.params.id, action, reply);
-        return result;
-      },
-    );
+  // ---- Finding actions (accept / dismiss) ---------------------------------
+  for (const action of FINDING_ACTIONS) {
+    app.post<{ Params: { id: string } }>(`/findings/:id/${action}`, async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      const result = await service.actOnFinding(workspaceId, req.params.id, action);
+      return result;
+    });
   }
 }

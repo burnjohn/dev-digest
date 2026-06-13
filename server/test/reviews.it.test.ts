@@ -7,7 +7,7 @@ import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { Review, Intent } from '@devdigest/shared';
+import type { Review } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -58,12 +58,6 @@ const REVIEW_FIXTURE: Review = {
       kind: 'finding',
     },
   ],
-};
-
-const INTENT_FIXTURE: Intent = {
-  intent: 'Add rate limiting to public endpoints',
-  in_scope: ['middleware', 'config'],
-  out_of_scope: ['docs'],
 };
 
 let repoSeq = 0;
@@ -130,7 +124,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     });
   }
 
-  it('agents CRUD + skills link/reorder', async () => {
+  it('agents CRUD', async () => {
     const app = await appWith(REVIEW_FIXTURE);
 
     const created = await app.inject({
@@ -159,16 +153,6 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       })
     ).json();
     expect(updated.version).toBe(2);
-
-    // link two skills (from seed) by id, reorder
-    const skills = (await app.inject({ method: 'GET', url: '/skills' })).json();
-    const ids = skills.slice(0, 2).map((s: { id: string }) => s.id);
-    const links = (
-      await app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: ids } })
-    ).json();
-    expect(links).toHaveLength(2);
-    expect(links[0].order).toBe(0);
-    expect(links[1].order).toBe(1);
 
     await app.close();
   });
@@ -248,42 +232,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await app.close();
   });
 
-  it('intent layer derives + persists in/out-of-scope', async () => {
-    const app = await buildApp({
-      config: config(),
-      db: pg.handle.db,
-      overrides: {
-        embedder: new MockEmbedder(),
-        git: new MockGitClient({ diff: DIFF }),
-        // intent derivation calls completeStructured(Intent); review calls it with Review.
-        // We give the mock the Intent fixture, then a separate app for the review.
-        llm: { openai: new MockLLMProvider('openai', { structured: INTENT_FIXTURE }) },
-      },
-    });
-    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
-    const agent = (
-      await app.inject({
-        method: 'POST',
-        url: '/agents',
-        payload: { name: 'IntentAgent', provider: 'openai', model: 'gpt-4.1', system_prompt: 's' },
-      })
-    ).json();
-    // run review — intent is derived first (mock returns INTENT_FIXTURE for both calls,
-    // which still parses as a Review? No — Review requires findings. So intent derive
-    // succeeds, the review structured call will fail schema → run marked failed but
-    // intent is persisted). We assert the intent endpoint regardless.
-    await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
-    // runReview is fire-and-forget: wait for the background run so intent has been
-    // persisted before we read it (the review step itself fails schema, but intent
-    // is derived + persisted first). Avoids a read-before-write race under load.
-    await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
-    const intent = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();
-    expect(intent.intent).toBe(INTENT_FIXTURE.intent);
-    expect(intent.out_of_scope).toContain('docs');
-    await app.close();
-  });
-
-  it('finding actions: accept, dismiss, learn→memory, reply', async () => {
+  it('finding actions: accept, dismiss', async () => {
     const app = await appWith(REVIEW_FIXTURE);
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
     const agent = (
@@ -311,24 +260,6 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(dismissed.finding.dismissed_at).not.toBeNull();
     expect(dismissed.finding.accepted_at).toBeNull();
 
-    // learn → creates a memory row (A1) with source PR provenance
-    const learned = (
-      await app.inject({ method: 'POST', url: `/findings/${findingId}/learn` })
-    ).json();
-    expect(learned.memoryId).toBeTruthy();
-    const mem = (await app.inject({ method: 'GET', url: '/memory?kind=learning' })).json();
-    expect(mem.some((m: { id: string }) => m.id === learned.memoryId)).toBe(true);
-
-    // reply stores a note
-    const replied = (
-      await app.inject({
-        method: 'POST',
-        url: `/findings/${findingId}/reply`,
-        payload: { reply: 'Intentional for the sandbox env.' },
-      })
-    ).json();
-    expect(replied.memoryId).toBeTruthy();
-
     await app.close();
   });
 
@@ -355,15 +286,6 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     // The replay buffer should contain our log lines as SSE `data:` frames.
     expect(sse.payload).toContain('Starting review');
     expect(sse.payload).toContain('Citation grounding');
-    await app.close();
-  });
-
-  it('smart diff groups files and flags split when too big', async () => {
-    const app = await appWith(REVIEW_FIXTURE);
-    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
-    const sd = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/smart-diff` })).json();
-    expect(Array.isArray(sd.groups)).toBe(true);
-    expect(sd.split_suggestion.too_big).toBe(false); // single small file
     await app.close();
   });
 

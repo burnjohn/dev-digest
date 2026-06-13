@@ -1,16 +1,13 @@
 import type { Container } from '../../platform/container.js';
-import type { Intent, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import type { MemoryService } from '../memory/service.js';
-import { MEMORY_TOP_K, REVIEW_STRATEGY } from './constants.js';
-import { flagOutOfScope, memoryQuery, sourcePr, taskLine } from './helpers.js';
-import { deriveIntent } from './intent.js';
-import { loadDiff } from './smart-diff.js';
-import { collectSkills, collectSpecs } from './findings.js';
+import { REVIEW_STRATEGY } from './constants.js';
+import { taskLine } from './helpers.js';
+import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -48,7 +45,6 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
-    private memory: MemoryService,
   ) {}
 
   /**
@@ -109,19 +105,6 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
-    // Derive (or refresh) intent once for the PR; used to flag out-of-scope.
-    let intent: Intent | undefined;
-    try {
-      intent = await runLog.step(
-        'Deriving PR intent',
-        () => deriveIntent(this.container, this.repo, workspaceId, pull, diff, jobs[0]?.agent, runLog),
-        { kind: 'tool' },
-      );
-    } catch (err) {
-      runLog.error(`Intent derivation failed: ${(err as Error).message} — using last known intent`);
-      intent = await this.repo.getIntent(pull.id);
-    }
-
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -129,7 +112,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, intent, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
         logger?.info(
           {
             runId,
@@ -160,7 +143,6 @@ export class ReviewRunExecutor {
     diff: UnifiedDiff,
     agent: AgentRow,
     runId: string,
-    intent: Intent | undefined,
     parentLog: RunLogger,
   ): Promise<RunOutcome> {
     const start = Date.now();
@@ -172,49 +154,13 @@ export class ReviewRunExecutor {
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
     try {
-      // Resolve adapter, skills, memory, specs — each timed so the slow steps
-      // are visible. (container.llm throws if the provider key is missing —
-      // caught below and persisted as a failed run.)
+      // Resolve the agent's LLM provider. (container.llm throws if the provider
+      // key is missing — caught below and persisted as a failed run.)
       const llm = await runLog.step(
         `Resolving ${agent.provider} provider`,
         () => this.container.llm(agent.provider as Provider),
         { kind: 'tool' },
       );
-
-      const skillBodies = await runLog.step('Loading enabled skills', () => collectSkills(this.agents, agent.id));
-      runLog.info(`${skillBodies.length} enabled skill(s) loaded`);
-
-      // Memory/RAG retrieval embeds the query via OpenAI (text-embedding-3-small)
-      // — a SEPARATE concern from the agent's chat provider. It is an ENHANCEMENT,
-      // never a gate: when embeddings are disabled (default) we don't call OpenAI
-      // at all; if enabled but failing (e.g. quota), we degrade to "no memory"
-      // and keep reviewing — the run never dies over it.
-      let memHits: Awaited<ReturnType<typeof this.memory.retrieveMemory>> = [];
-      if (!this.container.config.embeddingsEnabled) {
-        runLog.info('Memory/RAG disabled (EMBEDDINGS_ENABLED=false) — skipping, no embedding call');
-      } else {
-        const memStart = Date.now();
-        runLog.tool('Retrieving memory (embedding query + vector search)…');
-        try {
-          memHits = await this.memory.retrieveMemory(workspaceId, memoryQuery(pull), {
-            topK: MEMORY_TOP_K,
-            repoId: pull.repoId,
-          });
-          runLog.tool(`Memory retrieval done (${Date.now() - memStart}ms)`);
-          if (memHits.length > 0) runLog.result(`Pulled ${memHits.length} relevant memory item(s)`);
-        } catch (err) {
-          runLog.error(
-            `Memory retrieval failed (${Date.now() - memStart}ms) — continuing review without memory: ${(err as Error).message}`,
-          );
-        }
-      }
-      const memoryStrings = memHits.map((m) => m.content);
-      const memoryPulled = memHits.map((m) => ({ pr: sourcePr(m), text: m.content }));
-
-      const specs = await runLog.step('Loading project-context specs', () =>
-        collectSpecs(this.container, workspaceId, pull.repoId),
-      );
-      if (specs.length > 0) runLog.info(`${specs.length} project-context spec(s) loaded`);
 
       // Per-agent repo-intel toggle (Agent editor). When an agent opts out we
       // skip all enrichment entirely so its prompt is identical to the
@@ -236,11 +182,11 @@ export class ReviewRunExecutor {
       const repoMap = repoIntelOn ? await this.buildRepoMapDigest(pull.repoId, runLog) : undefined;
       const rankNote = repoIntelOn ? await this.buildRankNote(pull.repoId, diff, runLog) : '';
 
-      const task = taskLine(pull, intent) + rankNote;
+      const task = taskLine(pull) + rankNote;
 
-      // ---- Engine: assemble → (single-pass | map-reduce) → reduce → grounding
+      // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
-      // the CI runner). The service owns only I/O: skills/memory/specs resolution
+      // the CI runner). The service owns only I/O: repo-intel context resolution
       // above, and persistence + observability below.
       const outcome = await reviewPullRequest({
         systemPrompt: agent.systemPrompt,
@@ -250,9 +196,6 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
-        skills: skillBodies,
-        memory: memoryStrings,
-        specs,
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -270,8 +213,7 @@ export class ReviewRunExecutor {
       });
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
-      // ---- Intent: flag out-of-scope findings (non-blocking) ----------------
-      const keptFindings = flagOutOfScope(outcome.review.findings, intent);
+      const keptFindings = outcome.review.findings;
 
       // ---- Persist review + findings ----------------------------------------
       const review = await this.repo.insertReview({
@@ -336,8 +278,8 @@ export class ReviewRunExecutor {
           ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
         })),
         raw_output: outcome.raw,
-        memory_pulled: memoryPulled,
-        specs_read: specs.length > 0 ? specs.map((_, i) => `spec-${i}`) : [],
+        memory_pulled: [],
+        specs_read: [],
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),

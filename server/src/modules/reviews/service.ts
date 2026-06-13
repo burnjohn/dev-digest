@@ -1,21 +1,10 @@
 import type { Container } from '../../platform/container.js';
-import type {
-  FindingActionKind,
-  Intent,
-  RunEventKind,
-  RunTrace,
-  SmartDiff,
-  UnifiedDiff,
-} from '@devdigest/shared';
-import { RunLogger } from '../../platform/run-logger.js';
+import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { MemoryService } from '../memory/service.js';
 import type { AgentRow } from '../../db/rows.js';
-import { ReviewRepository, type PullRow } from './repository.js';
+import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
-import { deriveIntent as deriveIntentImpl, getIntent as getIntentImpl } from './intent.js';
-import { smartDiff as smartDiffImpl } from './smart-diff.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 
@@ -25,31 +14,26 @@ export { findingRowToDto, reviewToDto } from './helpers.js';
 export type { ReviewDto, ReviewDtoFinding } from './helpers.js';
 
 /**
- * A2 — Review service (the core). Orchestrates:
- *   diff → assemblePrompt(system + skills + memory + specs + diff)
- *        → MAP-REDUCE per changed file (token-limit resilience, §11)
- *        → llm.completeStructured({ schema: Review }) (dual-provider)
- *        → groundFindings(...) (MANDATORY citation gate, §8/§11)
+ * Review service (the core). Orchestrates:
+ *   diff → assemblePrompt(system + repo-map + diff)
+ *        → llm.completeStructured({ schema: Review }) (single-pass)
+ *        → groundFindings(...) (citation gate — drops findings off the diff)
  *        → persist reviews + kept findings (+ grounding summary)
  *   while streaming RunEvents over container.runBus, and on completion writing
- *   the whole log as ONE RunTrace doc (§7) + an agent_runs row (A5 aggregates).
+ *   the whole log as ONE RunTrace doc + an agent_runs row.
  *
- * Also: Intent layer (out-of-scope flagging), Smart Diff grouping + split
- * nudger, and the finding accept/dismiss/learn/reply actions. The bulky run
- * execution + per-aspect logic is colocated in run-executor / intent /
- * smart-diff / findings; this class keeps the public method surface.
+ * Also: the finding accept/dismiss actions. The bulky run execution lives in
+ * run-executor; this class keeps the public method surface.
  */
 export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
-  private memory: MemoryService;
   private executor: ReviewRunExecutor;
 
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
-    this.memory = new MemoryService(container);
-    this.executor = new ReviewRunExecutor(container, this.repo, this.agents, this.memory);
+    this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
   }
 
   // ===========================================================================
@@ -111,10 +95,10 @@ export class ReviewService {
   }
 
   /**
-   * Run a review synchronously for each target agent. Each agent gets its own
-   * runId (= agent_runs.id) that is created up-front so the SSE route can be
-   * subscribed before/while the run progresses. A partial failure in one agent
-   * does not abort the others (§11 resilience).
+   * Run a review for each target agent. Each agent gets its own runId
+   * (= agent_runs.id) created up-front so the SSE route can be subscribed
+   * before/while the run progresses. A partial failure in one agent does not
+   * abort the others.
    */
   async runReview(
     workspaceId: string,
@@ -158,37 +142,6 @@ export class ReviewService {
   }
 
   // ===========================================================================
-  // Intent layer
-  // ===========================================================================
-
-  async deriveIntent(
-    workspaceId: string,
-    pull: PullRow,
-    diff: UnifiedDiff,
-    agent?: AgentRow,
-    log?: RunLogger,
-  ): Promise<Intent> {
-    return deriveIntentImpl(this.container, this.repo, workspaceId, pull, diff, agent, log);
-  }
-
-  async getIntent(workspaceId: string, prId: string): Promise<Intent | undefined> {
-    return getIntentImpl(this.repo, workspaceId, prId);
-  }
-
-  // ===========================================================================
-  // Smart Diff + Split Nudger
-  // ===========================================================================
-
-  /**
-   * Group changed files into core / wiring / boilerplate by heuristics, annotate
-   * with finding-lines from persisted findings, and suggest a split when the PR
-   * is too big (§7 split nudger). No LLM call required (deterministic, cheap).
-   */
-  async smartDiff(workspaceId: string, prId: string): Promise<SmartDiff> {
-    return smartDiffImpl(this.container, this.repo, workspaceId, prId);
-  }
-
-  // ===========================================================================
   // Finding actions
   // ===========================================================================
 
@@ -196,9 +149,8 @@ export class ReviewService {
     workspaceId: string,
     findingId: string,
     action: FindingActionKind,
-    reply?: string,
-  ): Promise<{ finding: ReviewDtoFinding; memoryId?: string }> {
-    return actOnFindingImpl(this.repo, this.memory, workspaceId, findingId, action, reply);
+  ): Promise<{ finding: ReviewDtoFinding }> {
+    return actOnFindingImpl(this.repo, workspaceId, findingId, action);
   }
 
   // ===========================================================================
