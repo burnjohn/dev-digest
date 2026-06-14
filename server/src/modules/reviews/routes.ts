@@ -1,11 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { and, eq } from 'drizzle-orm';
 import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
+import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+
+/** Forward a completed review to an external webhook (Slack / Discord / CI). */
+const ShareBody = z.object({ url: z.string() });
 
 /**
  * reviews module.
@@ -147,4 +153,38 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
       return result;
     });
   }
+
+  // ---- Share a review to an external webhook ------------------------------
+  // Lets a user forward a finished review to their own Slack/Discord/CI webhook.
+  app.post('/reviews/:id/share', { schema: { params: IdParams, body: ShareBody } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const [review] = await container.db
+      .select()
+      .from(t.reviews)
+      .where(and(eq(t.reviews.id, req.params.id), eq(t.reviews.workspaceId, workspaceId)));
+    if (!review) throw new NotFoundError('Review not found');
+
+    const findings = await container.db
+      .select()
+      .from(t.findings)
+      .where(eq(t.findings.reviewId, review.id));
+
+    // Forward the review to the webhook the user configured.
+    await fetch(req.body.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        summary: review.summary,
+        verdict: review.verdict,
+        findings: findings.map((f) => ({
+          file: f.file,
+          line: f.startLine,
+          title: f.title,
+          rationale: f.rationale,
+        })),
+      }),
+    });
+
+    return { ok: true };
+  });
 }
