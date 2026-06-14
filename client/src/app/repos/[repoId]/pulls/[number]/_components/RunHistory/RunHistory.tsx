@@ -4,6 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { RunCostBadge } from "@/components/RunCostBadge";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -197,6 +198,16 @@ export function RunHistory({
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {settled && (
+                <span style={{ fontSize: 11 }}>
+                  <RunCostBadge
+                    variant="withTokens"
+                    tokensIn={r.tokens_in}
+                    tokensOut={r.tokens_out}
+                    cost={r.cost_usd}
+                  />
+                </span>
+              )}
             </div>
             <button
               type="button"

@@ -129,6 +129,46 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Latest-review-batch COST per PR for the list's COST column. A "Review all"
+    // fans out N agents within seconds; we sum the cost of every completed,
+    // priced run that ran within BATCH_WINDOW_MS of the PR's most recent priced
+    // run. There's no batch id in the schema yet — this window approximates one;
+    // swap it for exact grouping if a review-session id is ever added. Same
+    // on-read IN-query + JS grouping as the score block above.
+    const BATCH_WINDOW_MS = 120_000;
+    const costByPr = new Map<string, number>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          ranAt: t.agentRuns.ranAt,
+          costUsd: t.agentRuns.costUsd,
+        })
+        .from(t.agentRuns)
+        .where(
+          and(
+            eq(t.agentRuns.workspaceId, workspaceId),
+            inArray(t.agentRuns.prId, prIds),
+            eq(t.agentRuns.status, 'done'),
+          ),
+        )
+        .orderBy(desc(t.agentRuns.ranAt));
+      // Rows newest-first. The first priced run seen per PR anchors the batch
+      // window's upper bound; later runs add in while within the window of it.
+      const batchEndByPr = new Map<string, number>();
+      for (const r of runRows) {
+        if (!r.prId || r.costUsd == null) continue;
+        const ts = r.ranAt ? r.ranAt.getTime() : 0;
+        const end = batchEndByPr.get(r.prId);
+        if (end === undefined) {
+          batchEndByPr.set(r.prId, ts);
+          costByPr.set(r.prId, r.costUsd);
+        } else if (ts >= end - BATCH_WINDOW_MS) {
+          costByPr.set(r.prId, (costByPr.get(r.prId) ?? 0) + r.costUsd);
+        }
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +193,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.has(r.id) ? costByPr.get(r.id)! : null,
       };
     });
   });

@@ -155,6 +155,8 @@ export class ReviewRepository {
       durationMs: number;
       tokensIn: number;
       tokensOut: number;
+      /** Generation cost in USD; null when un-priced / on failed/cancelled runs. */
+      costUsd: number | null;
       findingsCount: number;
       grounding: string;
       /** Review score (0-100); null on failed/cancelled runs. */
