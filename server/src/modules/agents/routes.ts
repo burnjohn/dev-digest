@@ -175,4 +175,20 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
   });
+
+  // Lightweight agent summary for pickers/badges — name + model + version,
+  // without the full system_prompt / config payload.
+  app.get('/agents/:id/summary', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const agent = await service.get(workspaceId, req.params.id);
+    if (!agent) throw new NotFoundError('Agent not found');
+    return {
+      id: agent.id,
+      name: agent.name,
+      provider: agent.provider,
+      model: agent.model,
+      version: agent.version,
+      enabled: agent.enabled,
+    };
+  });
 }
