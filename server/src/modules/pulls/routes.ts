@@ -321,4 +321,43 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     },
   );
+
+  // Activity summary for the repo overview: per-PR review + finding counts,
+  // newest PR first. Powers the "N reviews · M findings" row on each pull
+  // request in the repo dashboard.
+  app.get('/repos/:id/activity', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const [repo] = await container.db
+      .select()
+      .from(t.repos)
+      .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
+    if (!repo) throw new NotFoundError('Repo not found');
+
+    const prs = await container.db
+      .select()
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.repoId, repo.id))
+      .orderBy(desc(t.pullRequests.number));
+
+    const summary = [];
+    for (const pr of prs) {
+      const reviews = await container.db
+        .select()
+        .from(t.reviews)
+        .where(eq(t.reviews.prId, pr.id));
+
+      let findings = 0;
+      for (const review of reviews) {
+        const rows = await container.db
+          .select()
+          .from(t.findings)
+          .where(eq(t.findings.reviewId, review.id));
+        findings += rows.length;
+      }
+
+      summary.push({ number: pr.number, title: pr.title, reviews: reviews.length, findings });
+    }
+
+    return summary;
+  });
 }
