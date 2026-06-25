@@ -4,7 +4,7 @@ import { z } from "zod";
 import { SkillSource, SkillType } from "@devdigest/shared";
 import { getContext } from "../_shared/context.js";
 import { IdParams } from "../_shared/schemas.js";
-import { NotFoundError, ValidationError } from "../../platform/errors.js";
+import { NotFoundError } from "../../platform/errors.js";
 import { SkillsService } from "./service.js";
 import { regexScan, llmScan, THREAT_LEVEL } from "./scanner.js";
 import type { ThreatLevel } from "./scanner.js";
@@ -58,68 +58,6 @@ const ImportUrlBody = z.object({
   description: z.string().optional(),
 });
 
-/**
- * Безпечний fetch URL для імпорту скіла.
- * Захист від: SSRF, великих файлів, таймаутів, бінарників, HTTP downgrade.
- */
-async function safeFetchSkillUrl(url: string): Promise<string> {
-  if (!url.startsWith("https://")) {
-    throw new ValidationError("Only HTTPS URLs are allowed");
-  }
-
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname;
-  } catch {
-    throw new ValidationError("Invalid URL");
-  }
-
-  const PRIVATE_IP =
-    /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/;
-  if (PRIVATE_IP.test(hostname)) {
-    throw new ValidationError("Private and local URLs are not allowed");
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Network error";
-    throw new ValidationError(`Failed to fetch URL: ${msg}`);
-  }
-
-  if (!res.ok) {
-    throw new ValidationError(`URL returned HTTP ${res.status}`);
-  }
-
-  const contentType = res.headers.get("content-type") ?? "";
-  if (!contentType.startsWith("text/")) {
-    throw new ValidationError(
-      "URL must return text content (text/plain or text/markdown)",
-    );
-  }
-
-  const MAX_BYTES = 100_000;
-  const reader = res.body?.getReader();
-  if (!reader) throw new ValidationError("No response body");
-
-  let total = 0;
-  const chunks: Uint8Array[] = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
-    if (total > MAX_BYTES) {
-      await reader.cancel();
-      throw new ValidationError("File too large (max 100KB)");
-    }
-    chunks.push(value);
-  }
-
-  return new TextDecoder().decode(Buffer.concat(chunks));
-}
-
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new SkillsService(app.container);
@@ -142,7 +80,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { body: ImportUrlBody } },
     async (req, reply) => {
       const { workspaceId } = await getContext(app.container, req);
-      const body = await safeFetchSkillUrl(req.body.url);
+      const body = await app.container.webFetch.fetch(req.body.url);
 
       // Layer 1: instant regex scan — blocks obvious injection immediately.
       const regexResult = regexScan(body);

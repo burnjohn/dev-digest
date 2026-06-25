@@ -6,6 +6,7 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
+  WebFetchClient,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
@@ -30,6 +31,7 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
+import { WebFetchAdapter } from '../adapters/http/web-fetch.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -52,6 +54,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Outbound HTTP adapter (SSRF-guarded). Tests inject MockWebFetchClient. */
+  webFetch?: WebFetchClient;
 }
 
 export class Container {
@@ -78,6 +82,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _webFetch?: WebFetchClient;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -92,6 +97,13 @@ export class Container {
     if (this.overrides.git) return this.overrides.git;
     this._git ??= new SimpleGitClient(this.config.cloneDir);
     return this._git;
+  }
+
+  /** SSRF-guarded outbound HTTP client. Override in tests via ContainerOverrides.webFetch. */
+  get webFetch(): WebFetchClient {
+    if (this.overrides.webFetch) return this.overrides.webFetch;
+    this._webFetch ??= new WebFetchAdapter();
+    return this._webFetch;
   }
 
   get agentsRepo(): AgentsRepository {

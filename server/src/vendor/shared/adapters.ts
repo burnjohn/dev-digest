@@ -253,6 +253,17 @@ export interface CodeIndex {
   references(repo: RepoRef, symbol: string): Promise<CodeReference[]>;
 }
 
+// ---------- WebFetch (outbound HTTP, SSRF-guarded) ----------
+export interface WebFetchClient {
+  /**
+   * Fetch the content of a remote URL and return it as text.
+   * Implementations MUST enforce: HTTPS-only, no private/loopback/link-local
+   * hosts, a request timeout, a response body size cap, and text/* Content-Type.
+   * Throws a ValidationError on any SSRF-guard violation or HTTP error.
+   */
+  fetch(url: string): Promise<string>;
+}
+
 // ---------- Auth (pluggable; MVP = LocalNoAuthProvider) ----------
 export interface AuthUser {
   id: string;

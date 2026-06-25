@@ -7,6 +7,10 @@ See also: `insights/gotchas.md` for known quirks at project start.
 
 ## What Works
 
+2026-06-22 — `var(--ok)` is the correct CSS token for green/success icon color (used for check marks, approved verdict, "reviewed" status). Do NOT use `var(--success)` or `var(--green)` — those don't exist. Confirmed across settings, verdict banner, and PR list constants. ref: client/src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/constants.ts:1
+
+2026-06-22 — `Button` from `@devdigest/ui` auto-replaces the `icon` prop with a spinning `RefreshCw` when `loading=true`. Adding `icon="RefreshCw"` explicitly on a loading button is redundant — the component handles it. The spin animation runs via `ddspin 1s linear infinite` on the icon element. ref: client/src/vendor/ui/primitives/Button.tsx:24
+
 2026-06-17 — `SEV[sev].c` from `@devdigest/ui` returns a hex string (e.g. `#ef4444`), NOT a CSS variable. Appending `"22"` / `"55"` gives valid 8-digit hex with ~13%/33% alpha — safe for `background` and `border` derivation. Do NOT use this trick with `var(--crit)` / `var(--warn)` style tokens (those are CSS vars and will produce invalid values). ref: client/src/app/repos/[repoId]/pulls/styles.ts:50
 
 2026-06-17 — Shared display components for PR list cells live in `client/src/components/`. Pure display, no fetching. Accept `value | null | undefined`, render `–` for absent data. Pattern: `({ cost }: { cost?: number | null }) => cost && cost > 0 ? "$X.XXX" : "–"`. ref: client/src/components/RunCostBadge/RunCostBadge.tsx:1
@@ -28,6 +32,8 @@ See also: `insights/gotchas.md` for known quirks at project start.
 2026-06-17 — `Icon.AlertCircle` does not exist in `@devdigest/ui` — runtime error "Element type is invalid: expected a string... but got undefined". Never guess icon names; check existing usages (`grep -oh "Icon\.[A-Za-z]*"`) to find what's available. ref: client/src/app/repos/[repoId]/pulls/_components/FindingsPopover/FindingsPopover.tsx:56
 
 ## Codebase Patterns
+
+2026-06-22 — `OverviewTab.tsx` originally had a hardcoded English string `"Description"` as a `SectionLabel` child — violating the no-hardcoded-strings rule. This was fixed (migrated to `t("overview.descriptionLabel")`) when the `prId` prop was added in T8. Future implementers touching this file: the fix is already in place, don't revert it. ref: client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx:1
 
 2026-06-17 — `tableCard` in `styles.ts` has `overflow: hidden` — any `position: absolute` child inside the PR list table is clipped. Popovers/tooltips inside the table must use `position: fixed` + `getBoundingClientRect()` for correct placement. ref: client/src/app/repos/[repoId]/pulls/styles.ts:103
 
@@ -60,6 +66,8 @@ See also: `insights/gotchas.md` for known quirks at project start.
 2026-06-20 — `src/components/showcase/Showcase.tsx` exports `Gallery`, not `Showcase` — despite the filename. Writing `export { Showcase } from "./showcase/Showcase"` in a barrel produces `TS2305: Module has no exported member 'Showcase'`. Fix: `export { Gallery } from "./showcase/Showcase"`. ref: client/src/components/showcase/Showcase.tsx:58
 
 ## Session Notes
+
+2026-06-22 — T8 Intent card + OverviewTab wiring → created IntentCard.tsx (Card + SectionLabel + Button loading pattern, useIntent/useRecomputeIntent hooks, loading/error/empty states, i18n via prReview namespace); added `prId: string | null` to OverviewTab; passed prId from page.tsx; added intent + overview i18n keys to prReview.json; exported intent hooks from lib/hooks/index.ts barrel. Typecheck and all 32 tests green. Files: client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/IntentCard.tsx, client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx, client/src/app/repos/[repoId]/pulls/[number]/page.tsx, client/messages/en/prReview.json, client/src/lib/hooks/index.ts.
 
 2026-06-17 — Run Cost Badge: added COST column to PR list → surfaced `@devdigest/shared` dual-copy trap (client has its own vendor copy, gotchas.md was wrong). Fixed by updating client's local platform.ts. Files: client/src/vendor/shared/contracts/platform.ts, client/src/app/repos/[repoId]/pulls/constants.ts, client/src/components/RunCostBadge/RunCostBadge.tsx.
 

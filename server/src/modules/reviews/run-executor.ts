@@ -18,6 +18,7 @@ import type {
 import { REVIEW_STRATEGY } from "./constants.js";
 import { taskLine } from "./helpers.js";
 import { loadDiff } from "./diff-loader.js";
+import { IntentService } from "../intent/service.js";
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -124,6 +125,52 @@ export class ReviewRunExecutor {
       `Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`,
     );
 
+    // Compute intent ONCE per executeRuns — before the per-agent loop.
+    // Best-effort: a failure here must NEVER fail the review run.
+    let intentBlock: string | undefined;
+    try {
+      // Prefer the stored intent (avoids an LLM call when already computed).
+      let intent = await this.repo.getIntent(pull.id);
+      if (!intent) {
+        // Pass the run's pino logger so the reference resolver + classifier
+        // emit which specs were resolved + the assembled prompt (server logs).
+        intent = await new IntentService(this.container, logger).computeForRun(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+        );
+        runLog.info(
+          "intent: computed and stored for PR",
+          { prId: pull.id, intent: intent.intent },
+        );
+      } else {
+        runLog.info(
+          "intent: loaded from store (no LLM call)",
+          { prId: pull.id, intent: intent.intent },
+        );
+      }
+
+      // Render the intent into the block injected into each agent prompt.
+      const scopeLines = (label: string, items: string[]) =>
+        items.length > 0
+          ? `${label}:\n${items.map((i) => `- ${i}`).join("\n")}`
+          : "";
+      const inScopeSection = scopeLines("In scope", intent.in_scope);
+      const outScopeSection = scopeLines("Out of scope", intent.out_of_scope);
+      intentBlock = [
+        `Intent: ${intent.intent}`,
+        ...(inScopeSection ? [inScopeSection] : []),
+        ...(outScopeSection ? [outScopeSection] : []),
+        "Rule: Do not comment outside this scope. If you spot a serious problem that is OUT OF SCOPE, emit exactly ONE signal finding for it — not many.",
+      ].join("\n");
+    } catch (err) {
+      runLog.info(
+        `intent: computation failed — continuing without intent block (${(err as Error).message})`,
+      );
+      // intentBlock remains undefined; reviewPullRequest proceeds without it.
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -145,6 +192,7 @@ export class ReviewRunExecutor {
           agent,
           runId,
           runLog,
+          intentBlock,
         );
         logger?.info(
           {
@@ -182,6 +230,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intentBlock?: string,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -277,6 +326,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // T6 — intent block (computed once per run, shared across agents).
+        // reviewer-core's assemblePrompt wraps it via wrapUntrusted (T1).
+        // Omitted when intent computation failed (best-effort).
+        ...(intentBlock ? { intent: intentBlock } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),

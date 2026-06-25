@@ -110,5 +110,16 @@
     "goToReview": "Jump to this run’s findings below",
     "openTrace": "Open run trace & logs",
     "deleteRun": "Delete run"
+  },
+  "overview": {
+    "descriptionLabel": "Description"
+  },
+  "intent": {
+    "sectionLabel": "Intent",
+    "recompute": "Recompute",
+    "recomputeAriaLabel": "Recompute PR intent",
+    "inScopeLabel": "In scope",
+    "outOfScopeLabel": "Out of scope",
+    "error": "Could not load intent. Click Recompute to try again."
   }
 }

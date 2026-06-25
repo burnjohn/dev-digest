@@ -31,6 +31,7 @@ import type {
   AuthWorkspace,
   SecretsProvider,
   SecretKey,
+  WebFetchClient,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
@@ -326,5 +327,35 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock WebFetch ----------
+export interface MockWebFetchOptions {
+  /** Fixed content to return for any URL (default: empty string). */
+  content?: string;
+  /**
+   * Per-URL overrides. Key = URL, value = content to return.
+   * Looked up before `content`; if not found, falls back to `content`.
+   */
+  contentByUrl?: Record<string, string>;
+  /** When true, throw a ValidationError for every call. */
+  throwError?: boolean;
+  errorMessage?: string;
+}
+
+export class MockWebFetchClient implements WebFetchClient {
+  public calls: string[] = [];
+
+  constructor(private opts: MockWebFetchOptions = {}) {}
+
+  async fetch(url: string): Promise<string> {
+    this.calls.push(url);
+    if (this.opts.throwError) {
+      // Import inline to avoid circular dependency on platform/errors
+      const { ValidationError } = await import('../platform/errors.js');
+      throw new ValidationError(this.opts.errorMessage ?? 'Mock fetch error');
+    }
+    return this.opts.contentByUrl?.[url] ?? this.opts.content ?? '';
   }
 }
