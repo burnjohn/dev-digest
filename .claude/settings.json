@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm list -g --depth 0 2>&1)",
+      "PowerShell(npm root -g)",
+      "Bash(node node_modules/drizzle-kit/bin.cjs generate)",
+      "Skill(engineering-insights)",
+      "Skill(engineering-insights:*)"
+    ]
+  }
+}

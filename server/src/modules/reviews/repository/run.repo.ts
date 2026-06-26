@@ -2,6 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
+import { estimateCost } from '../../../adapters/llm/pricing.js';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -64,6 +65,9 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    cost_usd: run.model && run.tokensIn != null && run.tokensOut != null
+      ? estimateCost(run.model, run.tokensIn, run.tokensOut)
+      : null,
   }));
 }
 
