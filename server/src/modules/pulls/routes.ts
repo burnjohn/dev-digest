@@ -8,6 +8,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { estimateCost } from '../../adapters/llm/pricing.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -129,6 +130,30 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total estimated cost per PR: sum estimateCost(model, tokensIn, tokensOut)
+    // across all completed runs. Runs with unknown model pricing contribute null
+    // and are excluded from the sum (SUM ignores nulls).
+    const costByPr = new Map<string, number | null>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          model: t.agentRuns.model,
+          tokensIn: t.agentRuns.tokensIn,
+          tokensOut: t.agentRuns.tokensOut,
+        })
+        .from(t.agentRuns)
+        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
+      for (const run of runRows) {
+        if (!run.prId) continue;
+        const cost = run.model && run.tokensIn != null && run.tokensOut != null
+          ? estimateCost(run.model, run.tokensIn, run.tokensOut)
+          : null;
+        if (cost == null) continue;
+        costByPr.set(run.prId, (costByPr.get(run.prId) ?? 0) + cost);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +178,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });
