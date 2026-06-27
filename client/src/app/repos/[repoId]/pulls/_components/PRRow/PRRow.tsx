@@ -48,12 +48,16 @@ function FindingsPopup({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // Viewport overflow correction (horizontal).
+  // Viewport overflow correction (horizontal). Deferred to rAF so the browser
+  // has performed layout and offsetWidth is non-zero on the first read.
   const [adjustedLeft, setAdjustedLeft] = React.useState(left);
   React.useEffect(() => {
-    if (!ref.current) return;
-    const overflow = left + ref.current.offsetWidth - window.innerWidth + 12;
-    setAdjustedLeft(overflow > 0 ? left - overflow : left);
+    const id = requestAnimationFrame(() => {
+      if (!ref.current) return;
+      const overflow = left + ref.current.offsetWidth - window.innerWidth + 12;
+      setAdjustedLeft(overflow > 0 ? left - overflow : left);
+    });
+    return () => cancelAnimationFrame(id);
   }, [left]);
 
   // Aggregate + sort all findings from all reviews.

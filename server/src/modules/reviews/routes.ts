@@ -164,6 +164,12 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   // Fire-and-forget: reviews run in background, returns count immediately.
   app.post('/repos/:id/review-all', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
+    // Verify repo belongs to this workspace before touching any data.
+    const [repo] = await container.db
+      .select({ id: t.repos.id })
+      .from(t.repos)
+      .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
+    if (!repo) throw new NotFoundError('Repo not found');
     const openPrs = await container.db
       .select({ id: t.pullRequests.id })
       .from(t.pullRequests)
