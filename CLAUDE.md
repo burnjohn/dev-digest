@@ -3,12 +3,13 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Stack
+
 Node ≥22 · pnpm ≥10 · TypeScript 5.7 · Fastify 5 · Next.js 15 · React 19 · Drizzle ORM · Postgres 16 + pgvector · Zod
 
 ## Packages
 
 | Folder | Package | Port |
-|---|---|---|
+| --- | --- | --- |
 | `server/` | `@devdigest/api` | 3001 |
 | `client/` | `@devdigest/web` | 3000 |
 | `reviewer-core/` | `@devdigest/reviewer-core` | — |
@@ -29,7 +30,7 @@ cd client && pnpm dev                                     # web only (:3000)
 
 ## Active features (L01)
 
-Cost badge on review runs · severity filter on findings.
+Cost badge on review runs · per-severity CRIT/WARN/SUGG badges in PR timeline with click-to-preview popup · FINDINGS column on PR list with severity badges and per-finding popup · severity filter pills in FindingsPanel · Overview tab: PR Brief (VerdictBanner) + Intent card + Blast Radius card (symbol tree, endpoints, crons, prior PRs). `findings_breakdown` on both `PrMeta` and `RunSummary`; `GET /pulls/:id/brief` returns stored `PrBrief`.
 Tables for L02–L08 exist in the schema but their modules are **not registered** — they are inert.
 
 ## Critical conventions

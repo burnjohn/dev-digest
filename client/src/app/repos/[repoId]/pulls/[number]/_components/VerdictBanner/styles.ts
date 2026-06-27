@@ -47,4 +47,10 @@ export const s = {
     color: "var(--text-muted)",
     letterSpacing: "0.04em",
   } satisfies CSSProperties,
+  costLabel: {
+    fontSize: 11,
+    color: "var(--text-muted)",
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "0.02em",
+  } satisfies CSSProperties,
 } as const;

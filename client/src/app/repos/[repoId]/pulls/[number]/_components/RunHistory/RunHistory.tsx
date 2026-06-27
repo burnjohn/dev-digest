@@ -3,7 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { RunSummary, PrCommit, ReviewRecord, FindingRecord } from "@devdigest/shared";
 import { formatCost } from "@/lib/format";
 
 /**
@@ -35,6 +35,109 @@ function outcomeOf(run: RunSummary): Outcome {
     return { key: "reviewed", color: "var(--warn)", bg: "var(--warn-bg)", icon: "MessageSquare" };
   return { key: "approved", color: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle" };
 }
+
+const SEV_DISPLAY = [
+  { key: "critical" as const, label: "CRIT", color: "var(--crit)", bg: "var(--crit-bg)", dbKey: "CRITICAL" as const },
+  { key: "warning" as const, label: "WARN", color: "var(--warn)", bg: "var(--warn-bg)", dbKey: "WARNING" as const },
+  { key: "suggestion" as const, label: "SUGG", color: "var(--text-muted)", bg: "var(--bg-hover)", dbKey: "SUGGESTION" as const },
+];
+
+type PopupState = {
+  runId: string;
+  severity: "CRITICAL" | "WARNING" | "SUGGESTION";
+  top: number;
+  left: number;
+} | null;
+
+// ---- Finding popup ----------------------------------------------------------
+
+function FindingPopup({
+  findings,
+  onClose,
+  top,
+  left,
+}: {
+  findings: FindingRecord[];
+  onClose: () => void;
+  top: number;
+  left: number;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  // Keep popup within viewport horizontally.
+  const [adjustedLeft, setAdjustedLeft] = React.useState(left);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const width = ref.current.offsetWidth;
+    const overflow = left + width - window.innerWidth + 12;
+    if (overflow > 0) setAdjustedLeft(left - overflow);
+    else setAdjustedLeft(left);
+  }, [left]);
+
+  return (
+    <div
+      ref={ref}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        top,
+        left: adjustedLeft,
+        zIndex: 1200,
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "12px 14px",
+        minWidth: 320,
+        maxWidth: 460,
+        maxHeight: 380,
+        overflowY: "auto",
+        boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
+      }}
+    >
+      {findings.length === 0 ? (
+        <span style={{ color: "var(--text-muted)", fontSize: 13 }}>No findings</span>
+      ) : (
+        findings.map((f, i) => (
+          <div
+            key={f.id}
+            style={{
+              borderBottom: i < findings.length - 1 ? "1px solid var(--border)" : "none",
+              paddingBottom: i < findings.length - 1 ? 10 : 0,
+              marginBottom: i < findings.length - 1 ? 10 : 0,
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary)" }}>{f.title}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+              <span className="mono">{f.file}:{f.start_line}</span>
+              {" · "}
+              {Math.round(f.confidence * 100)}% confidence
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                marginTop: 5,
+                lineHeight: 1.55,
+              }}
+            >
+              {f.rationale.length > 220 ? f.rationale.slice(0, 217) + "…" : f.rationale}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ---- Row styles -------------------------------------------------------------
 
 const rowStyle: React.CSSProperties = {
   display: "flex",
@@ -88,12 +191,15 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  reviewsByRunId,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** ReviewRecord keyed by run_id — used by the severity-icon popup. */
+  reviewsByRunId?: Map<string, ReviewRecord>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -101,6 +207,8 @@ export function RunHistory({
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
+  const [popup, setPopup] = React.useState<PopupState>(null);
+
   if (runs.length === 0 && commits.length === 0) return null;
 
   const items: TimelineItem[] = [
@@ -112,123 +220,182 @@ export function RunHistory({
     })),
   ].sort((a, b) => b.ts - a.ts);
 
+  const popupFindings: FindingRecord[] =
+    popup && reviewsByRunId
+      ? (reviewsByRunId.get(popup.runId)?.findings ?? []).filter(
+          (f) => f.severity === popup.severity,
+        )
+      : [];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {items.map((item) => {
-        if (item.kind === "commit") {
-          const c = item.commit;
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map((item) => {
+          if (item.kind === "commit") {
+            const c = item.commit;
+            return (
+              <div key={`commit:${c.sha}`} style={commitRowStyle}>
+                <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
+                  {c.sha.slice(0, 7)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--text-secondary)",
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={c.message}
+                >
+                  {c.message.split("\n")[0]}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{c.author}</span>
+                {c.committed_at && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+                    {new Date(c.committed_at).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+            );
+          }
+
+          const r = item.run;
+          const o = outcomeOf(r);
+          const settled = r.status === "done";
+          const bd = r.findings_breakdown;
+
           return (
-            <div key={`commit:${c.sha}`} style={commitRowStyle}>
-              <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
-                {c.sha.slice(0, 7)}
-              </span>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  color: "var(--text-secondary)",
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={c.message}
+            <div key={`run:${r.run_id}`} style={rowStyle}>
+              <Badge color={o.color} bg={o.bg} icon={o.icon}>
+                {t(`runStatus.${o.key}`)}
+              </Badge>
+              {settled && r.score != null && <CircularScore score={r.score} size={30} stroke={3} />}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                  <button
+                    type="button"
+                    onClick={() => onGoToReview?.(r.run_id)}
+                    title={t("timeline.goToReview")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      font: "inherit",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                      cursor: onGoToReview ? "pointer" : "default",
+                      textDecoration: onGoToReview ? "underline" : "none",
+                      textDecorationStyle: "dotted",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    {r.agent_name ?? "Agent"}
+                  </button>{" "}
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
+                    {r.provider}/{r.model}
+                  </span>
+                </div>
+                {r.status === "failed" && r.error && (
+                  <div
+                    style={{ fontSize: 12, color: "var(--crit)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={r.error}
+                  >
+                    {r.error}
+                  </div>
+                )}
+                {settled && bd ? (
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {SEV_DISPLAY.map(({ key, label, color, bg, dbKey }) => {
+                      const cnt = bd[key];
+                      if (!cnt) return null;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          title={`${cnt} ${label} finding${cnt !== 1 ? "s" : ""} — click to preview`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setPopup((prev) =>
+                              prev?.runId === r.run_id && prev.severity === dbKey
+                                ? null
+                                : { runId: r.run_id, severity: dbKey, top: rect.bottom + 6, left: rect.left },
+                            );
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            border: `1px solid ${color}`,
+                            background: bg,
+                            color,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: reviewsByRunId ? "pointer" : "default",
+                            letterSpacing: "0.02em",
+                          }}
+                        >
+                          {label} {cnt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : settled ? (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {t("runStatus.findings", { count: r.findings_count ?? 0 })}
+                    {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                  </div>
+                ) : null}
+                {settled && (r.tokens_in != null || r.cost_usd != null) && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                    {r.tokens_in != null && `${r.tokens_in.toLocaleString()} tok`}
+                    {r.tokens_in != null && r.cost_usd != null && " · "}
+                    {r.cost_usd != null && formatCost(r.cost_usd)}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+                {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              </div>
+              <button
+                type="button"
+                title={t("timeline.openTrace")}
+                aria-label={t("timeline.openTrace")}
+                onClick={() => onOpenTrace(r.run_id)}
+                style={iconBtnStyle}
               >
-                {c.message.split("\n")[0]}
-              </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{c.author}</span>
-              {c.committed_at && (
-                <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-                  {new Date(c.committed_at).toLocaleTimeString()}
+                <Icon.FileText size={13} />
+              </button>
+              {onDelete && r.status !== "running" && (
+                <span
+                  role="button"
+                  aria-label={t("timeline.deleteRun")}
+                  title={t("timeline.deleteRun")}
+                  onClick={() => onDelete(r.run_id)}
+                  style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
+                >
+                  <Icon.Trash size={13} />
                 </span>
               )}
             </div>
           );
-        }
+        })}
+      </div>
 
-        const r = item.run;
-        const o = outcomeOf(r);
-        const settled = r.status === "done";
-        return (
-          <div key={`run:${r.run_id}`} style={rowStyle}>
-            <Badge color={o.color} bg={o.bg} icon={o.icon}>
-              {t(`runStatus.${o.key}`)}
-            </Badge>
-            {settled && r.score != null && <CircularScore score={r.score} size={30} stroke={3} />}
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                <button
-                  type="button"
-                  onClick={() => onGoToReview?.(r.run_id)}
-                  title={t("timeline.goToReview")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    font: "inherit",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                    cursor: onGoToReview ? "pointer" : "default",
-                    textDecoration: onGoToReview ? "underline" : "none",
-                    textDecorationStyle: "dotted",
-                    textUnderlineOffset: 3,
-                  }}
-                >
-                  {r.agent_name ?? "Agent"}
-                </button>{" "}
-                <span className="mono" style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
-                  {r.provider}/{r.model}
-                </span>
-              </div>
-              {r.status === "failed" && r.error && (
-                <div
-                  style={{ fontSize: 12, color: "var(--crit)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  title={r.error}
-                >
-                  {r.error}
-                </div>
-              )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
-              {settled && (r.tokens_in != null || r.cost_usd != null) && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                  {r.tokens_in != null && `${r.tokens_in.toLocaleString()} tok`}
-                  {r.tokens_in != null && r.cost_usd != null && " · "}
-                  {r.cost_usd != null && formatCost(r.cost_usd)}
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-              {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
-            </div>
-            <button
-              type="button"
-              title={t("timeline.openTrace")}
-              aria-label={t("timeline.openTrace")}
-              onClick={() => onOpenTrace(r.run_id)}
-              style={iconBtnStyle}
-            >
-              <Icon.FileText size={13} />
-            </button>
-            {onDelete && r.status !== "running" && (
-              <span
-                role="button"
-                aria-label={t("timeline.deleteRun")}
-                title={t("timeline.deleteRun")}
-                onClick={() => onDelete(r.run_id)}
-                style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
-              >
-                <Icon.Trash size={13} />
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
+      {popup && (
+        <FindingPopup
+          findings={popupFindings}
+          top={popup.top}
+          left={popup.left}
+          onClose={() => setPopup(null)}
+        />
+      )}
+    </>
   );
 }

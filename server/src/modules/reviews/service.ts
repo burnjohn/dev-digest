@@ -157,6 +157,18 @@ export class ReviewService {
   // Reads
   // ===========================================================================
 
+  async getReview(workspaceId: string, reviewId: string): Promise<ReviewDto | undefined> {
+    const review = await this.repo.getReview(reviewId);
+    if (!review) return undefined;
+    const pull = await this.repo.getPull(workspaceId, review.prId);
+    if (!pull) return undefined;
+    const findings = await this.repo.findingsForReview(reviewId);
+    const agentName = review.agentId
+      ? (await this.agents.getById(workspaceId, review.agentId))?.name ?? null
+      : null;
+    return reviewToDto(review, findings, agentName);
+  }
+
   async reviewsForPull(workspaceId: string, prId: string): Promise<ReviewDto[]> {
     const pull = await this.repo.getPull(workspaceId, prId);
     if (!pull) throw new NotFoundError('Pull request not found');

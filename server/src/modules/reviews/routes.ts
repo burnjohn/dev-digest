@@ -1,11 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { eq, and } from 'drizzle-orm';
 import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+import * as pullRepo from './repository/pull.repo.js';
+import * as t from '../../db/schema.js';
 
 /**
  * reviews module.
@@ -131,12 +135,53 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     return service.reviewsForPull(workspaceId, req.params.id);
   });
 
+  // ---- Single review + its findings (workspace-scoped via PR) -------------
+  app.get('/reviews/:id', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const review = await service.getReview(workspaceId, req.params.id);
+    if (!review) throw new NotFoundError('Review not found');
+    return review;
+  });
+
+  // ---- PR Brief (intent + blast radius + risks + prior-PR history) ---------
+  app.get('/pulls/:id/brief', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const pull = await pullRepo.getPull(container.db, workspaceId, req.params.id);
+    if (!pull) throw new NotFoundError('PR not found');
+    const brief = await pullRepo.getBrief(container.db, req.params.id);
+    return brief ?? null;
+  });
+
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
     const ok = await service.deleteReview(workspaceId, req.params.id);
     if (!ok) throw new NotFoundError('Review not found');
     return { ok: true };
+  });
+
+  // ---- Bulk: trigger reviews for all open PRs in a repo -------------------
+  // Fire-and-forget: reviews run in background, returns count immediately.
+  app.post('/repos/:id/review-all', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const openPrs = await container.db
+      .select({ id: t.pullRequests.id })
+      .from(t.pullRequests)
+      .where(and(
+        eq(t.pullRequests.workspaceId, workspaceId),
+        eq(t.pullRequests.repoId, req.params.id),
+        eq(t.pullRequests.status, 'open'),
+      ));
+    if (openPrs.length === 0) return { triggered: 0 };
+    const targets = await service.resolveTargets(workspaceId, { all: true });
+    let triggered = 0;
+    for (const { id: prId } of openPrs) {
+      service.runReview(workspaceId, prId, targets, req.log).catch((err: Error) => {
+        req.log.error({ err, prId }, 'review-all: review failed');
+      });
+      triggered++;
+    }
+    return { triggered };
   });
 
   // ---- Finding actions (accept / dismiss) ---------------------------------
@@ -147,4 +192,15 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
       return result;
     });
   }
+
+  // ---- Unified finding action endpoint ------------------------------------
+  app.post('/findings/:id/action', {
+    schema: {
+      params: IdParams,
+      body: z.object({ action: z.enum(['accept', 'dismiss']) }),
+    },
+  }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return service.actOnFinding(workspaceId, req.params.id, req.body.action);
+  });
 }

@@ -28,7 +28,7 @@ pnpm test         # vitest (jsdom, no running API needed)
 
 ## Active features (L01)
 
-Cost badge visible on review run cards · severity filter on the findings list.
+Cost badge on review runs · per-severity CRIT/WARN/SUGG badges in PR timeline with click-to-preview popup (reuses cached `usePrReviews` data, no extra fetch) · FINDINGS column on PR list with severity count badges + lazy per-finding popup via `usePrReviews` (fires only on click) · severity filter pills in FindingsPanel · Overview tab: PR Brief (VerdictBanner from `runs[0]`) + Intent card (intent/in-scope/out-of-scope/risks) + Blast Radius card (symbol tree, HTTP-method badges, cron badges, prior PRs collapsible). `findings_breakdown` on both `PrMeta` and `RunSummary`; `usePrBrief(prId)` loads `GET /pulls/:id/brief` lazily with `staleTime: 5 min`.
 Specs: [specs/cost-badge.md](specs/cost-badge.md) · [specs/severity-filter.md](specs/severity-filter.md)
 
 ## Session Protocol

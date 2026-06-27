@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray, sum } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sum } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -111,21 +111,25 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review SCORE + FINDINGS breakdown per PR. Computed on read from
+    // reviews (no FK denorm); the list is small, so one IN-query + JS grouping
+    // is cheap. We capture the latest review ID per PR so the findings query
+    // below can scope to the same review without a second ordering pass.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewIds: string[] = [];
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ prId: t.reviews.prId, id: t.reviews.id, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (!latestReviewByPr.has(rv.prId)) {
+          latestReviewByPr.set(rv.prId, { score: rv.score });
+          latestReviewIds.push(rv.id);
+        }
       }
     }
 
@@ -160,6 +164,32 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Per-severity finding counts from the latest review per PR.
+    // Scoped to latestReviewIds so we only read findings from the review whose
+    // score is already shown — mixing findings from multiple runs would inflate counts.
+    const findingsBreakdownByPr = new Map<string, { critical: number; warning: number; suggestion: number }>();
+    if (latestReviewIds.length > 0) {
+      const findingRows = await container.db
+        .select({
+          prId: t.reviews.prId,
+          severity: t.findings.severity,
+          cnt: count(),
+        })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+        .where(inArray(t.findings.reviewId, latestReviewIds))
+        .groupBy(t.reviews.prId, t.findings.severity);
+      for (const row of findingRows) {
+        if (!row.prId) continue;
+        const bd = findingsBreakdownByPr.get(row.prId) ?? { critical: 0, warning: 0, suggestion: 0 };
+        // DB stores severity in UPPERCASE ('CRITICAL'/'WARNING'/'SUGGESTION').
+        if (row.severity === 'CRITICAL') bd.critical = row.cnt;
+        else if (row.severity === 'WARNING') bd.warning = row.cnt;
+        else if (row.severity === 'SUGGESTION') bd.suggestion = row.cnt;
+        findingsBreakdownByPr.set(row.prId, bd);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -185,6 +215,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: costByPr.get(r.id) ?? null,
+        findings_breakdown: findingsBreakdownByPr.get(r.id) ?? null,
       };
     });
   });

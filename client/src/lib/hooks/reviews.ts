@@ -8,6 +8,7 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrBrief,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -44,6 +45,16 @@ export function usePrRuns(prId: string | null | undefined) {
     enabled: !!prId,
     refetchInterval: (query) =>
       (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
+  });
+}
+
+// ---- PR Brief (intent + blast radius + risks + prior-PR history) -----------
+export function usePrBrief(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-brief", prId],
+    queryFn: () => api.get<PrBrief | null>(`/pulls/${prId}/brief`),
+    enabled: !!prId,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -111,6 +122,13 @@ export function useCreatePrComment(prId: string | null | undefined) {
     mutationFn: (input: CreateCommentInput) =>
       api.post<PrReviewComment>(`/pulls/${prId}/comments`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pr-comments", prId] }),
+  });
+}
+
+// ---- Bulk review: trigger all enabled agents for every open PR in a repo --
+export function useReviewAll(repoId: string | null | undefined) {
+  return useMutation({
+    mutationFn: () => api.post<{ triggered: number }>(`/repos/${repoId}/review-all`),
   });
 }
 
