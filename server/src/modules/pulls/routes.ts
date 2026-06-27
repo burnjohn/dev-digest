@@ -142,7 +142,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           totalCost: sum(t.agentRuns.costUsd),
         })
         .from(t.agentRuns)
-        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
+        .where(and(eq(t.agentRuns.workspaceId, workspaceId), inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
         .groupBy(t.agentRuns.prId);
       for (const row of costRows) {
         if (row.prId) {
