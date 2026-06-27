@@ -81,6 +81,10 @@
     },
     "refresh": "Refresh",
     "refreshing": "Refreshing…",
+    "synced": "synced {ago} ago",
+    "triageQueue": "Triage queue",
+    "reviewAll": "Review all",
+    "reviewAllRunning": "Reviewing…",
     "filterPlaceholder": "Filter pull requests…",
     "sort": {
       "newest": "Sort: Newest",
@@ -91,6 +95,7 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
       "updated": "Updated"

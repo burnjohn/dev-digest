@@ -10,10 +10,13 @@ import {
   EmptyState,
   ErrorState,
   AutoTriggerStatus,
+  Button,
 } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
-import { usePulls, useRefreshRepo } from "@/lib/hooks";
+import { usePulls, useRefreshRepo, useSettings } from "@/lib/hooks";
+import { useAgents } from "@/lib/hooks/agents";
+import { useReviewAll } from "@/lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
 import { ApiError } from "@/lib/api";
 import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
@@ -34,6 +37,14 @@ export default function PullsPage() {
   const repoNotFound = useRepoNotFound(repoId);
   const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId);
   const refresh = useRefreshRepo();
+  const { data: settings } = useSettings();
+  const { data: agents } = useAgents();
+  const reviewAll = useReviewAll(repoId);
+
+  const autoReviewOn = settings?.automatic_reviews ?? false;
+  const pollingMin = settings?.polling_interval_min ?? 5;
+  const enabledAgents = (agents ?? []).filter((a) => a.enabled).length;
+  const autoDetail = `polling ${pollingMin}m · ${enabledAgents} agent${enabledAgents !== 1 ? "s" : ""}`;
 
   // Default to "needs review" — the most actionable filter on open.
   const status = search.get("status") ?? "needs_review";
@@ -81,7 +92,25 @@ export default function PullsPage() {
           </p>
         </div>
         <div style={s.headerActions}>
-          <AutoTriggerStatus on={false} />
+          <AutoTriggerStatus on={autoReviewOn} detail={autoDetail} />
+          <Button
+            kind="secondary"
+            size="sm"
+            icon="Filter"
+            onClick={() => setStatus("needs_review")}
+          >
+            {t("list.triageQueue")}
+          </Button>
+          <Button
+            kind="primary"
+            size="sm"
+            icon="Sparkles"
+            loading={reviewAll.isPending}
+            disabled={reviewAll.isPending}
+            onClick={() => reviewAll.mutate()}
+          >
+            {reviewAll.isPending ? t("list.reviewAllRunning") : t("list.reviewAll")}
+          </Button>
         </div>
       </div>
 
@@ -95,6 +124,7 @@ export default function PullsPage() {
           onSort={setSort}
           onRefresh={() => refresh.mutate(repoId)}
           refreshing={refresh.isPending}
+          syncedAt={activeRepo?.last_polled_at}
         />
         <div style={s.headRow}>
           {COLUMN_KEYS.map((key, i) => (

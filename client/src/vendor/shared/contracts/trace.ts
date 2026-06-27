@@ -112,5 +112,12 @@ export const RunSummary = z.object({
   score: z.number().int().nullable(),
   blockers: z.number().int().nullable(),
   cost_usd: z.number().nullable(),
+  // Per-severity finding counts from the review produced by this run.
+  // Null on failed/cancelled runs or when the run produced no review.
+  findings_breakdown: z.object({
+    critical: z.number().int(),
+    warning: z.number().int(),
+    suggestion: z.number().int(),
+  }).nullish(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;
