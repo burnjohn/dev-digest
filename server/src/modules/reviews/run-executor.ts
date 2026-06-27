@@ -343,6 +343,8 @@ export class ReviewRunExecutor {
           .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, partialGrounding, Date.now() - start))
           .catch(() => undefined);
       }
+      // Always release the SSE stream — even when runCompleted=true and the
+      // if block above was skipped (success path wrote done but saveRunTrace threw).
       this.container.runBus.complete(runId);
       throw err;
     }
