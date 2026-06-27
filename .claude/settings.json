@@ -5,7 +5,15 @@
       "PowerShell(npm root -g)",
       "Bash(node node_modules/drizzle-kit/bin.cjs generate)",
       "Skill(engineering-insights)",
-      "Skill(engineering-insights:*)"
+      "Skill(engineering-insights:*)",
+      "Bash(pnpm --version)",
+      "Bash(node node_modules/.bin/drizzle-kit generate)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(node server/node_modules/typescript/bin/tsc --version)",
+      "Bash(find . -name \"tsconfig.json\" -not -path \"*/node_modules/*\" -not -path \"*/clones/*\")",
+      "Bash(node ../server/node_modules/typescript/bin/tsc)",
+      "Bash(node ../server/node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(node node_modules/typescript/bin/tsc)"
     ]
   }
 }

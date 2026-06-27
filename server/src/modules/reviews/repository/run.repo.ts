@@ -2,7 +2,6 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
-import { estimateCost } from '../../../adapters/llm/pricing.js';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -65,9 +64,7 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
-    cost_usd: run.model && run.tokensIn != null && run.tokensOut != null
-      ? estimateCost(run.model, run.tokensIn, run.tokensOut)
-      : null,
+    cost_usd: run.costUsd ?? null,
   }));
 }
 
@@ -158,6 +155,8 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
+    /** USD cost from the provider (or estimated). Null = unknown. */
+    costUsd?: number | null;
   },
 ): Promise<void> {
   await db
@@ -172,6 +171,7 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       error: values.error ?? null,
+      costUsd: values.costUsd ?? null,
     })
     .where(eq(t.agentRuns.id, runId));
 }
