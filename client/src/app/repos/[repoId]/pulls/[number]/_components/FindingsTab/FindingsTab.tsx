@@ -71,6 +71,12 @@ export function FindingsTab({
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
+  // Map run_id → ReviewRecord so RunHistory can look up findings for the popup.
+  const reviewsByRunId = React.useMemo(
+    () => new Map(runs.filter((r) => r.run_id != null).map((r) => [r.run_id!, r])),
+    [runs],
+  );
+
   return (
     <section>
       {liveRunIds.length > 0 && (
@@ -131,6 +137,7 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            reviewsByRunId={reviewsByRunId}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}

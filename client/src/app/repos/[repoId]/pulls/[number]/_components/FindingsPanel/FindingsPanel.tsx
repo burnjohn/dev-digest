@@ -26,9 +26,20 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
+  const [activeSeverity, setActiveSeverity] = React.useState<string | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, activeSeverity),
+    [findings, hideLow, activeSeverity],
+  );
+
+  // Count per severity across ALL findings (unfiltered) so the pills always show totals.
+  const severityCounts = React.useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const f of findings) c[f.severity] = (c[f.severity] ?? 0) + 1;
+    return c;
+  }, [findings]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -48,6 +59,26 @@ export function FindingsPanel({
   return (
     <div>
       <div style={s.toolbar}>
+        <div style={s.pillGroup}>
+          {(["CRITICAL", "WARNING", "SUGGESTION"] as const).map((sev) => {
+            const cnt = severityCounts[sev] ?? 0;
+            if (!cnt) return null;
+            const active = activeSeverity === sev;
+            const color = sev === "CRITICAL" ? "var(--crit)" : sev === "WARNING" ? "var(--warn)" : "var(--text-muted)";
+            return (
+              <button
+                key={sev}
+                type="button"
+                style={s.pill(active, color)}
+                onClick={() => setActiveSeverity(active ? null : sev)}
+                title={active ? `Show all severities` : `Filter to ${sev} only`}
+              >
+                {sev === "CRITICAL" ? "CRIT" : sev === "WARNING" ? "WARN" : "SUGG"}
+                <span style={s.pillCount(active)}>{cnt}</span>
+              </button>
+            );
+          })}
+        </div>
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
           <Toggle on={hideLow} onChange={setHideLow} size={16} />

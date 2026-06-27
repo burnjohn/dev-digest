@@ -8,6 +8,7 @@
 ## Patterns
 <!-- Reusable approaches that worked in this module. -->
 - ~~**2026-06-26 [Pattern]** — `estimateCost(model, tokensIn, tokensOut)` computes USD cost from existing `agent_runs` columns, avoiding a new column and keeping pricing current when the pricing table changes. Before adding a column for a derived numeric value, check whether it can be computed at read time. `server/src/modules/reviews/repository/run.repo.ts:68`~~ (superseded 2026-06-27 — `cost_usd` IS stored per run in `agent_runs` (migration 0010); `estimateCost` is called at write time inside the run executor, not at read time. The PR-list route aggregates stored values via `SUM(cost_usd)` at query time, avoiding a separate pr-total column. `server/src/modules/pulls/routes.ts:132`)
+- ~~**2026-06-27 [Pattern]** — Popup detail data sourced from already-fetched React Query cache rather than a new endpoint: `FindingsTab` builds `Map<run_id, ReviewRecord>` from the `usePrReviews` result and passes it to `RunHistory`; clicking a severity badge filters in-memory. No new route, no extra network call. Apply this pattern when popup data is a subset of something already loaded on the page. `client/src/app/.../FindingsTab/FindingsTab.tsx`, `RunHistory/RunHistory.tsx`~~ (superseded 2026-06-27 — this is a client-side React Query pattern; moved to `client/insights.md`)
 
 ## Mistakes
 <!-- Failure modes, antipatterns, wrong assumptions. Prioritize this section. -->

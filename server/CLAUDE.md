@@ -28,6 +28,10 @@ pnpm exec vitest run .it.test                             # integration tests on
 - all other `*.test.ts` = hermetic (uses `src/adapters/mocks.ts` — MockLLMProvider, MockGitClient, etc.)
 - Never mock the database in integration tests
 
+## Active features (L01)
+
+`findings_breakdown` aggregation on `GET /repos/:id/pulls` (per-PR severity counts from each PR's latest review) and `GET /pulls/:id/runs` (per-run severity counts). `GET /pulls/:id/brief` returns the stored `PrBrief` JSONB (intent + blast radius + risks + prior-PR history) from `pr_brief`. `GET /reviews/:id` returns a single review with its `findings: FindingRecord[]` (workspace-scoped via PR). `POST /findings/:id/action` accepts `{ action: "accept" | "dismiss" }` and persists timestamp — unified counterpart to the per-verb `/accept` + `/dismiss` routes. All in `src/modules/reviews/`.
+
 ## Session Protocol
 
 **Start of session:** Read `insights.md` and briefly summarize the most relevant entries for the current task.

@@ -52,6 +52,20 @@ export const s = {
     textAlign: "right",
   } satisfies CSSProperties,
   muted: { color: "var(--text-muted)" } satisfies CSSProperties,
+  findingsCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  findingsBadge: (color: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    fontSize: 11,
+    fontWeight: 600,
+    color,
+  }),
   filterBar: {
     display: "flex",
     alignItems: "center",
@@ -66,6 +80,11 @@ export const s = {
     display: "flex",
     alignItems: "center",
     gap: 12,
+  } satisfies CSSProperties,
+  syncedAt: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    whiteSpace: "nowrap" as const,
   } satisfies CSSProperties,
   pageHeader: {
     padding: "24px 32px 10px",

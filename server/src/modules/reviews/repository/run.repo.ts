@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
@@ -48,6 +48,32 @@ export async function listRunsForPull(
     .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
     .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.prId, prId)))
     .orderBy(desc(t.agentRuns.ranAt));
+
+  // Per-severity counts per run: JOIN findings via reviews.run_id.
+  // Severity is stored UPPERCASE in the DB ('CRITICAL'/'WARNING'/'SUGGESTION').
+  const runIds = rows.map((r) => r.run.id);
+  const breakdownByRun = new Map<string, { critical: number; warning: number; suggestion: number }>();
+  if (runIds.length > 0) {
+    const countRows = await db
+      .select({
+        runId: t.reviews.runId,
+        severity: t.findings.severity,
+        cnt: count(),
+      })
+      .from(t.findings)
+      .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+      .where(inArray(t.reviews.runId, runIds))
+      .groupBy(t.reviews.runId, t.findings.severity);
+    for (const row of countRows) {
+      if (!row.runId) continue;
+      const bd = breakdownByRun.get(row.runId) ?? { critical: 0, warning: 0, suggestion: 0 };
+      if (row.severity === 'CRITICAL') bd.critical = row.cnt;
+      else if (row.severity === 'WARNING') bd.warning = row.cnt;
+      else if (row.severity === 'SUGGESTION') bd.suggestion = row.cnt;
+      breakdownByRun.set(row.runId, bd);
+    }
+  }
+
   return rows.map(({ run, agentName }) => ({
     run_id: run.id,
     agent_id: run.agentId,
@@ -65,6 +91,7 @@ export async function listRunsForPull(
     score: run.score,
     blockers: run.blockers,
     cost_usd: run.costUsd ?? null,
+    findings_breakdown: breakdownByRun.get(run.id) ?? null,
   }));
 }
 
