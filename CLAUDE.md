@@ -49,7 +49,6 @@ cd client && pnpm dev                                     # web only (:3000)
 - `POST /repos/:id/review-all` — fan-out over open PRs; concurrency cap 3; rate-limit 2/min; detached child logger for background tasks
 
 **`pr_brief` is populated by `pnpm db:seed` only.** Live reviews never write to it. Intent/Blast Radius cards show seed data only; live PR generation is L02+.
-
 Tables for L02–L08 exist in the schema but their modules are **not registered** — they are inert.
 
 ## Critical conventions
