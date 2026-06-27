@@ -150,6 +150,7 @@ export function ReviewRunAccordion({
           <FindingsPanel
             findings={findings}
             prId={prId}
+            runId={review.id}
             repoFullName={repoFullName}
             headSha={headSha}
           />

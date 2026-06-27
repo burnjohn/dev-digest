@@ -15,11 +15,13 @@ import { s } from "./styles";
 export function FindingsPanel({
   findings,
   prId,
+  runId,
   repoFullName,
   headSha,
 }: {
   findings: FindingRecord[];
   prId: string;
+  runId?: string | null;
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
@@ -29,14 +31,14 @@ export function FindingsPanel({
   const [activeSeverity, setActiveSeverity] = React.useState<string | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  // Reset the active severity filter when the findings list changes (e.g., switching
-  // between runs). Without this, a CRITICAL filter from run A survives into run B
-  // which may have no CRITICAL findings, leaving an invisible filter and an empty list.
-  const findingsId = findings[0]?.id ?? null;
+  // Reset the active severity filter when the run changes (e.g., switching between
+  // runs in the accordion). `runId` is the stable, reliable signal — `findings[0]?.id`
+  // is a fallback for call sites that do not provide a runId (e.g., tests).
+  const resetKey = runId ?? (findings[0]?.id ?? null);
   React.useEffect(() => {
     setActiveSeverity(null);
     setFocusIdx(0);
-  }, [findingsId]);
+  }, [resetKey]);
 
   const shown = React.useMemo(
     () => visibleFindings(findings, hideLow, activeSeverity),

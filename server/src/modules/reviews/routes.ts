@@ -148,7 +148,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     const pull = await pullRepo.getPull(container.db, workspaceId, req.params.id);
     if (!pull) throw new NotFoundError('PR not found');
-    const brief = await pullRepo.getBrief(container.db, req.params.id);
+    const brief = await pullRepo.getBrief(container.db, req.params.id, workspaceId);
     return brief ?? null;
   });
 
@@ -162,7 +162,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
 
   // ---- Bulk: trigger reviews for all open PRs in a repo -------------------
   // Fire-and-forget: reviews run in background, returns count immediately.
-  app.post('/repos/:id/review-all', { schema: { params: IdParams } }, async (req) => {
+  app.post('/repos/:id/review-all', { schema: { params: IdParams }, config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
     // Verify repo belongs to this workspace before touching any data.
     const [repo] = await container.db
@@ -194,6 +194,9 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const eligiblePrs = openPrs.filter((p) => !runningPrIds.has(p.id));
     if (eligiblePrs.length === 0) return { triggered: 0 };
     const targets = await service.resolveTargets(workspaceId, { all: true });
+    // Detach a child logger before the response is sent — Fastify recycles req
+    // once the handler returns, so req.log is invalid inside the background tasks.
+    const log = req.log.child({ route: 'review-all', repoId: req.params.id });
     // Concurrency cap: avoids saturating the LLM provider rate limit and the
     // in-process runBus when many PRs are open. New slots open as each run settles.
     const CONCURRENCY = 3;
@@ -204,9 +207,9 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
       while (active < CONCURRENCY && head < prIds.length) {
         const prId = prIds[head++]!;
         active++;
-        service.runReview(workspaceId, prId, targets, req.log)
+        service.runReview(workspaceId, prId, targets, log)
           .catch((err: Error) => {
-            req.log.error({ err, prId }, 'review-all: review failed');
+            log.error({ err, prId }, 'review-all: review failed');
           })
           .finally(() => {
             active--;

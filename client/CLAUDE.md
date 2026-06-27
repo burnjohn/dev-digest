@@ -28,7 +28,23 @@ pnpm test         # vitest (jsdom, no running API needed)
 
 ## Active features (L01)
 
-Cost badge on review runs · per-severity CRIT/WARN/SUGG badges in PR timeline with click-to-preview popup (reuses cached `usePrReviews` data, no extra fetch) · FINDINGS column on PR list with severity count badges + lazy per-finding popup via `usePrReviews` (fires only on click) · severity filter pills in FindingsPanel · Overview tab: PR Brief (VerdictBanner from `runs[0]`) + Intent card (intent/in-scope/out-of-scope/risks) + Blast Radius card (symbol tree, HTTP-method badges, cron badges, prior PRs collapsible). `findings_breakdown` on both `PrMeta` and `RunSummary`; `usePrBrief(prId)` loads `GET /pulls/:id/brief` lazily with `staleTime: 5 min`.
+**PR list (`repos/[repoId]/pulls`):**
+
+- FINDINGS column: all 3 severity types (AlertOctagon/AlertTriangle/Lightbulb + count) always shown when total > 0; 0-count badges at 45% opacity with full severity color. Grid: `"1fr 132px 92px 60px 120px 118px 80px 110px 78px"` (9 cols — added `actions` column between COST and UPDATED)
+- Run Review button: own `actions` column, `kind="secondary"` (dark), always visible (not hover-conditional); popup portaled to `document.body` via `createPortal`
+- Cost badge in COST column via `cost_usd` from API
+
+**PR detail (`repos/[repoId]/pulls/[number]`):**
+
+- Timeline (`RunHistory`): severity badges icon+count only, no borders/labels; click-to-preview popup reuses `usePrReviews` cache (no extra fetch)
+- FindingsPanel: severity filter pills with icons; `activeSeverity` + `focusIdx` reset via `runId` prop (more reliable than `findings[0]?.id`)
+- FindingsPopup (PR list row) shows findings from latest review only, matching badge count
+- Overview tab: VerdictBanner + Intent + Blast Radius cards from `usePrBrief`; placeholder "not generated" cards when `brief=null` but review exists
+
+**Severity icon convention:** CRITICAL → `Icon.AlertOctagon` · WARNING → `Icon.AlertTriangle` · SUGGESTION → `Icon.Lightbulb` — consistent across RunHistory, FindingsPanel, PRRow.
+
+`usePrBrief(prId)` loads `GET /pulls/:id/brief` lazily with `staleTime: 5 min`.
+
 Specs: [specs/cost-badge.md](specs/cost-badge.md) · [specs/severity-filter.md](specs/severity-filter.md)
 
 ## Session Protocol

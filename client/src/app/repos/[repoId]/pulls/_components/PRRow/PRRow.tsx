@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
@@ -232,7 +233,7 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
         )}
       </div>
 
-      {/* FINDINGS — severity badges; click opens the per-finding popup */}
+      {/* FINDINGS — all three severity types always shown; 0-counts dimmed */}
       <div
         role={hasFindings ? "button" : undefined}
         onClick={
@@ -251,9 +252,19 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
         {hasFindings ? (
           SEV_COLS.map(({ key, color, Icon: SevIcon }) => {
             const cnt = bd![key];
-            if (!cnt) return null;
             return (
-              <span key={key} style={s.findingsBadge(color)}>
+              <span
+                key={key}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color,
+                  opacity: cnt > 0 ? 1 : 0.45,
+                }}
+              >
                 <SevIcon size={11} />
                 {cnt}
               </span>
@@ -271,21 +282,22 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
       </div>
 
       <div style={s.costCell}>{formatCost(pr.cost_usd)}</div>
-      <div style={s.updatedCell}>
-        {h && pr.id ? (
-          <RunReviewDropdown prId={pr.id} size="sm" kind="primary" />
-        ) : (
-          relativeTime(pr.updated_at)
-        )}
+
+      {/* Actions — always-visible Run Review button in its own column */}
+      <div onClick={(e) => e.stopPropagation()}>
+        {pr.id && <RunReviewDropdown prId={pr.id} size="sm" kind="secondary" />}
       </div>
 
-      {popup && pr.id && (
+      <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
+
+      {popup && pr.id && createPortal(
         <FindingsPopup
           prId={pr.id}
           top={popup.top}
           left={popup.left}
           onClose={() => setPopup(null)}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
