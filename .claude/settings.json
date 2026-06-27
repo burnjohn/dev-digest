@@ -32,7 +32,8 @@
       "Bash(pnpm typecheck *)",
       "Bash(node -e \"const p = require\\('./package.json'\\); p.scripts.start = 'node dist/server/src/server.js'; require\\('fs'\\).writeFileSync\\('./package.json', JSON.stringify\\(p, null, 2\\) + '\\\\n'\\)\")",
       "Skill(claude-api)",
-      "Skill(claude-api:*)"
+      "Skill(claude-api:*)",
+      "Edit(/.claude/skills/engineering-insights/**)"
     ]
   }
 }

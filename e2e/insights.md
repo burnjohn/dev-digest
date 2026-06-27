@@ -1,39 +1,28 @@
-# e2e/insights.md
+# insights.md — e2e
 
-Accumulated non-obvious findings about `@devdigest/e2e`. Add an entry whenever something surprises you.
+> Append-only. Add new entries at the bottom of the correct section.
+> Discovery bar: "Would a fresh agent save ≥10 minutes from reading this?" If not, skip.
+> Format: `**YYYY-MM-DD [Category]** — actionable sentence. \`file:line\``
+> See `.claude/skills/engineering-insights/` for full criteria and format rules.
 
----
+## Patterns
+<!-- Reusable approaches that worked in this module. -->
 
-## 2025-06 npm test fails against an empty or stale DB
+## Mistakes
+<!-- Failure modes, antipatterns, wrong assumptions. Prioritize this section. -->
+- **2025-06-01 [Mistake]** — All 7 flows assume `acme/payments-api` PR #482 is in the DB; running `npm test` against an empty or stale DB fails at the first redirect step. Always use `./scripts/e2e.sh` — it seeds an isolated DB automatically.
 
-**Context**: Running `npm test` after resetting Docker volumes or on a fresh clone.
-**Discovery**: All 7 flows assume `acme/payments-api` PR #482 is in the DB. The flows don't seed data themselves — they rely on a pre-seeded state. Running against an empty DB causes the first flow to fail at the redirect step.
-**Impact**: Always use `./scripts/e2e.sh` (hermetic isolated stack with its own seed) for reliable runs. Use `npm test` only when you know the stack is up and seeded.
-**Status**: current
+## Decisions
+<!-- Architectural or design choices with the reasoning behind them. -->
 
----
+## Quirks
+<!-- Dependency gotchas, env constraints, non-obvious tool or library behavior. -->
+- **2025-06-01 [Quirk]** — The `agent-browser` CLI uses Chrome DevTools Protocol directly — there is no Playwright, Cypress, or Puppeteer. Flows are JSON command files in `specs/*.flow.json`, not `.spec.ts` files; there is no `playwright.config.ts`. `e2e/specs/`
+- **2025-06-01 [Quirk]** — `agent-browser` exits with non-zero on the first failed step with no structured error report or screenshot diff beyond stdout. Add descriptive `label` fields to every step to make failures readable from CLI output alone.
+- **2025-06-01 [Quirk]** — The only URL substitution in flows is `{BASE}` → `E2E_BASE_URL`; there is no variable system for dynamic values. All IDs must match the seeded demo data exactly — if seed data changes (e.g., PR #482 is renamed), all flows referencing it must be updated.
 
-## 2025-06 agent-browser is CDP-based — not Playwright
-
-**Context**: Looking for Playwright config files or browser launch options.
-**Discovery**: The `agent-browser` CLI uses Chrome DevTools Protocol directly — there is no Playwright, no Cypress, no Puppeteer. Flow steps are JSON commands passed to the CLI, not script files.
-**Impact**: Don't look for `.spec.ts` files or a `playwright.config.ts`. Flows are in `specs/*.flow.json`. The browser is controlled entirely by the CLI.
-**Status**: current
-
----
-
-## 2025-06 Non-zero exit from agent-browser = flow failure — no summary output
-
-**Context**: A flow fails and you're looking for a structured error report or diff.
-**Discovery**: `agent-browser` exits with a non-zero code on the first failed step. There is no summary report, no screenshot diff, no detailed failure log beyond what the CLI prints to stdout.
-**Impact**: Read the CLI stdout carefully on failure — the failing step label and command are printed. Add descriptive `label` fields to every step to make failures readable.
-**Status**: current
+## Open Questions
+<!-- Unresolved. Convert to an entry in the appropriate section when answered. -->
 
 ---
-
-## 2025-06 {BASE} substitution is the only templating in flows
-
-**Context**: Wanting to use a dynamic repo ID or PR number in a flow URL.
-**Discovery**: The only substitution available is `{BASE}` → `E2E_BASE_URL`. There is no variable system for dynamic values. All IDs referenced in flows must match the seeded demo data exactly.
-**Impact**: E2e flows are tightly coupled to seed data. If seed data changes (e.g., PR #482 is renamed), all flows that reference it must be updated. Keep seed data stable.
-**Status**: current
+Last updated: 2026-06-27 · Entries: 4
