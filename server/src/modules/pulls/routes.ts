@@ -146,7 +146,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           // Drizzle returns sum() as string | null for float columns.
           // Skip null to preserve "absent = no cost data" semantics; callers use ?? null on get().
           const parsed = row.totalCost != null ? Number(row.totalCost) : null;
-          if (parsed != null && !Number.isNaN(parsed)) {
+          if (parsed != null && Number.isFinite(parsed)) {
             costByPr.set(row.prId, parsed);
           }
         }
