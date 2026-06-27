@@ -153,7 +153,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           // Drizzle returns sum() as string | null for numeric aggregate columns.
           // Only insert when we have a real finite value — absent key and null-sum
           // (all runs have unknown cost) both correctly produce null at the call site.
-          const parsed = row.totalCost != null ? Number(row.totalCost) : null;
+          // Guard against empty string: Number('') === 0, which is finite but wrong.
+          const parsed = row.totalCost != null && row.totalCost !== '' ? Number(row.totalCost) : null;
           if (parsed !== null && !Number.isFinite(parsed)) {
             app.log.warn({ prId: row.prId, totalCost: row.totalCost }, 'cost aggregate: non-numeric sum() — dropping');
           }
