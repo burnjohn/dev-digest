@@ -36,6 +36,7 @@ Tables for L02–L08 exist in the schema but their modules are **not registered*
 
 - **Secrets** (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`) → `SecretsProvider` only.
   Never read from `process.env` directly in services.
+- **No credentials or instance IDs in `.claude/settings.json`** — allowed-command entries must never embed connection strings, passwords, tokens, or hardcoded UUIDs (workspace/repo IDs). Dev DB credentials are canonical in `docker-compose.yml` only. For psql access use `docker exec devdigest-postgres psql -U devdigest` (reads creds from the running container). One-off shell commands with embedded secrets or session-specific IDs must be removed after use.
 - **Shared types** → `server/src/vendor/shared/` only. Never define the same type in two packages.
 - **DB schema is stable** — add tables via new numbered migrations only; never alter existing columns.
 - **`reviewer-core` is side-effect-free** — no DB, no file I/O, no env reads. Everything injected.

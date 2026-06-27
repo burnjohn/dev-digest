@@ -7,17 +7,21 @@
 
 ## Patterns
 <!-- Reusable approaches that worked in this module. -->
-- **2026-06-26 [Pattern]** — `estimateCost(model, tokensIn, tokensOut)` computes USD cost from existing `agent_runs` columns, avoiding a new column and keeping pricing current when the pricing table changes. Before adding a column for a derived numeric value, check whether it can be computed at read time. `server/src/modules/reviews/repository/run.repo.ts:68`
+- ~~**2026-06-26 [Pattern]** — `estimateCost(model, tokensIn, tokensOut)` computes USD cost from existing `agent_runs` columns, avoiding a new column and keeping pricing current when the pricing table changes. Before adding a column for a derived numeric value, check whether it can be computed at read time. `server/src/modules/reviews/repository/run.repo.ts:68`~~ (superseded 2026-06-27 — `cost_usd` IS stored per run in `agent_runs` (migration 0010); `estimateCost` is called at write time inside the run executor, not at read time. The PR-list route aggregates stored values via `SUM(cost_usd)` at query time, avoiding a separate pr-total column. `server/src/modules/pulls/routes.ts:132`)
 
 ## Mistakes
 <!-- Failure modes, antipatterns, wrong assumptions. Prioritize this section. -->
 - **2025-06-01 [Mistake]** — The server starts without error even when migrations haven't been applied; the first DB query fails with `relation "x" does not exist`, not on startup. Always run `cd server && pnpm db:migrate` before `pnpm dev` on a fresh DB.
+- **2026-06-27 [Mistake]** — One-off `psql postgres://user:pass@host/db` commands and hardcoded UUID-bearing curl calls (workspace/repo IDs) were added to `.claude/settings.json` during debugging and left committed. For DB access use `docker exec devdigest-postgres psql -U devdigest -d devdigest`; for API inspection use the generic `/workspaces` → `/repos` → `/pulls` chain and supply IDs at the terminal. Remove any one-off entries from `settings.json` immediately after use — they accumulate into a security and hygiene liability. `.claude/settings.json`
+- **2026-06-27 [Mistake]** — `Bash(docker exec *)` wildcard in `.claude/settings.json` allows arbitrary command execution in any Docker container, expanding the prompt-injection attack surface. Always scope docker exec to the specific container: `Bash(docker exec devdigest-postgres *)`. `.claude/settings.json:25`
 
 ## Decisions
 <!-- Architectural or design choices with the reasoning behind them. -->
 - **2025-06-01 [Decision]** — `process.env.OPENAI_API_KEY` is `undefined` even when set in `.env`; secrets flow through `SecretsProvider`, which reads `~/.devdigest/secrets.json` first. In services, get secrets via `container.secrets.get('openai')` — never read `process.env` for API keys directly.
 - **2025-06-01 [Decision]** — The entire run log (PromptAssembly + RunLogLine[] + stats + grounding summary) is stored as a single `run_traces.trace` JSONB column — there are no per-event rows. To inspect a run: `SELECT trace FROM run_traces WHERE run_id = '...'`. `server/src/db/schema.ts`
 - **2025-06-01 [Decision]** — `runBus` is an in-memory event emitter; a client on one API instance won't receive events from a review running on another. Horizontal scaling would require replacing `runBus` with Redis Pub/Sub or an external bus — a known architectural limitation.
+- **2026-06-27 [Decision]** — `server/tsconfig.json` sets `rootDir: ".."` (monorepo root) intentionally. The `@devdigest/reviewer-core` path alias resolves to `../reviewer-core/src/`, which TypeScript includes transitively for emission; setting `rootDir: "src"` would error with TS6059. The output shift (`dist/server/src/server.js` instead of `dist/server.js`) is accepted — `package.json` `start` script already reflects this. Reviewers flagging this as unsafe should be directed to this note. `server/tsconfig.json:18`
+- **2026-06-27 [Decision]** — Migration 0009 dropped `cost_usd` from `agent_runs`; migration 0010 re-added it (L01 cost badge feature). Runs written in that window have NULL `cost_usd` despite having valid `tokens_in`/`tokens_out`/`model`. Migration 0011 backfills those rows using the pricing table embedded in the SQL. When adding/removing a cost column, always check for this gap and include a corresponding backfill migration. `server/src/db/migrations/0011_backfill_cost_usd.sql`
 
 ## Quirks
 <!-- Dependency gotchas, env constraints, non-obvious tool or library behavior. -->
@@ -27,4 +31,4 @@
 - **2026-06-26 [Quirk]** — Native platform packages installed inside WSL (Linux ABI) fail in a Windows Node.js process with `Cannot find module '@rollup/rollup-win32-x64-msvc'`. If `node_modules` were installed in WSL, run `pnpm install` from a Windows shell before running tests or migrations.
 
 ---
-Last updated: 2026-06-27 · Entries: 9
+Last updated: 2026-06-27 · Entries: 12
