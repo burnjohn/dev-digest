@@ -146,10 +146,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .groupBy(t.agentRuns.prId);
       for (const row of costRows) {
         if (row.prId) {
-          // Drizzle returns sum() as string | null for float columns.
-          // Guard against empty string: Number('') === 0, which is finite but wrong.
-          const parsed = row.totalCost != null && row.totalCost !== '' ? Number(row.totalCost) : null;
-          costByPr.set(row.prId, parsed != null && Number.isFinite(parsed) ? parsed : null);
+          // Drizzle returns sum() as string | null for numeric aggregate columns.
+          const parsed = row.totalCost != null ? Number(row.totalCost) : null;
+          costByPr.set(row.prId, parsed !== null && Number.isFinite(parsed) ? parsed : null);
         }
       }
     }

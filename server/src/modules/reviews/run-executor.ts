@@ -152,9 +152,13 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
-    // Captured after reviewPullRequest returns; stays null if the engine throws
-    // (cancelled/failed mid-LLM — we have no partial cost in that case).
+    // Captured after reviewPullRequest returns; stay at defaults when the engine
+    // throws before returning (cancelled/failed mid-LLM — no partial data yet).
     let partialCostUsd: number | null = null;
+    let partialTokensIn = 0;
+    let partialTokensOut = 0;
+    let partialGrounding = '0/0 passed';
+    let partialFindingsCount = 0;
     // Set to true after the success-path completeAgentRun call so the catch
     // block does not overwrite status='done' with status='failed' when a
     // subsequent step (saveRunTrace, etc.) throws after the run was already
@@ -220,6 +224,10 @@ export class ReviewRunExecutor {
         },
       });
       partialCostUsd = outcome.costUsd ?? null;
+      partialTokensIn = outcome.tokensIn;
+      partialTokensOut = outcome.tokensOut;
+      partialGrounding = outcome.grounding;
+      partialFindingsCount = outcome.review.findings.length;
       const { tokensIn, tokensOut, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
@@ -314,10 +322,10 @@ export class ReviewRunExecutor {
           .completeAgentRun(runId, {
             status,
             durationMs: Date.now() - start,
-            tokensIn: 0,
-            tokensOut: 0,
-            findingsCount: 0,
-            grounding: '0/0 passed',
+            tokensIn: partialTokensIn,
+            tokensOut: partialTokensOut,
+            findingsCount: partialFindingsCount,
+            grounding: partialGrounding,
             error: msg,
             costUsd: partialCostUsd,
           })
