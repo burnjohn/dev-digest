@@ -16,14 +16,12 @@
       "Bash(node node_modules/typescript/bin/tsc)",
       "Bash(node -e \"const d=require\\('fs'\\);const j=JSON.parse\\(d.readFileSync\\('/dev/stdin','utf8'\\)\\);console.log\\(JSON.stringify\\(j.scripts,null,2\\)\\)\")",
       "Bash(node node_modules/tsx/dist/cli.mjs src/db/migrate.ts)",
-      "Bash(psql \"postgres://devdigest:devdigest@localhost:5432/devdigest\" -c 'ALTER TABLE \"agent_runs\" ADD COLUMN \"cost_usd\" double precision;')",
       "PowerShell(\\(Get-Command psql -ErrorAction SilentlyContinue\\).Source; \\(Get-Command pg_isready -ErrorAction SilentlyContinue\\).Source)",
       "Read(//c/Program Files/**)",
       "Bash(curl -s \"http://localhost:3001/health\")",
       "Bash(curl -s \"http://localhost:3001/workspaces\")",
       "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);console.log\\(JSON.stringify\\(j[0]||j,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,300\\)\\);}}\\)\")",
-      "Bash(docker exec *)",
-      "Bash(curl -s -H \"x-workspace-id: ce8f3cc3-f09e-47b7-8f21-f17744a4654b\" \"http://localhost:3001/repos/48be9d83-d7ab-4879-8c10-7d0b6ce1d981/pulls\")",
+      "Bash(docker exec devdigest-postgres *)",
       "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);const first=Array.isArray\\(j\\)?j[0]:j;console.log\\(JSON.stringify\\(first,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,400\\)\\);}}\\)\")",
       "Bash(node -e ' *)",
       "Bash(node node_modules/typescript/bin/tsc --noEmit -p /tmp/tsconfig_test.json)",
@@ -33,7 +31,9 @@
       "Bash(node -e \"const p = require\\('./package.json'\\); p.scripts.start = 'node dist/server/src/server.js'; require\\('fs'\\).writeFileSync\\('./package.json', JSON.stringify\\(p, null, 2\\) + '\\\\n'\\)\")",
       "Skill(claude-api)",
       "Skill(claude-api:*)",
-      "Edit(/.claude/skills/engineering-insights/**)"
+      "Edit(/.claude/skills/engineering-insights/**)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(e['tag'], e['idx']\\) for e in d['entries'][-3:]]\")",
+      "PowerShell(Copy-Item \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\server\\\\src\\\\db\\\\migrations\\\\meta\\\\0010_snapshot.json\" \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\server\\\\src\\\\db\\\\migrations\\\\meta\\\\0011_snapshot.json\")"
     ]
   }
 }
