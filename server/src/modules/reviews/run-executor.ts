@@ -155,6 +155,11 @@ export class ReviewRunExecutor {
     // Captured after reviewPullRequest returns; stays null if the engine throws
     // (cancelled/failed mid-LLM — we have no partial cost in that case).
     let partialCostUsd: number | null = null;
+    // Set to true after the success-path completeAgentRun call so the catch
+    // block does not overwrite status='done' with status='failed' when a
+    // subsequent step (saveRunTrace, etc.) throws after the run was already
+    // persisted as complete.
+    let runCompleted = false;
 
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
@@ -257,6 +262,7 @@ export class ReviewRunExecutor {
         error: null,
         costUsd: outcome.costUsd,
       });
+      runCompleted = true;
 
       const trace: RunTrace = {
         config: {
@@ -301,18 +307,22 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
-      await this.repo
-        .completeAgentRun(runId, {
-          status,
-          durationMs: Date.now() - start,
-          tokensIn: 0,
-          tokensOut: 0,
-          findingsCount: 0,
-          grounding: '0/0 passed',
-          error: msg,
-          costUsd: partialCostUsd,
-        })
-        .catch(() => undefined);
+      // Skip if the success path already wrote status='done' — a subsequent step
+      // (saveRunTrace, etc.) may have thrown, but the run record is correct.
+      if (!runCompleted) {
+        await this.repo
+          .completeAgentRun(runId, {
+            status,
+            durationMs: Date.now() - start,
+            tokensIn: 0,
+            tokensOut: 0,
+            findingsCount: 0,
+            grounding: '0/0 passed',
+            error: msg,
+            costUsd: partialCostUsd,
+          })
+          .catch(() => undefined);
+      }
       await this.repo
         .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
         .catch(() => undefined);
