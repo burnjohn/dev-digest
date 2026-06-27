@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sum } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -8,7 +8,6 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
-import { estimateCost } from '../../adapters/llm/pricing.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -130,27 +129,24 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Total estimated cost per PR: sum estimateCost(model, tokensIn, tokensOut)
-    // across all completed runs. Runs with unknown model pricing contribute null
-    // and are excluded from the sum (SUM ignores nulls).
+    // Total cost per PR: SUM(cost_usd) over completed runs, grouped by PR.
+    // Postgres SUM ignores NULLs — runs with unknown cost don't pollute the total.
     const costByPr = new Map<string, number | null>();
     if (prIds.length > 0) {
-      const runRows = await container.db
+      const costRows = await container.db
         .select({
           prId: t.agentRuns.prId,
-          model: t.agentRuns.model,
-          tokensIn: t.agentRuns.tokensIn,
-          tokensOut: t.agentRuns.tokensOut,
+          totalCost: sum(t.agentRuns.costUsd),
         })
         .from(t.agentRuns)
-        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
-      for (const run of runRows) {
-        if (!run.prId) continue;
-        const cost = run.model && run.tokensIn != null && run.tokensOut != null
-          ? estimateCost(run.model, run.tokensIn, run.tokensOut)
-          : null;
-        if (cost == null) continue;
-        costByPr.set(run.prId, (costByPr.get(run.prId) ?? 0) + cost);
+        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
+        .groupBy(t.agentRuns.prId);
+      for (const row of costRows) {
+        if (row.prId) {
+          // Drizzle returns sum() as string | null for float columns.
+          const parsed = row.totalCost != null ? Number(row.totalCost) : null;
+          costByPr.set(row.prId, parsed != null && !Number.isNaN(parsed) ? parsed : null);
+        }
       }
     }
 

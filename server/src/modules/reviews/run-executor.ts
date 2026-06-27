@@ -250,6 +250,7 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         blockers,
         error: null,
+        costUsd,
       });
 
       const trace: RunTrace = {
