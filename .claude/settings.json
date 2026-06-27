@@ -27,7 +27,10 @@
       "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);const first=Array.isArray\\(j\\)?j[0]:j;console.log\\(JSON.stringify\\(first,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,400\\)\\);}}\\)\")",
       "Bash(node -e ' *)",
       "Bash(node node_modules/typescript/bin/tsc --noEmit -p /tmp/tsconfig_test.json)",
-      "Bash(node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)"
+      "Bash(node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\({scripts: p.scripts, main: p.main, exports: p.exports}, null, 2\\)\\)\")",
+      "Bash(pnpm typecheck *)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); p.scripts.start = 'node dist/server/src/server.js'; require\\('fs'\\).writeFileSync\\('./package.json', JSON.stringify\\(p, null, 2\\) + '\\\\n'\\)\")"
     ]
   }
 }
