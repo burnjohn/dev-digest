@@ -69,8 +69,12 @@ export async function getIntent(db: Db, prId: string): Promise<Intent | undefine
 
 // ---- brief (blast radius + risks + history stored as JSONB) ---------------
 
-export async function getBrief(db: Db, prId: string): Promise<PrBrief | undefined> {
-  const [row] = await db.select().from(t.prBrief).where(eq(t.prBrief.prId, prId));
+export async function getBrief(db: Db, prId: string, workspaceId: string): Promise<PrBrief | undefined> {
+  const [row] = await db
+    .select({ json: t.prBrief.json })
+    .from(t.prBrief)
+    .innerJoin(t.pullRequests, eq(t.prBrief.prId, t.pullRequests.id))
+    .where(and(eq(t.prBrief.prId, prId), eq(t.pullRequests.workspaceId, workspaceId)));
   if (!row) return undefined;
   return PrBrief.parse(row.json);
 }

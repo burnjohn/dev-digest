@@ -30,7 +30,19 @@ pnpm exec vitest run .it.test                             # integration tests on
 
 ## Active features (L01)
 
-`findings_breakdown` aggregation on `GET /repos/:id/pulls` (per-PR severity counts from each PR's latest review) and `GET /pulls/:id/runs` (per-run severity counts). `GET /pulls/:id/brief` returns the stored `PrBrief` JSONB (intent + blast radius + risks + prior-PR history) from `pr_brief`. `GET /reviews/:id` returns a single review with its `findings: FindingRecord[]` (workspace-scoped via PR). `POST /findings/:id/action` accepts `{ action: "accept" | "dismiss" }` and persists timestamp — unified counterpart to the per-verb `/accept` + `/dismiss` routes. All in `src/modules/reviews/`.
+All in `src/modules/reviews/` and `src/modules/pulls/`:
+
+- `GET /repos/:id/pulls` — `findings_breakdown: { critical, warning, suggestion }` from each PR's latest review; `cost_usd` via `SUM(agent_runs.cost_usd)` grouped by PR
+- `GET /pulls/:id/runs` — `findings_breakdown` per run (from `RunSummary`)
+- `GET /pulls/:id/brief` — stored `PrBrief` JSONB workspace-scoped via `inner join pull_requests`; returns `null` for PRs not in `pr_brief` (seed-only table — live reviews never write to it)
+- `GET /reviews/:id` — single review + `findings: FindingRecord[]`, workspace-scoped via PR join
+- `POST /findings/:id/action` — unified `{ action: "accept"|"dismiss" }` endpoint; per-verb `/accept` + `/dismiss` routes remain for backward compat
+- `POST /repos/:id/review-all` — fire-and-forget fan-out; concurrency cap 3 (`scheduleNext` pattern); rate-limit 2/min; uses `req.log.child({...})` before the response is sent so background tasks have a valid logger after Fastify recycles the request
+
+**Security invariants enforced in this module:**
+
+- Every `findingsForReview` call passes `workspaceId` and joins through `reviews.workspaceId`
+- `runCompleted = true` is set only after BOTH `completeAgentRun` AND `saveRunTrace` succeed — prevents a failed trace write from leaving the run `status='done'` with no trace
 
 ## Session Protocol
 

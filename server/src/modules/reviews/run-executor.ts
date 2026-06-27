@@ -274,7 +274,6 @@ export class ReviewRunExecutor {
         error: null,
         costUsd: outcome.costUsd,
       });
-      runCompleted = true;
 
       const trace: RunTrace = {
         config: {
@@ -309,6 +308,10 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+      // Set only after BOTH completeAgentRun + saveRunTrace succeed — the catch
+      // block uses this flag to skip re-writing status='failed' when the success
+      // path already finished cleanly. Setting it earlier would leave the run
+      // marked done with no trace if saveRunTrace threw.
       runCompleted = true;
       this.container.runBus.complete(runId);
 

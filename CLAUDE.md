@@ -30,7 +30,26 @@ cd client && pnpm dev                                     # web only (:3000)
 
 ## Active features (L01)
 
-Cost badge on review runs · per-severity CRIT/WARN/SUGG badges in PR timeline with click-to-preview popup · FINDINGS column on PR list with severity badges and per-finding popup · severity filter pills in FindingsPanel · Overview tab: PR Brief (VerdictBanner) + Intent card + Blast Radius card (symbol tree, endpoints, crons, prior PRs). `findings_breakdown` on both `PrMeta` and `RunSummary`; `GET /pulls/:id/brief` returns stored `PrBrief`.
+**UI:**
+
+- Cost badge on review runs (tokens · $cost)
+- Timeline severity badges: icon-only (AlertOctagon/AlertTriangle/Lightbulb) + count, no borders, click-to-preview popup
+- FINDINGS column on PR list: all 3 severity types always shown (0-count at 45% opacity, full severity color); click opens per-finding popup (portal-rendered)
+- Run Review button: own grid column between COST and UPDATED, `kind="secondary"` (dark style), always visible
+- Severity filter pills in FindingsPanel with icons; active-severity resets on run change via `runId` prop
+- Overview tab: VerdictBanner (PR Brief) + Intent + Blast Radius cards; placeholder cards shown when `pr_brief` is null but review exists
+
+**API:**
+
+- `GET /repos/:id/pulls` — `findings_breakdown: { critical, warning, suggestion }` from latest review per PR; `cost_usd` via `SUM(agent_runs.cost_usd)`
+- `GET /pulls/:id/runs` — `findings_breakdown` per run from `RunSummary`
+- `GET /pulls/:id/brief` — stored `PrBrief` JSONB (workspace-scoped); returns `null` for live PRs (seed-only data)
+- `GET /reviews/:id` — single review + findings (workspace-scoped via PR join)
+- `POST /findings/:id/action` — unified accept/dismiss (`{ action: "accept"|"dismiss" }`)
+- `POST /repos/:id/review-all` — fan-out over open PRs; concurrency cap 3; rate-limit 2/min; detached child logger for background tasks
+
+**`pr_brief` is populated by `pnpm db:seed` only.** Live reviews never write to it. Intent/Blast Radius cards show seed data only; live PR generation is L02+.
+
 Tables for L02–L08 exist in the schema but their modules are **not registered** — they are inert.
 
 ## Critical conventions

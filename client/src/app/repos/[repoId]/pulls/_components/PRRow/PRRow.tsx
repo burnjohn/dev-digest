@@ -277,13 +277,13 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
       </div>
 
       <div style={s.costCell}>{formatCost(pr.cost_usd)}</div>
-      <div style={s.updatedCell}>
-        {h && pr.id ? (
-          <RunReviewDropdown prId={pr.id} size="sm" kind="primary" />
-        ) : (
-          relativeTime(pr.updated_at)
-        )}
+
+      {/* Actions — always-visible Run Review button in its own column */}
+      <div onClick={(e) => e.stopPropagation()}>
+        {pr.id && <RunReviewDropdown prId={pr.id} size="sm" kind="secondary" />}
       </div>
+
+      <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
 
       {popup && pr.id && createPortal(
         <FindingsPopup
@@ -291,8 +291,7 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
           top={popup.top}
           left={popup.left}
           onClose={() => setPopup(null)}
-        />
-        ,
+        />,
         document.body,
       )}
     </div>

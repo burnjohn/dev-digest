@@ -79,7 +79,7 @@ These are intentionally **not** in the starter — each lesson adds one back:
 
 | Lesson | You build |
 |--------|-----------|
-| L01 | Run cost badge · severity filter on findings |
+| L01 | Run cost badge · per-severity findings breakdown (CRIT/WARN/SUGG) · severity filter pills · PR list FINDINGS column · Run Review button · Overview PR Brief |
 | L02 | Skills in the product · Conventions extractor |
 | L03 | Intent layer · Smart Diff |
 | L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
