@@ -134,7 +134,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // but are intentionally excluded here — their findings/score weren't accepted,
     // so including their cost in the PR badge would mislead reviewers.
     // Postgres SUM ignores NULLs — runs with unknown cost don't pollute the total.
-    const costByPr = new Map<string, number | null>();
+    const costByPr = new Map<string, number>();
     if (prIds.length > 0) {
       const costRows = await container.db
         .select({
@@ -147,11 +147,15 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       for (const row of costRows) {
         if (row.prId) {
           // Drizzle returns sum() as string | null for numeric aggregate columns.
+          // Only insert when we have a real finite value — absent key and null-sum
+          // (all runs have unknown cost) both correctly produce null at the call site.
           const parsed = row.totalCost != null ? Number(row.totalCost) : null;
           if (parsed !== null && !Number.isFinite(parsed)) {
             app.log.warn({ prId: row.prId, totalCost: row.totalCost }, 'cost aggregate: non-numeric sum() — dropping');
           }
-          costByPr.set(row.prId, parsed !== null && Number.isFinite(parsed) ? parsed : null);
+          if (parsed !== null && Number.isFinite(parsed)) {
+            costByPr.set(row.prId, parsed);
+          }
         }
       }
     }

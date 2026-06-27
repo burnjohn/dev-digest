@@ -14,5 +14,19 @@
       "Bash(curl -s \"http://localhost:3001/workspaces\")",
       "Bash(docker exec devdigest-postgres psql -U devdigest -d devdigest *)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-insights.sh",
+            "shell": "bash"
+          }
+        ]
+      }
+    ]
   }
 }

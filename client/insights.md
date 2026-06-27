@@ -22,9 +22,10 @@
 - **2025-06-01 [Quirk]** — Next.js 15 changed `params` and `searchParams` to `Promise<{...}>`; always `await params` before destructuring, even in async Server Components. TypeScript catches this only if the page signature is correctly typed.
 - **2025-06-01 [Quirk]** — Client tests use vitest + jsdom with `fetch` fully mocked — no running server or Docker required. When a test fails with a 404 or network error, a mock is missing, not the server.
 - **2026-06-26 [Quirk]** — `@devdigest/shared` maps in the client to `./src/vendor/shared/index.ts` — a separate copy from `server/src/vendor/shared/`. Whenever a shared contract changes, both copies must be updated in the same commit or the client typecheck fails silently. `client/src/vendor/shared/contracts/`
+- **2026-06-27 [Quirk]** — The L01 "severity filter" feature is a confidence toggle (`hideLow` boolean), not a severity dropdown. When `hideLow` is true, findings with `confidence < 0.65` are hidden. Severity sort (CRITICAL → WARNING → SUGGESTION) is always applied independently of the toggle. The spec name is misleading — the actual implementation is in `FindingsPanel.tsx` (`hideLow` state) and `constants.ts` (`LOW_CONFIDENCE_THRESHOLD`, `SEVERITY_ORDER`). `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/`
 
 ## Open Questions
 <!-- Unresolved. Convert to an entry in the appropriate section when answered. -->
 
 ---
-Last updated: 2026-06-27 · Entries: 6
+Last updated: 2026-06-27 · Entries: 7
