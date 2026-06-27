@@ -21,4 +21,4 @@
 <!-- Unresolved. Convert to an entry in the appropriate section when answered. -->
 
 ---
-*Last updated: YYYY-MM-DD · Entries: 0*
+Last updated: YYYY-MM-DD · Entries: 0

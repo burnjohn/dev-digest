@@ -137,7 +137,7 @@ The last two lines of every insights.md must be:
 
 ```
 ---
-*Last updated: YYYY-MM-DD · Entries: N*
+Last updated: YYYY-MM-DD · Entries: N
 ```
 
 Update both values on every write. `N` is the total count of non-stale, non-promoted entries across all sections.

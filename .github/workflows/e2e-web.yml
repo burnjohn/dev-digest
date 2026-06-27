@@ -82,9 +82,9 @@ jobs:
       - name: Start API (:3001)
         working-directory: server
         run: |
-          # tsx directly (not `pnpm start`): the committed package.json's start
-          # is `node dist/server.js`, which would need a build first. tsx runs
-          # the TS entrypoint as dev does. (server/package.json is skip-worktree.)
+          # tsx directly (not `pnpm start`): pnpm start requires a compiled build
+          # (`node dist/server/src/server.js`). tsx runs the TS entrypoint without
+          # a prior build step, the same way `pnpm dev` does.
           nohup pnpm exec tsx src/server.ts > "$RUNNER_TEMP/api.log" 2>&1 &
           echo "waiting for API /health…"
           for i in $(seq 1 30); do
