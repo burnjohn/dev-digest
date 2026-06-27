@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, count, desc, eq, inArray, sum } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sum } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -177,7 +177,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         })
         .from(t.findings)
         .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
-        .where(inArray(t.findings.reviewId, latestReviewIds))
+        .where(and(inArray(t.findings.reviewId, latestReviewIds), isNull(t.findings.dismissedAt)))
         .groupBy(t.reviews.prId, t.findings.severity);
       for (const row of findingRows) {
         if (!row.prId) continue;

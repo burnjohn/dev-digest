@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
@@ -62,7 +62,7 @@ export async function listRunsForPull(
       })
       .from(t.findings)
       .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
-      .where(inArray(t.reviews.runId, runIds))
+      .where(and(inArray(t.reviews.runId, runIds), isNull(t.findings.dismissedAt)))
       .groupBy(t.reviews.runId, t.findings.severity);
     for (const row of countRows) {
       if (!row.runId) continue;
