@@ -155,6 +155,10 @@ export class ReviewRunExecutor {
     // Captured after reviewPullRequest returns; stay at defaults when the engine
     // throws before returning (cancelled/failed mid-LLM — no partial data yet).
     let partialCostUsd: number | null = null;
+    // Explicit flag: true once reviewPullRequest returns, so the catch path can
+    // distinguish "LLM never returned" (skip cost write) from "LLM returned with
+    // unknown pricing" (write null). Avoids the fragile `null ?? undefined` idiom.
+    let partialCostKnown = false;
     let partialTokensIn = 0;
     let partialTokensOut = 0;
     let partialGrounding = '0/0 passed';
@@ -224,6 +228,7 @@ export class ReviewRunExecutor {
         },
       });
       partialCostUsd = outcome.costUsd ?? null;
+      partialCostKnown = true;
       partialTokensIn = outcome.tokensIn;
       partialTokensOut = outcome.tokensOut;
       partialGrounding = outcome.grounding;
@@ -328,10 +333,10 @@ export class ReviewRunExecutor {
             findingsCount: partialFindingsCount,
             grounding: partialGrounding,
             error: msg,
-            // ?? undefined: when the LLM threw before returning, partialCostUsd
-            // is null (unknown), so skip the column update rather than writing
-            // NULL and potentially clearing a cost stored by a prior attempt.
-            costUsd: partialCostUsd ?? undefined,
+            // When the LLM never returned, skip the column write (don't clear a
+            // previously stored cost). When it returned with unknown pricing,
+            // write null explicitly to record "cost is known to be absent".
+            costUsd: partialCostKnown ? partialCostUsd : undefined,
           })
           .catch(() => undefined);
         await this.repo
