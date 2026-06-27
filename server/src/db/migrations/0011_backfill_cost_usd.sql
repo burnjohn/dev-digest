@@ -28,6 +28,12 @@ SET cost_usd = CASE model
   WHEN 'gpt-4o'                    THEN (tokens_in *  2.5  + tokens_out * 10.0)  / 1000000
   WHEN 'gpt-4o-mini'               THEN (tokens_in *  0.15 + tokens_out *  0.6)  / 1000000
   WHEN 'text-embedding-3-small'    THEN (tokens_in *  0.02 + tokens_out *  0.0)  / 1000000
+  -- OpenRouter CI runner models (approximate; prices confirmed against openrouter.ai/models)
+  WHEN 'z-ai/glm-4.7-flash'        THEN 0.0
+  WHEN 'deepseek/deepseek-v4-flash' THEN (tokens_in *  0.14 + tokens_out *  0.28) / 1000000
+  WHEN 'z-ai/glm-4.7-flashx'       THEN (tokens_in *  0.15 + tokens_out *  0.4)  / 1000000
+  WHEN 'minimax/minimax-m2.5'       THEN (tokens_in *  0.3  + tokens_out *  1.2)  / 1000000
+  WHEN 'z-ai/glm-5.1'              THEN (tokens_in *  0.6  + tokens_out *  2.2)  / 1000000
   ELSE NULL
 END
 WHERE cost_usd IS NULL
