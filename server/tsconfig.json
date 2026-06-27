@@ -16,6 +16,7 @@
     "sourceMap": true,
     "composite": false,
     "outDir": "dist",
+    "rootDir": "..",
     "types": ["node"],
     "lib": ["ES2022"],
     "paths": {
