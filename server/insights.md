@@ -15,6 +15,8 @@
 - **2026-06-27 [Mistake]** — One-off debugging commands (hardcoded psql connection strings, UUID-bearing curl calls, temp script invocations) accumulated in `.claude/settings.json` over multiple sessions and were committed, creating a credentials and hygiene liability. The canonical allowed-set is the 12 entries currently in the file; any session-specific addition must be removed before committing. For DB access use `docker exec devdigest-postgres psql -U devdigest -d devdigest`; for API inspection use `/workspaces` → `/repos` → `/pulls` without hardcoding IDs. `.claude/settings.json`
 - **2026-06-27 [Mistake]** — `docker exec` wildcards in `.claude/settings.json` expand the prompt-injection blast radius: `docker exec *` allows any container; `docker exec devdigest-postgres *` allows any command in the DB container. Scope to `docker exec devdigest-postgres psql -U devdigest -d devdigest *` — limits execution to psql only in the known dev container. `.claude/settings.json`
 - **2026-06-27 [Mistake]** — The catch block in `runOneAgent` called `completeAgentRun` without `costUsd`, so failed/cancelled runs always stored NULL cost even when `reviewPullRequest` had already returned and cost was available (e.g. a DB write failure after the LLM call). Fix: declare `let partialCostUsd: number | null = null` before the try, assign it from `outcome.costUsd` after `reviewPullRequest` returns, and pass it in the catch call. `server/src/modules/reviews/run-executor.ts`
+- **2026-06-27 [Mistake]** — Backfill migration SQL must mirror `pricing.ts` exactly — any model in the TypeScript table but absent from the SQL CASE is silently left NULL. When adding a model to `pricing.ts`, also add the WHEN clause to any open backfill or create a new one. `server/src/db/migrations/0011_backfill_cost_usd.sql`
+- **2026-06-27 [Mistake]** — `completeAgentRun` used `costUsd: values.costUsd ?? null` unconditionally, so callers omitting `costUsd` overwrote a previously stored real cost with NULL. Fixed with a conditional spread `...(values.costUsd !== undefined ? { costUsd: values.costUsd } : {})`. Apply this pattern to any nullable column that multiple code paths (success + error) can update independently. `server/src/modules/reviews/repository/run.repo.ts`
 
 ## Decisions
 <!-- Architectural or design choices with the reasoning behind them. -->
@@ -32,4 +34,4 @@
 - **2026-06-26 [Quirk]** — Native platform packages installed inside WSL (Linux ABI) fail in a Windows Node.js process with `Cannot find module '@rollup/rollup-win32-x64-msvc'`. If `node_modules` were installed in WSL, run `pnpm install` from a Windows shell before running tests or migrations.
 
 ---
-Last updated: 2026-06-27 · Entries: 13
+Last updated: 2026-06-27 · Entries: 15
