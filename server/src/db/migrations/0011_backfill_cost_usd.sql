@@ -28,7 +28,8 @@ SET cost_usd = CASE model
   WHEN 'gpt-4o'                    THEN (tokens_in *  2.5  + tokens_out * 10.0)  / 1000000
   WHEN 'gpt-4o-mini'               THEN (tokens_in *  0.15 + tokens_out *  0.6)  / 1000000
   WHEN 'text-embedding-3-small'    THEN (tokens_in *  0.02 + tokens_out *  0.0)  / 1000000
-  -- OpenRouter CI runner models (approximate; prices confirmed against openrouter.ai/models)
+  -- OpenRouter CI runner models (approximate; prices confirmed against openrouter.ai/models).
+  -- SYNC REQUIRED: these slugs must also exist in server/src/adapters/llm/pricing.ts.
   WHEN 'z-ai/glm-4.7-flash'        THEN 0.0
   WHEN 'deepseek/deepseek-v4-flash' THEN (tokens_in *  0.14 + tokens_out *  0.28) / 1000000
   WHEN 'z-ai/glm-4.7-flashx'       THEN (tokens_in *  0.15 + tokens_out *  0.4)  / 1000000

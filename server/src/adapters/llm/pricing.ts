@@ -36,6 +36,8 @@ const PRICING: Record<string, Price> = {
   // OpenRouter (CI runner, cheap models). Slugs + prices are APPROXIMATE and
   // must be confirmed against openrouter.ai/models before relying on cost.
   // Unknown slugs fall through to null cost (explicitly flagged), which is safe.
+  // SYNC REQUIRED: any model added/removed/repriced here must also be updated in
+  // server/src/db/migrations/0011_backfill_cost_usd.sql (or a new backfill migration).
   'z-ai/glm-4.7-flash': { in: 0, out: 0 }, // free baseline for evals
   'deepseek/deepseek-v4-flash': { in: 0.14, out: 0.28 },
   'z-ai/glm-4.7-flashx': { in: 0.15, out: 0.4 },
