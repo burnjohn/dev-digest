@@ -24,7 +24,10 @@
       "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);console.log\\(JSON.stringify\\(j[0]||j,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,300\\)\\);}}\\)\")",
       "Bash(docker exec *)",
       "Bash(curl -s -H \"x-workspace-id: ce8f3cc3-f09e-47b7-8f21-f17744a4654b\" \"http://localhost:3001/repos/48be9d83-d7ab-4879-8c10-7d0b6ce1d981/pulls\")",
-      "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);const first=Array.isArray\\(j\\)?j[0]:j;console.log\\(JSON.stringify\\(first,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,400\\)\\);}}\\)\")"
+      "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);const first=Array.isArray\\(j\\)?j[0]:j;console.log\\(JSON.stringify\\(first,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,400\\)\\);}}\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit -p /tmp/tsconfig_test.json)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)"
     ]
   }
 }
