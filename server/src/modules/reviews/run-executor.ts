@@ -152,6 +152,10 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
+    // Captured after reviewPullRequest returns; stays null if the engine throws
+    // (cancelled/failed mid-LLM — we have no partial cost in that case).
+    let partialCostUsd: number | null = null;
+
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
@@ -210,6 +214,7 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
+      partialCostUsd = outcome.costUsd ?? null;
       const { tokensIn, tokensOut, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
@@ -305,6 +310,7 @@ export class ReviewRunExecutor {
           findingsCount: 0,
           grounding: '0/0 passed',
           error: msg,
+          costUsd: partialCostUsd,
         })
         .catch(() => undefined);
       await this.repo
