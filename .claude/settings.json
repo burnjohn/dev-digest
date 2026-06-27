@@ -1,39 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(npm list -g --depth 0 2>&1)",
-      "PowerShell(npm root -g)",
-      "Bash(node node_modules/drizzle-kit/bin.cjs generate)",
       "Skill(engineering-insights)",
       "Skill(engineering-insights:*)",
-      "Bash(pnpm --version)",
-      "Bash(node node_modules/.bin/drizzle-kit generate)",
-      "Bash(node node_modules/typescript/bin/tsc --noEmit)",
-      "Bash(node server/node_modules/typescript/bin/tsc --version)",
-      "Bash(find . -name \"tsconfig.json\" -not -path \"*/node_modules/*\" -not -path \"*/clones/*\")",
-      "Bash(node ../server/node_modules/typescript/bin/tsc)",
-      "Bash(node ../server/node_modules/typescript/bin/tsc --noEmit)",
-      "Bash(node node_modules/typescript/bin/tsc)",
-      "Bash(node -e \"const d=require\\('fs'\\);const j=JSON.parse\\(d.readFileSync\\('/dev/stdin','utf8'\\)\\);console.log\\(JSON.stringify\\(j.scripts,null,2\\)\\)\")",
-      "Bash(node node_modules/tsx/dist/cli.mjs src/db/migrate.ts)",
-      "PowerShell(\\(Get-Command psql -ErrorAction SilentlyContinue\\).Source; \\(Get-Command pg_isready -ErrorAction SilentlyContinue\\).Source)",
-      "Read(//c/Program Files/**)",
-      "Bash(curl -s \"http://localhost:3001/health\")",
-      "Bash(curl -s \"http://localhost:3001/workspaces\")",
-      "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);console.log\\(JSON.stringify\\(j[0]||j,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,300\\)\\);}}\\)\")",
-      "Bash(docker exec devdigest-postgres *)",
-      "Bash(node -e \"const d=require\\('fs'\\);let s='';process.stdin.on\\('data',c=>s+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);const first=Array.isArray\\(j\\)?j[0]:j;console.log\\(JSON.stringify\\(first,null,2\\)\\);}catch\\(e\\){console.log\\(s.slice\\(0,400\\)\\);}}\\)\")",
-      "Bash(node -e ' *)",
-      "Bash(node node_modules/typescript/bin/tsc --noEmit -p /tmp/tsconfig_test.json)",
-      "Bash(node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)",
-      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\({scripts: p.scripts, main: p.main, exports: p.exports}, null, 2\\)\\)\")",
-      "Bash(pnpm typecheck *)",
-      "Bash(node -e \"const p = require\\('./package.json'\\); p.scripts.start = 'node dist/server/src/server.js'; require\\('fs'\\).writeFileSync\\('./package.json', JSON.stringify\\(p, null, 2\\) + '\\\\n'\\)\")",
       "Skill(claude-api)",
       "Skill(claude-api:*)",
       "Edit(/.claude/skills/engineering-insights/**)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(e['tag'], e['idx']\\) for e in d['entries'][-3:]]\")",
-      "PowerShell(Copy-Item \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\server\\\\src\\\\db\\\\migrations\\\\meta\\\\0010_snapshot.json\" \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\server\\\\src\\\\db\\\\migrations\\\\meta\\\\0011_snapshot.json\")"
+      "Bash(pnpm --version)",
+      "Bash(pnpm typecheck *)",
+      "Bash(node node_modules/.bin/drizzle-kit generate)",
+      "Bash(node node_modules/tsx/dist/cli.mjs src/db/migrate.ts)",
+      "Bash(curl -s \"http://localhost:3001/health\")",
+      "Bash(curl -s \"http://localhost:3001/workspaces\")",
+      "Bash(docker exec devdigest-postgres psql -U devdigest -d devdigest *)"
     ]
   }
 }
