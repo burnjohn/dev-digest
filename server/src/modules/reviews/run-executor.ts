@@ -210,7 +210,7 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
-      const { tokensIn, tokensOut, grounding, costUsd } = outcome;
+      const { tokensIn, tokensOut, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
 
@@ -250,7 +250,7 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         blockers,
         error: null,
-        costUsd,
+        costUsd: outcome.costUsd,
       });
 
       const trace: RunTrace = {
@@ -268,7 +268,7 @@ export class ReviewRunExecutor {
           tokens_out: tokensOut,
           findings: findingRows.length,
           grounding,
-          cost_usd: costUsd ?? null,
+          cost_usd: outcome.costUsd ?? null,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
