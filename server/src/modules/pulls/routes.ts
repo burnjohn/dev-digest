@@ -129,7 +129,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Total cost per PR: SUM(cost_usd) over completed runs, grouped by PR.
+    // Total cost per PR: SUM(cost_usd) over *successful* (status='done') runs only.
+    // Failed/cancelled runs may carry partial costUsd (written by the catch path)
+    // but are intentionally excluded here — their findings/score weren't accepted,
+    // so including their cost in the PR badge would mislead reviewers.
     // Postgres SUM ignores NULLs — runs with unknown cost don't pollute the total.
     const costByPr = new Map<string, number | null>();
     if (prIds.length > 0) {
