@@ -144,11 +144,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       for (const row of costRows) {
         if (row.prId) {
           // Drizzle returns sum() as string | null for float columns.
-          // Skip null to preserve "absent = no cost data" semantics; callers use ?? null on get().
           const parsed = row.totalCost != null ? Number(row.totalCost) : null;
-          if (parsed != null && Number.isFinite(parsed)) {
-            costByPr.set(row.prId, parsed);
-          }
+          costByPr.set(row.prId, parsed != null && Number.isFinite(parsed) ? parsed : null);
         }
       }
     }
