@@ -2,8 +2,8 @@
 -- are known but cost was never stored. Two gaps produce NULL cost_usd:
 --   1. Runs written before the pricing table included the model ID.
 --   2. Runs written while cost_usd did not exist (between migrations 0009–0010).
--- Pricing matches server/src/adapters/llm/pricing.ts at the time of this migration.
--- Rows with an unknown model or missing token counts are left NULL.
+-- Pricing mirrors server/src/adapters/llm/pricing.ts — keep both in sync when
+-- adding new models. Rows with an unknown model or missing token counts are left NULL.
 UPDATE agent_runs
 SET cost_usd = CASE model
   WHEN 'claude-fable-5'            THEN (tokens_in * 10.0  + tokens_out * 50.0)  / 1000000
@@ -24,8 +24,10 @@ SET cost_usd = CASE model
   WHEN 'gpt-5'                     THEN (tokens_in *  1.25 + tokens_out * 10.0)  / 1000000
   WHEN 'gpt-4.1'                   THEN (tokens_in *  2.0  + tokens_out *  8.0)  / 1000000
   WHEN 'gpt-4.1-mini'              THEN (tokens_in *  0.4  + tokens_out *  1.6)  / 1000000
+  WHEN 'gpt-4.1-nano'              THEN (tokens_in *  0.1  + tokens_out *  0.4)  / 1000000
   WHEN 'gpt-4o'                    THEN (tokens_in *  2.5  + tokens_out * 10.0)  / 1000000
   WHEN 'gpt-4o-mini'               THEN (tokens_in *  0.15 + tokens_out *  0.6)  / 1000000
+  WHEN 'text-embedding-3-small'    THEN (tokens_in *  0.02 + tokens_out *  0.0)  / 1000000
   ELSE NULL
 END
 WHERE cost_usd IS NULL

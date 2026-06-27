@@ -171,7 +171,11 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       error: values.error ?? null,
-      costUsd: values.costUsd ?? null,
+      // Only write costUsd when the caller explicitly provides it (even as null).
+      // Omitting the field leaves the column unchanged, preventing a second
+      // completeAgentRun call (retry / catch path) from overwriting a real cost
+      // that was already persisted by the success path.
+      ...(values.costUsd !== undefined ? { costUsd: values.costUsd } : {}),
     })
     .where(eq(t.agentRuns.id, runId));
 }
