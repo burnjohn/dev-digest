@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
@@ -17,9 +18,9 @@ import { RunReviewDropdown } from "@/app/repos/[repoId]/pulls/[number]/_componen
 // ---- Severity display config ------------------------------------------------
 
 const SEV_COLS = [
-  { key: "critical" as const, color: "var(--crit)", Icon: Icon.XCircle },
+  { key: "critical" as const, color: "var(--crit)", Icon: Icon.AlertOctagon },
   { key: "warning" as const, color: "var(--warn)", Icon: Icon.AlertTriangle },
-  { key: "suggestion" as const, color: "var(--text-muted)", Icon: Icon.MessageSquare },
+  { key: "suggestion" as const, color: "var(--sugg)", Icon: Icon.Lightbulb },
 ];
 
 const SEV_ORDER: Record<string, number> = { CRITICAL: 0, WARNING: 1, SUGGESTION: 2 };
@@ -60,11 +61,12 @@ function FindingsPopup({
     return () => cancelAnimationFrame(id);
   }, [left]);
 
-  // Aggregate + sort all findings from all reviews.
+  // Show findings from the LATEST review only — matches the FINDINGS column badge counts.
+  // Flattening all reviews would inflate the count vs what the badge displays.
   const findings: FindingRecord[] = React.useMemo(() => {
-    if (!reviews) return [];
-    const all = reviews.flatMap((r) => r.findings);
-    return [...all].sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+    if (!reviews || reviews.length === 0) return [];
+    const latest = reviews[0]!;
+    return [...latest.findings].sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
   }, [reviews]);
 
   const total = findings.length;
@@ -114,7 +116,7 @@ function FindingsPopup({
             ? "var(--crit)"
             : f.severity === "WARNING"
               ? "var(--warn)"
-              : "var(--text-muted)";
+              : "var(--sugg)";
         const SevIcon =
           f.severity === "CRITICAL"
             ? Icon.XCircle
@@ -231,7 +233,7 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
         )}
       </div>
 
-      {/* FINDINGS — severity badges; click opens the per-finding popup */}
+      {/* FINDINGS — all three severity types always shown; 0-counts dimmed */}
       <div
         role={hasFindings ? "button" : undefined}
         onClick={
@@ -250,9 +252,14 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
         {hasFindings ? (
           SEV_COLS.map(({ key, color, Icon: SevIcon }) => {
             const cnt = bd![key];
-            if (!cnt) return null;
             return (
-              <span key={key} style={s.findingsBadge(color)}>
+              <span
+                key={key}
+                style={{
+                  ...s.findingsBadge(color),
+                  opacity: cnt > 0 ? 1 : 0.45,
+                }}
+              >
                 <SevIcon size={11} />
                 {cnt}
               </span>
@@ -278,13 +285,15 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
         )}
       </div>
 
-      {popup && pr.id && (
+      {popup && pr.id && createPortal(
         <FindingsPopup
           prId={pr.id}
           top={popup.top}
           left={popup.left}
           onClose={() => setPopup(null)}
         />
+        ,
+        document.body,
       )}
     </div>
   );
