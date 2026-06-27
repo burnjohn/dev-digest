@@ -19,6 +19,8 @@
 - **2026-06-27 [Mistake]** — `completeAgentRun` used `costUsd: values.costUsd ?? null` unconditionally, so callers omitting `costUsd` overwrote a previously stored real cost with NULL. Fixed with a conditional spread `...(values.costUsd !== undefined ? { costUsd: values.costUsd } : {})`. Apply this pattern to any nullable column that multiple code paths (success + error) can update independently. `server/src/modules/reviews/repository/run.repo.ts`
 - **2026-06-27 [Mistake]** — The catch block in `runOneAgent` could double-write `completeAgentRun`: if the success path wrote `status='done'` and then `saveRunTrace` threw, the catch would overwrite with `status='failed'`. Fix: `let runCompleted = false` before try; set `true` after the success `completeAgentRun`; wrap the catch-path call in `if (!runCompleted)`. Apply this guard any time a try/catch has completion writes in both branches. `server/src/modules/reviews/run-executor.ts`
 - **2026-06-27 [Mistake]** — The catch block in `runOneAgent` passed `tokensIn: 0, tokensOut: 0, findingsCount: 0, grounding: '0/0 passed'` to `completeAgentRun` even when `reviewPullRequest` had already returned successfully and a subsequent step (e.g. DB insert) threw. The same partial-capture pattern as `partialCostUsd` applies to all four: declare `partialTokensIn/Out/Grounding/FindingsCount` before the try and assign from `outcome` immediately after `reviewPullRequest` returns. `server/src/modules/reviews/run-executor.ts`
+- **2026-06-27 [Mistake]** — `saveRunTrace` in the catch block was unconditional: if `saveRunTrace` in the success path threw (triggering the catch), the catch would call `saveRunTrace` again with a minimal buffer-only trace, overwriting the real detailed trace. Fix: move `saveRunTrace` inside the same `if (!runCompleted)` block as `completeAgentRun`. Both persistence calls in the catch path must be guarded together. `server/src/modules/reviews/run-executor.ts`
+- **2026-06-27 [Mistake]** — Catch path passed `costUsd: partialCostUsd` where `partialCostUsd` is `null` when the engine threw before returning. The conditional spread in `completeAgentRun` treats `null !== undefined` as "write NULL", silently clearing any previously stored cost. Fix: use `costUsd: partialCostUsd ?? undefined` so an unknown cost is omitted rather than written. `server/src/modules/reviews/run-executor.ts`
 
 ## Decisions
 <!-- Architectural or design choices with the reasoning behind them. -->
@@ -36,4 +38,4 @@
 - **2026-06-26 [Quirk]** — Native platform packages installed inside WSL (Linux ABI) fail in a Windows Node.js process with `Cannot find module '@rollup/rollup-win32-x64-msvc'`. If `node_modules` were installed in WSL, run `pnpm install` from a Windows shell before running tests or migrations.
 
 ---
-Last updated: 2026-06-27 · Entries: 17
+Last updated: 2026-06-27 · Entries: 19

@@ -315,8 +315,9 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
-      // Skip if the success path already wrote status='done' — a subsequent step
-      // (saveRunTrace, etc.) may have thrown, but the run record is correct.
+      // Skip if the success path already wrote status='done' and the trace —
+      // a subsequent step (saveRunTrace, etc.) may have thrown, but both the
+      // run record and trace are already correct; don't overwrite them.
       if (!runCompleted) {
         await this.repo
           .completeAgentRun(runId, {
@@ -327,13 +328,16 @@ export class ReviewRunExecutor {
             findingsCount: partialFindingsCount,
             grounding: partialGrounding,
             error: msg,
-            costUsd: partialCostUsd,
+            // ?? undefined: when the LLM threw before returning, partialCostUsd
+            // is null (unknown), so skip the column update rather than writing
+            // NULL and potentially clearing a cost stored by a prior attempt.
+            costUsd: partialCostUsd ?? undefined,
           })
           .catch(() => undefined);
+        await this.repo
+          .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, partialGrounding, Date.now() - start))
+          .catch(() => undefined);
       }
-      await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
-        .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
     }
