@@ -144,7 +144,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       for (const row of costRows) {
         if (row.prId) {
           // Drizzle returns sum() as string | null for float columns.
-          const parsed = row.totalCost != null ? Number(row.totalCost) : null;
+          // Guard against empty string: Number('') === 0, which is finite but wrong.
+          const parsed = row.totalCost != null && row.totalCost !== '' ? Number(row.totalCost) : null;
           costByPr.set(row.prId, parsed != null && Number.isFinite(parsed) ? parsed : null);
         }
       }
