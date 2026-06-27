@@ -148,6 +148,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         if (row.prId) {
           // Drizzle returns sum() as string | null for numeric aggregate columns.
           const parsed = row.totalCost != null ? Number(row.totalCost) : null;
+          if (parsed !== null && !Number.isFinite(parsed)) {
+            app.log.warn({ prId: row.prId, totalCost: row.totalCost }, 'cost aggregate: non-numeric sum() — dropping');
+          }
           costByPr.set(row.prId, parsed !== null && Number.isFinite(parsed) ? parsed : null);
         }
       }
