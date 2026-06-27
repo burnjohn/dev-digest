@@ -20,7 +20,15 @@ const PRICING: Record<string, Price> = {
   'gpt-4o': { in: 2.5, out: 10.0 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'text-embedding-3-small': { in: 0.02, out: 0 },
-  // Anthropic
+  // Anthropic — Claude 4.x family
+  'claude-fable-5': { in: 10.0, out: 50.0 },
+  'claude-opus-4-8': { in: 5.0, out: 25.0 },
+  'claude-opus-4-7': { in: 5.0, out: 25.0 },
+  'claude-opus-4-6': { in: 5.0, out: 25.0 },
+  'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+  'claude-haiku-4-5': { in: 1.0, out: 5.0 },
+  'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
+  // Anthropic — Claude 3.x legacy aliases
   'claude-3-5-sonnet-latest': { in: 3.0, out: 15.0 },
   'claude-3-5-haiku-latest': { in: 0.8, out: 4.0 },
   'claude-3-opus-latest': { in: 15.0, out: 75.0 },
