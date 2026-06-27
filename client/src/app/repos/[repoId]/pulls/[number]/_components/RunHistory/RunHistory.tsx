@@ -37,9 +37,9 @@ function outcomeOf(run: RunSummary): Outcome {
 }
 
 const SEV_DISPLAY = [
-  { key: "critical" as const, label: "CRIT", color: "var(--crit)", bg: "var(--crit-bg)", dbKey: "CRITICAL" as const },
-  { key: "warning" as const, label: "WARN", color: "var(--warn)", bg: "var(--warn-bg)", dbKey: "WARNING" as const },
-  { key: "suggestion" as const, label: "SUGG", color: "var(--text-muted)", bg: "var(--bg-hover)", dbKey: "SUGGESTION" as const },
+  { key: "critical" as const, label: "CRIT", color: "var(--crit)", bg: "var(--crit-bg)", dbKey: "CRITICAL" as const, SevIcon: Icon.AlertOctagon },
+  { key: "warning" as const, label: "WARN", color: "var(--warn)", bg: "var(--warn-bg)", dbKey: "WARNING" as const, SevIcon: Icon.AlertTriangle },
+  { key: "suggestion" as const, label: "SUGG", color: "var(--text-muted)", bg: "var(--bg-hover)", dbKey: "SUGGESTION" as const, SevIcon: Icon.Lightbulb },
 ];
 
 type PopupState = {
@@ -72,14 +72,16 @@ function FindingPopup({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // Keep popup within viewport horizontally.
+  // Keep popup within viewport horizontally. rAF defers until after layout so
+  // offsetWidth is non-zero on the first render.
   const [adjustedLeft, setAdjustedLeft] = React.useState(left);
   React.useEffect(() => {
-    if (!ref.current) return;
-    const width = ref.current.offsetWidth;
-    const overflow = left + width - window.innerWidth + 12;
-    if (overflow > 0) setAdjustedLeft(left - overflow);
-    else setAdjustedLeft(left);
+    const id = requestAnimationFrame(() => {
+      if (!ref.current) return;
+      const overflow = left + ref.current.offsetWidth - window.innerWidth + 12;
+      setAdjustedLeft(overflow > 0 ? left - overflow : left);
+    });
+    return () => cancelAnimationFrame(id);
   }, [left]);
 
   return (
@@ -309,7 +311,7 @@ export function RunHistory({
                 )}
                 {settled && bd ? (
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {SEV_DISPLAY.map(({ key, label, color, bg, dbKey }) => {
+                    {SEV_DISPLAY.map(({ key, label, color, bg, dbKey, SevIcon }) => {
                       const cnt = bd[key];
                       if (!cnt) return null;
                       return (
@@ -329,19 +331,18 @@ export function RunHistory({
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 4,
-                            padding: "2px 7px",
-                            borderRadius: 4,
-                            border: `1px solid ${color}`,
-                            background: bg,
+                            gap: 3,
+                            padding: "2px 4px",
+                            border: "none",
+                            background: "transparent",
                             color,
                             fontSize: 11,
                             fontWeight: 600,
                             cursor: reviewsByRunId ? "pointer" : "default",
-                            letterSpacing: "0.02em",
                           }}
                         >
-                          {label} {cnt}
+                          <SevIcon size={11} />
+                          {cnt}
                         </button>
                       );
                     })}

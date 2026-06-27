@@ -162,7 +162,7 @@ export class ReviewService {
     if (!review) return undefined;
     const pull = await this.repo.getPull(workspaceId, review.prId);
     if (!pull) return undefined;
-    const findings = await this.repo.findingsForReview(reviewId);
+    const findings = await this.repo.findingsForReview(reviewId, workspaceId);
     const agentName = review.agentId
       ? (await this.agents.getById(workspaceId, review.agentId))?.name ?? null
       : null;

@@ -17,9 +17,9 @@ import { RunReviewDropdown } from "@/app/repos/[repoId]/pulls/[number]/_componen
 // ---- Severity display config ------------------------------------------------
 
 const SEV_COLS = [
-  { key: "critical" as const, color: "var(--crit)", Icon: Icon.XCircle },
+  { key: "critical" as const, color: "var(--crit)", Icon: Icon.AlertOctagon },
   { key: "warning" as const, color: "var(--warn)", Icon: Icon.AlertTriangle },
-  { key: "suggestion" as const, color: "var(--text-muted)", Icon: Icon.MessageSquare },
+  { key: "suggestion" as const, color: "var(--text-muted)", Icon: Icon.Lightbulb },
 ];
 
 const SEV_ORDER: Record<string, number> = { CRITICAL: 0, WARNING: 1, SUGGESTION: 2 };
@@ -60,11 +60,12 @@ function FindingsPopup({
     return () => cancelAnimationFrame(id);
   }, [left]);
 
-  // Aggregate + sort all findings from all reviews.
+  // Show findings from the LATEST review only — matches the FINDINGS column badge counts.
+  // Flattening all reviews would inflate the count vs what the badge displays.
   const findings: FindingRecord[] = React.useMemo(() => {
-    if (!reviews) return [];
-    const all = reviews.flatMap((r) => r.findings);
-    return [...all].sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+    if (!reviews || reviews.length === 0) return [];
+    const latest = reviews[0]!;
+    return [...latest.findings].sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
   }, [reviews]);
 
   const total = findings.length;
@@ -117,10 +118,10 @@ function FindingsPopup({
               : "var(--text-muted)";
         const SevIcon =
           f.severity === "CRITICAL"
-            ? Icon.XCircle
+            ? Icon.AlertOctagon
             : f.severity === "WARNING"
               ? Icon.AlertTriangle
-              : Icon.MessageSquare;
+              : Icon.Lightbulb;
 
         return (
           <div

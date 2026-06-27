@@ -128,7 +128,10 @@ export function useCreatePrComment(prId: string | null | undefined) {
 // ---- Bulk review: trigger all enabled agents for every open PR in a repo --
 export function useReviewAll(repoId: string | null | undefined) {
   return useMutation({
-    mutationFn: () => api.post<{ triggered: number }>(`/repos/${repoId}/review-all`),
+    mutationFn: () => {
+      if (!repoId) throw new Error('repoId required');
+      return api.post<{ triggered: number }>(`/repos/${repoId}/review-all`);
+    },
   });
 }
 

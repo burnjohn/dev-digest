@@ -4,7 +4,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
+import { Toggle, EmptyState, Icon } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
@@ -28,6 +28,15 @@ export function FindingsPanel({
   const [hideLow, setHideLow] = React.useState(false);
   const [activeSeverity, setActiveSeverity] = React.useState<string | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
+
+  // Reset the active severity filter when the findings list changes (e.g., switching
+  // between runs). Without this, a CRITICAL filter from run A survives into run B
+  // which may have no CRITICAL findings, leaving an invisible filter and an empty list.
+  const findingsId = findings[0]?.id ?? null;
+  React.useEffect(() => {
+    setActiveSeverity(null);
+    setFocusIdx(0);
+  }, [findingsId]);
 
   const shown = React.useMemo(
     () => visibleFindings(findings, hideLow, activeSeverity),
@@ -65,6 +74,7 @@ export function FindingsPanel({
             if (!cnt) return null;
             const active = activeSeverity === sev;
             const color = sev === "CRITICAL" ? "var(--crit)" : sev === "WARNING" ? "var(--warn)" : "var(--text-muted)";
+            const SevIcon = sev === "CRITICAL" ? Icon.AlertOctagon : sev === "WARNING" ? Icon.AlertTriangle : Icon.Lightbulb;
             return (
               <button
                 key={sev}
@@ -73,6 +83,7 @@ export function FindingsPanel({
                 onClick={() => setActiveSeverity(active ? null : sev)}
                 title={active ? `Show all severities` : `Filter to ${sev} only`}
               >
+                <SevIcon size={11} />
                 {sev === "CRITICAL" ? "CRIT" : sev === "WARNING" ? "WARN" : "SUGG"}
                 <span style={s.pillCount(active)}>{cnt}</span>
               </button>
