@@ -37,9 +37,9 @@ function outcomeOf(run: RunSummary): Outcome {
 }
 
 const SEV_DISPLAY = [
-  { key: "critical" as const, label: "CRIT", color: "var(--crit)", bg: "var(--crit-bg)", dbKey: "CRITICAL" as const, SevIcon: Icon.AlertOctagon },
-  { key: "warning" as const, label: "WARN", color: "var(--warn)", bg: "var(--warn-bg)", dbKey: "WARNING" as const, SevIcon: Icon.AlertTriangle },
-  { key: "suggestion" as const, label: "SUGG", color: "var(--text-muted)", bg: "var(--bg-hover)", dbKey: "SUGGESTION" as const, SevIcon: Icon.Lightbulb },
+  { key: "critical" as const, label: "CRIT", color: "var(--crit)", dbKey: "CRITICAL" as const, SevIcon: Icon.AlertOctagon },
+  { key: "warning" as const, label: "WARN", color: "var(--warn)", dbKey: "WARNING" as const, SevIcon: Icon.AlertTriangle },
+  { key: "suggestion" as const, label: "SUGG", color: "var(--sugg)", dbKey: "SUGGESTION" as const, SevIcon: Icon.Lightbulb },
 ];
 
 type PopupState = {
@@ -311,9 +311,8 @@ export function RunHistory({
                 )}
                 {settled && bd ? (
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {SEV_DISPLAY.map(({ key, label, color, bg, dbKey, SevIcon }) => {
+                    {SEV_DISPLAY.map(({ key, label, color, dbKey, SevIcon }) => {
                       const cnt = bd[key];
-                      if (!cnt) return null;
                       return (
                         <button
                           key={key}
@@ -336,9 +335,10 @@ export function RunHistory({
                             border: "none",
                             background: "transparent",
                             color,
+                            opacity: cnt > 0 ? 1 : 0.45,
                             fontSize: 11,
                             fontWeight: 600,
-                            cursor: reviewsByRunId ? "pointer" : "default",
+                            cursor: reviewsByRunId && cnt > 0 ? "pointer" : "default",
                           }}
                         >
                           <SevIcon size={11} />
