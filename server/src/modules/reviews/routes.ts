@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
@@ -179,15 +179,43 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
         eq(t.pullRequests.status, 'open'),
       ));
     if (openPrs.length === 0) return { triggered: 0 };
+    // Exclude PRs that already have a running review — double-clicking or a race
+    // with the polling trigger would otherwise create duplicate agent_runs rows
+    // and duplicate findings for the same PR.
+    const runningRows = await container.db
+      .select({ prId: t.agentRuns.prId })
+      .from(t.agentRuns)
+      .where(and(
+        eq(t.agentRuns.workspaceId, workspaceId),
+        inArray(t.agentRuns.prId, openPrs.map((p) => p.id)),
+        eq(t.agentRuns.status, 'running'),
+      ));
+    const runningPrIds = new Set(runningRows.map((r) => r.prId));
+    const eligiblePrs = openPrs.filter((p) => !runningPrIds.has(p.id));
+    if (eligiblePrs.length === 0) return { triggered: 0 };
     const targets = await service.resolveTargets(workspaceId, { all: true });
-    let triggered = 0;
-    for (const { id: prId } of openPrs) {
-      service.runReview(workspaceId, prId, targets, req.log).catch((err: Error) => {
-        req.log.error({ err, prId }, 'review-all: review failed');
-      });
-      triggered++;
+    // Concurrency cap: avoids saturating the LLM provider rate limit and the
+    // in-process runBus when many PRs are open. New slots open as each run settles.
+    const CONCURRENCY = 3;
+    const prIds = eligiblePrs.map((p) => p.id);
+    let head = 0;
+    let active = 0;
+    function scheduleNext(): void {
+      while (active < CONCURRENCY && head < prIds.length) {
+        const prId = prIds[head++]!;
+        active++;
+        service.runReview(workspaceId, prId, targets, req.log)
+          .catch((err: Error) => {
+            req.log.error({ err, prId }, 'review-all: review failed');
+          })
+          .finally(() => {
+            active--;
+            scheduleNext();
+          });
+      }
     }
-    return { triggered };
+    scheduleNext();
+    return { triggered: prIds.length };
   });
 
   // ---- Finding actions (accept / dismiss) ---------------------------------

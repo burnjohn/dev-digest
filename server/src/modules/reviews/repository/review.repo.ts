@@ -78,8 +78,35 @@ export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | u
   return row;
 }
 
-export async function findingsForReview(db: Db, reviewId: string): Promise<FindingRow[]> {
-  return db.select().from(t.findings).where(eq(t.findings.reviewId, reviewId));
+export async function findingsForReview(
+  db: Db,
+  reviewId: string,
+  workspaceId: string,
+): Promise<FindingRow[]> {
+  // Inner join with reviews (which carries workspaceId) scopes the query to the
+  // caller's workspace — prevents cross-workspace data leak if the call site changes.
+  const rows = await db
+    .select({
+      id: t.findings.id,
+      reviewId: t.findings.reviewId,
+      file: t.findings.file,
+      startLine: t.findings.startLine,
+      endLine: t.findings.endLine,
+      severity: t.findings.severity,
+      category: t.findings.category,
+      title: t.findings.title,
+      rationale: t.findings.rationale,
+      suggestion: t.findings.suggestion,
+      confidence: t.findings.confidence,
+      kind: t.findings.kind,
+      trifectaComponents: t.findings.trifectaComponents,
+      acceptedAt: t.findings.acceptedAt,
+      dismissedAt: t.findings.dismissedAt,
+    })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+    .where(and(eq(t.findings.reviewId, reviewId), eq(t.reviews.workspaceId, workspaceId)));
+  return rows as FindingRow[];
 }
 
 /** Delete a whole review (one agent's run) + its findings (cascade), scoped

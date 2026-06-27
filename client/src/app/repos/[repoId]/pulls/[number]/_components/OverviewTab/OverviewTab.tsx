@@ -278,13 +278,22 @@ export function OverviewTab({ prBody, prId, runs = [], costUsd }: OverviewTabPro
         </section>
       )}
 
-      {/* Intent + Blast Radius cards */}
-      {brief && (
+      {/* Intent + Blast Radius cards — populated by seeded demo data or future pipeline */}
+      {brief ? (
         <div style={s.cardGrid}>
           <IntentCard brief={brief} />
           <BlastRadiusCard brief={brief} />
         </div>
-      )}
+      ) : latest?.verdict ? (
+        <div style={s.cardGrid}>
+          {(["Intent", "Blast radius"] as const).map((label) => (
+            <div key={label} style={{ ...s.card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 120, color: "var(--text-muted)", fontSize: 13 }}>
+              <Icon.Clock size={18} style={{ opacity: 0.4 }} />
+              <span><strong>{label}</strong> analysis not generated for this PR.</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {/* Original PR description */}
       {prBody && (

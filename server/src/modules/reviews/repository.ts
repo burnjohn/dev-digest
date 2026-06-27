@@ -68,8 +68,8 @@ export class ReviewRepository {
     return reviewRepo.getReview(this.db, reviewId);
   }
 
-  findingsForReview(reviewId: string): Promise<FindingRow[]> {
-    return reviewRepo.findingsForReview(this.db, reviewId);
+  findingsForReview(reviewId: string, workspaceId: string): Promise<FindingRow[]> {
+    return reviewRepo.findingsForReview(this.db, reviewId, workspaceId);
   }
 
   /** In-flight runs for a PR (status='running') — the server-side source of

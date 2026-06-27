@@ -119,10 +119,10 @@ function FindingsPopup({
               : "var(--sugg)";
         const SevIcon =
           f.severity === "CRITICAL"
-            ? Icon.XCircle
+            ? Icon.AlertOctagon
             : f.severity === "WARNING"
               ? Icon.AlertTriangle
-              : Icon.MessageSquare;
+              : Icon.Lightbulb;
 
         return (
           <div
