@@ -274,6 +274,7 @@ export class ReviewRunExecutor {
         error: null,
         costUsd: outcome.costUsd,
       });
+      runCompleted = true;
 
       const trace: RunTrace = {
         config: {
