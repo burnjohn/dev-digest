@@ -163,10 +163,9 @@ export class ReviewRunExecutor {
     let partialTokensOut = 0;
     let partialGrounding = '0/0 passed';
     let partialFindingsCount = 0;
-    // Set to true after the success-path completeAgentRun call so the catch
-    // block does not overwrite status='done' with status='failed' when a
-    // subsequent step (saveRunTrace, etc.) throws after the run was already
-    // persisted as complete.
+    // Set to true only after both completion writes succeed, so a failed trace
+    // write still marks the run failed instead of leaving status='done' with no
+    // trace document.
     let runCompleted = false;
 
     try {
@@ -275,7 +274,6 @@ export class ReviewRunExecutor {
         error: null,
         costUsd: outcome.costUsd,
       });
-      runCompleted = true;
 
       const trace: RunTrace = {
         config: {
@@ -310,6 +308,7 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+      runCompleted = true;
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -320,9 +319,9 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
-      // Skip if the success path already wrote status='done' and the trace —
-      // a subsequent step (saveRunTrace, etc.) may have thrown, but both the
-      // run record and trace are already correct; don't overwrite them.
+      // Skip only if the success path already wrote status='done' and persisted
+      // the trace. If either write failed, runCompleted stays false and this
+      // catch path records the failure state instead.
       if (!runCompleted) {
         await this.repo
           .completeAgentRun(runId, {
@@ -344,7 +343,7 @@ export class ReviewRunExecutor {
           .catch(() => undefined);
       }
       // Always release the SSE stream — even when runCompleted=true and the
-      // if block above was skipped (success path wrote done but saveRunTrace threw).
+      // if block above was skipped.
       this.container.runBus.complete(runId);
       throw err;
     }
