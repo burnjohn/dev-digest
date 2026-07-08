@@ -34898,7 +34898,13 @@ async function postGithubReview(ctx, token, payload, fetchImpl = fetch) {
         },
         body: JSON.stringify(body),
     });
-    const base = { body: payload.body, event: payload.event };
+    // GitHub's Actions token (`GITHUB_TOKEN`) — which the runner always posts with
+    // — is NOT permitted to APPROVE a PR (422 "GitHub Actions is not permitted to
+    // approve pull requests"). Downgrade an APPROVE event to COMMENT; the body
+    // still renders the "Approved ✅" summary, we just don't submit the formal
+    // approval GitHub would reject.
+    const event = payload.event === 'APPROVE' ? 'COMMENT' : payload.event;
+    const base = { body: payload.body, event };
     const hasComments = !!payload.comments && payload.comments.length > 0;
     const withComments = hasComments
         ? { ...base, comments: payload.comments.map((c) => ({ path: c.path, line: c.line, body: c.body })) }
