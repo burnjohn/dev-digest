@@ -4,6 +4,9 @@ import path from "node:path";
 
 export default defineConfig({
   plugins: [react()],
+  // Prevent Vite from loading PostCSS (lightningcss native binding not
+  // available in this dev environment — tests don't need CSS processing).
+  css: { postcss: { plugins: [] } },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

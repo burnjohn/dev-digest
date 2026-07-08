@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true"
+  },
   "permissions": {
     "allow": [
       "Skill(engineering-insights)",
@@ -12,7 +15,85 @@
       "Bash(node node_modules/tsx/dist/cli.mjs src/db/migrate.ts)",
       "Bash(curl -s \"http://localhost:3001/health\")",
       "Bash(curl -s \"http://localhost:3001/workspaces\")",
-      "Bash(docker exec devdigest-postgres psql -U devdigest -d devdigest *)"
+      "Bash(docker exec devdigest-postgres psql -U devdigest -d devdigest *)",
+      "Bash(node -e \"console.log\\(Date.now\\(\\)\\)\")",
+      "Read(//mnt/f/Data/Neoversity_ai/dev-digest/**)",
+      "Bash(pnpm db:migrate)",
+      "Edit(/.claude/skills/server-testing/**)",
+      "Edit(/.claude/skills/plan-verifier/**)",
+      "Edit(/.claude/skills/doc-writer/**)",
+      "Bash(grep -qE \"^name: test-writer$\" .claude/agents/test-writer.md)",
+      "Bash(grep -qE \"^name: plan-verifier$\" .claude/agents/plan-verifier.md)",
+      "Bash(grep -qE \"^name: doc-writer$\" .claude/agents/doc-writer.md)",
+      "Bash(npx tsc *)",
+      "Bash(node_modules/.bin/tsc --noEmit -p tsconfig.json)",
+      "Bash(\"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\reviewer-core\\\\node_modules\\\\.bin\\\\tsc\" --noEmit -p \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\.claude\\\\worktrees\\\\agent-a9623d721f772c16f\\\\reviewer-core\\\\tsconfig.json\")",
+      "Bash(node \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\reviewer-core\\\\node_modules\\\\typescript\\\\lib\\\\tsc.js\" --noEmit -p \"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\.claude\\\\worktrees\\\\agent-a9623d721f772c16f\\\\reviewer-core\\\\tsconfig.json\")",
+      "Bash(node node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json)",
+      "Bash(node node_modules/.bin/vitest run --passWithNoTests)",
+      "Bash(node \"f:/Data/Neoversity_ai/dev-digest/reviewer-core/node_modules/vitest/vitest.mjs\" run --passWithNoTests)",
+      "Bash(node \"f:/Data/Neoversity_ai/dev-digest/server/node_modules/vitest/vitest.mjs\" run --passWithNoTests)",
+      "Bash(pnpm --filter @devdigest/reviewer-core typecheck)",
+      "Bash(\"/f/Data/Neoversity_ai/dev-digest/server/node_modules/.bin/tsc\" --noEmit)",
+      "Bash(pnpm --filter @devdigest/api typecheck)",
+      "Bash(node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --version)",
+      "Bash(node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --noEmit)",
+      "Bash(node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --noEmit --project \"F:/Data/Neoversity_ai/dev-digest/.claude/worktrees/agent-a748877ed2016eba7/server/tsconfig.json\")",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --noEmit --project \"F:/Data/Neoversity_ai/dev-digest/.claude/worktrees/agent-a748877ed2016eba7/server/tsconfig.json\" --typeRoots \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/@types\")",
+      "Bash(\"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\reviewer-core\\\\node_modules\\\\.bin\\\\tsc\" --noEmit)",
+      "Bash(find / -maxdepth 6 -iname \"pnpm.cjs\" 2>/dev/null | head -5; find \"C:/Users/felko/AppData/Roaming/nvm\" -maxdepth 3 -iname \"pnpm*\" 2>/dev/null | head -10)",
+      "Read(//f//**)",
+      "Bash(\"f:\\\\Data\\\\Neoversity_ai\\\\dev-digest\\\\server\\\\node_modules\\\\.bin\\\\tsc\" --noEmit)",
+      "Bash(node /f/Data/Neoversity_ai/dev-digest/reviewer-core/node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(node /f/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(COREPACK_ENABLE_STRICT=0 pnpm --version)",
+      "Bash(npm config *)",
+      "Bash(node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --noEmit -p tsconfig.json --typeRoots \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/@types\" --paths.@devdigest/shared \"./src/vendor/shared/index.ts\")",
+      "Bash(NODE_PATH=\"F:/Data/Neoversity_ai/dev-digest/server/node_modules\" node \"F:/Data/Neoversity_ai/dev-digest/server/node_modules/typescript/bin/tsc\" --noEmit -p tsconfig.json)",
+      "Bash(cmd //c \"mklink /D node_modules \\\\\"F:\\\\\\\\Data\\\\\\\\Neoversity_ai\\\\\\\\dev-digest\\\\\\\\server\\\\\\\\node_modules\\\\\"\")",
+      "Bash(cmd //c \"mklink /J node_modules \\\\\"F:\\\\\\\\Data\\\\\\\\Neoversity_ai\\\\\\\\dev-digest\\\\\\\\server\\\\\\\\node_modules\\\\\"\")",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)",
+      "Bash(ls \"F:/Data/Neoversity_ai/dev-digest/.claude/worktrees/agent-a748877ed2016eba7/server/node_modules\" 2>&1 | head -5)",
+      "Read(//f/Data/Neoversity_ai/dev-digest/.claude/worktrees/agent-a748877ed2016eba7/server/**)",
+      "Bash(dir node_modules)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(npm install *)",
+      "Bash(node node_modules/vitest/vitest.mjs run --passWithNoTests)",
+      "Bash(node -e \"console.log\\(process.platform, process.arch\\)\")",
+      "Bash(where pnpm *)",
+      "Bash(npm ls *)",
+      "Bash(corepack --version)",
+      "Bash(cat \"/c/Program Files/nodejs/pnpm.CMD\" 2>&1 | head -20)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Bash(rm \"/c/Users/felko/AppData/Roaming/nvm/v22.9.0/pnpm\" \"/c/Users/felko/AppData/Roaming/nvm/v22.9.0/pnpm.CMD\" \"/c/Users/felko/AppData/Roaming/nvm/v22.9.0/pnpm.ps1\" && npm install -g pnpm 2>&1 | tail -20)",
+      "Bash(xxd server/src/platform/model-router.ts)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('f:/Data/Neoversity_ai/dev-digest/server/src/platform/model-router.ts'\\);console.log\\(b.length, b.filter\\(x=>x===0\\).length, b.indexOf\\(0\\)\\)\")",
+      "Bash(node -e \"const chunks=[];process.stdin.on\\('data',c=>chunks.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const b=Buffer.concat\\(chunks\\);console.log\\(b.length,'nulls',b.filter\\(x=>x===0\\).length,'at',b.indexOf\\(0\\)\\);}\\)\")",
+      "Bash(node \"/f/Data/Neoversity_ai/dev-digest/client/node_modules/typescript/bin/tsc\" --noEmit)",
+      "Bash(\"/f/Data/Neoversity_ai/dev-digest/client/node_modules/.bin/vitest\" run *)",
+      "Bash(npx vitest *)",
+      "Bash(node_modules/.bin/vitest run *)",
+      "Bash(/f/Data/Neoversity_ai/dev-digest/server/node_modules/.bin/vitest run *)",
+      "Bash(NODE_PATH=/f/Data/Neoversity_ai/dev-digest/server/node_modules node -e \"require\\('vitest'\\)\")",
+      "Bash(./node_modules/.bin/tsc --noEmit -p tsconfig.json)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e \"const fs = require\\('fs'\\); fs.writeFileSync\\('f:/Data/Neoversity_ai/dev-digest/docs/plans/intent-ui-wire-plan.md', 'test', 'utf8'\\); console.log\\('ok'\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const p='f:/Data/Neoversity_ai/dev-digest/docs/plans/intent-ui-wire-plan.md'; let c=fs.readFileSync\\(p,'utf8'\\); console.log\\(c.length, c.slice\\(0,20\\)\\);\")",
+      "Bash(powershell -Command ' *)",
+      "Bash(ls \"C:\\\\Users\\\\felko\\\\.claude\\\\\" 2>/dev/null && ls \"C:\\\\Users\\\\felko\\\\AppData\\\\Roaming\\\\Claude\\\\\" 2>/dev/null)",
+      "Read(//c/Users/felko/.claude\" 2>/dev/**)",
+      "Read(//c/Users/felko/.claude/**)",
+      "Read(//c/Users/felko/**)",
+      "PowerShell(gh pr list --repo felkost/dev-digest --state open)",
+      "PowerShell(curl http://localhost:3001/repos)",
+      "PowerShell(\\(Invoke-RestMethod http://localhost:3001/repos\\) | ConvertTo-Json -Depth 5)",
+      "PowerShell(\\(Invoke-RestMethod http://localhost:3001/repos/f8ec465f-bc3a-4e08-a002-812093e42a10/pulls\\) | ConvertTo-Json -Depth 5)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\felko\\AppData\\Roaming\\nvm\\v22.9.0",
+      "f:\\Data\\Neoversity_ai\\dev-digest\\.claude\\skills\\engineering-insights\\templates"
     ]
   },
   "hooks": {
@@ -22,11 +103,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/stop-insights.sh",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && bash .claude/hooks/stop-insights.sh",
             "shell": "bash"
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
   }
 }

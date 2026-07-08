@@ -1,4 +1,4 @@
-import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { ChatMessage, PromptAssembly, Intent } from '@devdigest/shared';
 
 /**
  * Prompt assembly + prompt-injection hardening.
@@ -66,6 +66,12 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * PR intent derived by the cheap-model pre-pass. When present, injected as a
+   * trusted scope instruction in the system message — NOT wrapped in <untrusted>
+   * (it is our system's output, not author-controlled content).
+   */
+  intent?: Intent;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -83,7 +89,10 @@ export interface AssembledPrompt {
  * appended to the system message.
  */
 export function assemblePrompt(parts: PromptParts): AssembledPrompt {
-  const system = `${parts.system}\n\n${INJECTION_GUARD}`;
+  const intentBlock = parts.intent
+    ? `\n\n## PR Intent — review in scope\nAuthor's goal: ${parts.intent.intent}\n✓ In scope: ${parts.intent.in_scope.join(' · ')}\n✗ Out of scope: ${parts.intent.out_of_scope.join(' · ')}\n\nIf you find a critical issue outside this scope, report ONE signal finding (severity WARNING, category "security" or the nearest accurate category). Do not file dozens of out-of-scope findings.`
+    : '';
+  const system = `${parts.system}${intentBlock}\n\n${INJECTION_GUARD}`;
 
   const skillsBlock =
     parts.skills && parts.skills.length > 0 ? parts.skills.join('\n\n') : undefined;

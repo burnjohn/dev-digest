@@ -123,4 +123,13 @@ export const onboarding = pgTable('onboarding', {
     .references(() => repos.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
   generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
+  mode: text('mode', { enum: ['full', 'lite'] }).notNull().default('full'),
+  indexStatus: text('index_status', {
+    enum: ['full', 'partial', 'degraded', 'failed'],
+  })
+    .notNull()
+    .default('degraded'),
+  degraded: boolean('degraded').notNull().default(true),
+  degradedReason: text('degraded_reason'),
+  llmCostCents: integer('llm_cost_cents'),
 });

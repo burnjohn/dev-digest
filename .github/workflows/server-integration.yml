@@ -62,4 +62,7 @@ jobs:
       # script. The `.it.test` filter selects exactly the 12 DB-backed files.
       # vitest's config gives these a 120s timeout for container spin-up; no API
       # keys needed — LLM/git are mocked.
-      - run: pnpm exec vitest run .it.test
+      #
+      # `--reporter=github-actions` (additive) emits native inline `::error::`
+      # annotations for failing tests — see server-unit.yml's identical note.
+      - run: pnpm exec vitest run .it.test --reporter=default --reporter=github-actions

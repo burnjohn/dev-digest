@@ -85,6 +85,83 @@
       "when": 1782675600000,
       "tag": "0011_backfill_cost_usd",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782723944779,
+      "tag": "0012_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783064656515,
+      "tag": "0013_context_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783075360678,
+      "tag": "0014_doc_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783091898069,
+      "tag": "0015_onboarding_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783272595081,
+      "tag": "0016_eval_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783277851253,
+      "tag": "0017_medical_tag",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783319899000,
+      "tag": "0018_eval_run_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783338179871,
+      "tag": "0019_eval_run_error",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783353312461,
+      "tag": "0020_skill_eval_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783430564507,
+      "tag": "0021_eval_batch_prompt_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783430615727,
+      "tag": "0022_agent_version_provenance",
+      "breakpoints": true
     }
   ]
 }

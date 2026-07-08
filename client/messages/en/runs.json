@@ -28,6 +28,14 @@
     "suggestedFix": "Suggested fix:",
     "collapse": "collapse",
     "expand": "expand",
+    "contextDocs": {
+      "title": "Project context documents",
+      "empty": "No project context documents were attached to this run.",
+      "tokens": "{count} tokens",
+      "injected": "injected",
+      "skipped": "skipped",
+      "openFullTextHint": "Open the Prompt assembly section below and expand \"Project context (dynamic)\" to read the full injected text."
+    },
     "config": {
       "model": "Model",
       "provider": "Provider",

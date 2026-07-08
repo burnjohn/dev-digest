@@ -107,4 +107,46 @@ describe('walkClone', () => {
     const second = await walkClone(root);
     expect(first.files).toEqual(second.files);
   });
+
+  it('excludes files matching a root .gitignore pattern', async () => {
+    await writeFileAt(root, '.gitignore', 'generated/\n*.gen.ts\n');
+    await writeFileAt(root, 'src/index.ts', 'export {}');
+    await writeFileAt(root, 'src/foo.gen.ts', 'export {}');
+    await writeFileAt(root, 'generated/bar.ts', 'export {}');
+
+    const result = await walkClone(root);
+    expect(result.files).toEqual(['src/index.ts']);
+    expect(result.stats.gitignoredCount).toBeGreaterThan(0);
+  });
+
+  it('walks normally when there is no .gitignore at all (missing file is not an error)', async () => {
+    await writeFileAt(root, 'src/index.ts', 'export {}');
+    await writeFileAt(root, 'src/other.ts', 'export {}');
+
+    const result = await walkClone(root);
+    expect(result.files).toEqual(['src/index.ts', 'src/other.ts']);
+    expect(result.stats.gitignoredCount).toBe(0);
+  });
+
+  it('skips a nested repository subtree entirely (nested .git directory)', async () => {
+    await writeFileAt(root, 'src/index.ts', 'export {}');
+    await writeFileAt(root, 'vendor-repo/.git/HEAD', 'ref: refs/heads/main');
+    await writeFileAt(root, 'vendor-repo/src/inner.ts', 'export {}');
+
+    const result = await walkClone(root);
+    expect(result.files).toEqual(['src/index.ts']);
+    expect(result.files.some((f) => f.startsWith('vendor-repo/'))).toBe(false);
+    expect(result.stats.skippedNestedRepo).toBe(1);
+  });
+
+  it('skips a nested repository subtree when .git is a FILE (submodule)', async () => {
+    await writeFileAt(root, 'src/index.ts', 'export {}');
+    await writeFileAt(root, 'submodule/.git', 'gitdir: ../.git/modules/submodule');
+    await writeFileAt(root, 'submodule/lib/deep.ts', 'export {}');
+
+    const result = await walkClone(root);
+    expect(result.files).toEqual(['src/index.ts']);
+    expect(result.files.some((f) => f.startsWith('submodule/'))).toBe(false);
+    expect(result.stats.skippedNestedRepo).toBe(1);
+  });
 });

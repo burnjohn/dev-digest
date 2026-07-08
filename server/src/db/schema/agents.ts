@@ -1,7 +1,8 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces, users } from './core';
 import { skills } from './skills';
+import { evalBatches } from './eval';
 
 // ============================================================ Agents & skills
 
@@ -43,9 +44,17 @@ export const agentVersions = pgTable(
       .references(() => agents.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     configJson: jsonb('config_json').notNull(),
+    // Provenance of this version row. Null on legacy rows (written before this
+    // column existed) — treated as 'manual'. 'eval_promote' marks a version
+    // created by promoting an eval batch's proposed config.
+    source: text('source', { enum: ['manual', 'eval_promote'] }),
+    sourceBatchId: uuid('source_batch_id').references(() => evalBatches.id, { onDelete: 'set null' }),
     createdAt: now(),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.version] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.version] }),
+    sourceBatchIdx: index('agent_versions_source_batch_id_idx').on(t.sourceBatchId),
+  }),
 );
 
 export const agentSkills = pgTable(

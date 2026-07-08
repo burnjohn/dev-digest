@@ -57,3 +57,6 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// Intent classifier — cheap-model pre-pass that infers PR scope before the main review.
+export { classifyIntent, type IntentInput } from './intent/classify.js';

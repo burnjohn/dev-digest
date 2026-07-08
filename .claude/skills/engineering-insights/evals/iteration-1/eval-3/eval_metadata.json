@@ -1,0 +1,13 @@
+{
+  "eval_id": 3,
+  "eval_name": "module-targeting-and-decision",
+  "prompt": "Multi-module session; substantive decision is server-side (denormalize blast_summary; why: 300ms index walk, immutable after run). Client only renders it. Both server/insights.md (1 entry) and client/insights.md (1 entry) exist.",
+  "assertions": [
+    {"text": "a new entry was written to server/insights.md (the most affected module)", "type": "programmatic"},
+    {"text": "the new entry is categorized [Decision]", "type": "programmatic"},
+    {"text": "the entry captures the reasoning (300ms / index walk / immutable)", "type": "programmatic"},
+    {"text": "the entry cites the server/src/modules/blast/service.ts anchor", "type": "programmatic"},
+    {"text": "server footer incremented to Entries: 2", "type": "programmatic"},
+    {"text": "client/insights.md is untouched (still Entries: 1, BlastGraph entry intact)", "type": "programmatic"}
+  ]
+}

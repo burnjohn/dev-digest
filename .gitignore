@@ -20,6 +20,11 @@ coverage/
 clones/
 playwright-report/
 test-results/
+.stryker-tmp/
+server/reports/
 
 # emdash worktree config (local)
 .emdash.json
+
+# Claude Code MCP client config — machine-specific absolute paths, do not commit
+.mcp.json

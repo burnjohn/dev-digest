@@ -1,0 +1,1 @@
+export { DocDetail } from "./DocDetail";

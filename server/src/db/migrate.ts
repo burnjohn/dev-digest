@@ -33,8 +33,9 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
   }
 }
 
-// CLI entrypoint
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI entrypoint (cross-platform: compare native paths, not a hand-built file:// URL,
+// which never matches on Windows where argv[1] uses backslashes).
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is required');

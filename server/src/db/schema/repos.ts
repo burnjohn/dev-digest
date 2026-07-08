@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, uniqueIndex, index, jsonb } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces, users } from './core';
 
@@ -17,6 +17,10 @@ export const repos = pgTable(
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: now(),
+    // Root folders (relative to the repo) that the context-docs feature
+    // discovers `.md` documents under. `null` = use the default set
+    // (`specs`/`docs`/`insights`) — see context-docs module constants.
+    contextFolders: jsonb('context_folders').$type<string[]>(),
   },
   (t) => ({
     uq: uniqueIndex('repos_ws_fullname_uq').on(t.workspaceId, t.fullName),

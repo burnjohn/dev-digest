@@ -1,4 +1,5 @@
 {
+  "header": "Blast radius",
   "stat": {
     "symbols": "symbols",
     "callers": "callers",
@@ -6,13 +7,30 @@
     "crons": "cron/jobs"
   },
   "view": {
-    "tree": "tree",
-    "graph": "graph"
+    "tree": "Tree",
+    "graph": "Graph"
   },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "noImpact": "{count} changed symbol(s) have callers, but none reach an HTTP endpoint or cron.",
+  "more": "+{count} more",
+  "empty": "No blast-radius data available for this PR.",
+  "priorPrs": "Prior PRs touching these files",
+  "shared": "{count} shared file",
+  "sharedPlural": "{count} shared files",
+  "merged": "merged",
+  "degraded": {
+    "partial": "Index partial — results may be incomplete",
+    "noIndex": "Index unavailable — results may be missing",
+    "badge": "Degraded"
+  },
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph"
+  },
+  "legend": {
+    "symbols": "changed symbol",
+    "callers": "callers",
+    "endpoints": "endpoints affected"
   }
 }

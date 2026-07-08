@@ -8,24 +8,26 @@
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Skeleton, ErrorState } from "@devdigest/ui";
-import { AppShell } from "../../../../../components/app-shell";
+import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
-import { usePullDetail, usePulls } from "../../../../../lib/hooks";
+import { usePullDetail, usePulls } from "@/lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
-import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
-import { ApiError } from "../../../../../lib/api";
-import { githubPrUrl } from "../../../../../lib/github-urls";
+import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "@/lib/hooks/reviews";
+import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
+import { ApiError } from "@/lib/api";
+import { githubPrUrl } from "@/lib/github-urls";
 import type { FindingRecord } from "@devdigest/shared";
 
-export default function PRDetailPage() {
+function PRDetailContent() {
   const params = useParams<{ repoId: string; number: string }>();
   const search = useSearchParams();
+  const [deleteRunId, setDeleteRunId] = React.useState<string | null>(null);
   const router = useRouter();
   const { repoId, number } = params;
   const { activeRepo } = useActiveRepo();
@@ -56,6 +58,9 @@ export default function PRDetailPage() {
   const invalidateRunHistory = () => {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
+  const invalidatePrIntent = () => {
+    if (prId) qc.invalidateQueries({ queryKey: ["pull-intent", prId] });
+  };
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
@@ -75,6 +80,10 @@ export default function PRDetailPage() {
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
+  const changedPaths = React.useMemo(
+    () => new Set((pr?.files ?? []).map((f) => f.path)),
+    [pr],
+  );
 
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -122,6 +131,16 @@ export default function PRDetailPage() {
 
   return (
     <AppShell crumb={crumb}>
+      {deleteRunId && (
+        <ConfirmModal
+          title="Delete run"
+          body="Delete this run from history? Its logs will be removed too."
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { deleteRun.mutate(deleteRunId); setDeleteRunId(null); }}
+          onCancel={() => setDeleteRunId(null)}
+        />
+      )}
       <PrDetailHeader
         pr={pr}
         prId={prId}
@@ -135,7 +154,13 @@ export default function PRDetailPage() {
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
         {tab === "overview" && (
-          <OverviewTab prBody={pr.body} prId={prId} runs={runs} costUsd={pr.cost_usd} />
+          <OverviewTab
+            prBody={pr.body}
+            prId={prId}
+            runs={runs}
+            costUsd={pr.cost_usd}
+            changedPaths={changedPaths}
+          />
         )}
 
         {tab === "findings" && (
@@ -151,13 +176,11 @@ export default function PRDetailPage() {
             headSha={pr.head_sha}
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
-            onDelete={(id) => {
-              if (window.confirm("Delete this run from history? (its logs are removed too)"))
-                deleteRun.mutate(id);
-            }}
+            onDelete={(id) => setDeleteRunId(id)}
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
+              invalidatePrIntent();
               refetchReviews();
             }}
           />
@@ -183,5 +206,13 @@ export default function PRDetailPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+export default function PRDetailPage() {
+  return (
+    <React.Suspense>
+      <PRDetailContent />
+    </React.Suspense>
   );
 }

@@ -46,4 +46,8 @@ jobs:
 
       - run: pnpm typecheck
 
-      - run: pnpm test
+      # Inlined rather than `pnpm test` so the reporter flags below don't
+      # require editing package.json's `test` script. `--reporter=github-actions`
+      # (additive alongside `default`) emits native inline `::error::`
+      # annotations for failing tests — see server-unit.yml's identical note.
+      - run: pnpm exec vitest run --reporter=default --reporter=github-actions

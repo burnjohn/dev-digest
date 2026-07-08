@@ -5,6 +5,8 @@
     "suggestedFix": "Suggested fix",
     "accept": "Accept",
     "dismiss": "Dismiss",
+    "addToEvals": "Add to eval set",
+    "addedToEvals": "Added to eval set ✓",
     "learn": "Learn",
     "replyToAuthor": "Reply to author",
     "replyPlaceholder": "Reply to the author about this finding…",
@@ -24,7 +26,12 @@
     "comment": "Comment",
     "findingsCount": "{count} findings",
     "blockers": " · {count} blockers",
-    "prScore": "PR SCORE"
+    "prScore": "PR SCORE",
+    "regenerate": "Regenerate",
+    "regenerating": "Regenerating…",
+    "generationError": "Couldn’t regenerate: {error}",
+    "clearBrief": "Clear brief",
+    "clearing": "Clearing…"
   },
   "panel": {
     "hideLowConfidence": "Hide low confidence",

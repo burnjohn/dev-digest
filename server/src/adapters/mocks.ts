@@ -125,7 +125,27 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** Fixture tree returned by getRepoTree (defaults to a small deterministic tree). */
+  tree?: { path: string; type: 'blob' | 'tree' }[];
+  /** Fixture file contents keyed by path, returned by getFileContents. */
+  contents?: Record<string, string>;
 }
+
+const DEFAULT_MOCK_TREE: { path: string; type: 'blob' | 'tree' }[] = [
+  { path: 'src', type: 'tree' },
+  { path: 'src/index.ts', type: 'blob' },
+  { path: 'package.json', type: 'blob' },
+  { path: 'README.md', type: 'blob' },
+];
+
+const DEFAULT_MOCK_CONTENTS: Record<string, string> = {
+  'package.json': JSON.stringify(
+    { name: 'mock-repo', version: '1.0.0', scripts: { dev: 'node src/index.ts' } },
+    null,
+    2,
+  ),
+  'README.md': '# Mock Repo\n\nA deterministic fixture repository for hermetic tests.\n',
+};
 
 export class MockGitHubClient implements GitHubClient {
   public posted: { n: number; review: GitHubReviewPayload }[] = [];
@@ -236,6 +256,18 @@ export class MockGitHubClient implements GitHubClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async getRepoTree(
+    _repo: RepoRef,
+    _ref?: string,
+  ): Promise<{ path: string; type: 'blob' | 'tree' }[]> {
+    return this.opts.tree ?? DEFAULT_MOCK_TREE;
+  }
+
+  async getFileContents(_repo: RepoRef, path: string, _ref?: string): Promise<string | null> {
+    const fixtures = this.opts.contents ?? DEFAULT_MOCK_CONTENTS;
+    return fixtures[path] ?? null;
   }
 }
 

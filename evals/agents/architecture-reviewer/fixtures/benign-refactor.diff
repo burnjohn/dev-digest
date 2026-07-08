@@ -1,0 +1,21 @@
+diff --git a/server/src/modules/blast/repository.ts b/server/src/modules/blast/repository.ts
+index eeeeeee..fffffff 100644
+--- a/server/src/modules/blast/repository.ts
++++ b/server/src/modules/blast/repository.ts
+@@ -53,14 +53,15 @@ export class BlastRepository {
+   async getPrFilePaths(workspaceId: string, prId: string): Promise<string[]> {
+     const rows = await this.db
+       .select({ path: t.prFiles.path })
+       .from(t.prFiles)
+       .innerJoin(t.pullRequests, eq(t.prFiles.prId, t.pullRequests.id))
+       .where(
+         and(
+           eq(t.prFiles.prId, prId),
+           eq(t.pullRequests.workspaceId, workspaceId),
+         ),
+       );
+
+-    return rows.map((r) => r.path);
++    // Renamed the callback local for readability; behaviour unchanged.
++    return rows.map((row) => row.path);
+   }

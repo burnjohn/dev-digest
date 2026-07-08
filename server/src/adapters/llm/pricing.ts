@@ -26,6 +26,7 @@ const PRICING: Record<string, Price> = {
   'claude-opus-4-8': { in: 5.0, out: 25.0 },
   'claude-opus-4-7': { in: 5.0, out: 25.0 },
   'claude-opus-4-6': { in: 5.0, out: 25.0 },
+  'claude-sonnet-5': { in: 3.0, out: 15.0 }, // list price; intro $2/$10 through 2026-08-31
   'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
   'claude-haiku-4-5': { in: 1.0, out: 5.0 },
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },

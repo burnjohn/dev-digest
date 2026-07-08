@@ -1,0 +1,7 @@
+A/B experiment, not a CI gate.
+
+This suite deliberately reuses the strict architecture-reviewer cases (threshold 1.0,
+including "names the specific documented rule identifier for EVERY finding") against the
+RELAXED lite variant, whose whole point is that the citation hard rule is removed — so the
+identifier practices are EXPECTED to fail. Run it locally via eval:repeat/eval:delta to
+measure the strict-vs-lite difference; on CI it would only produce guaranteed red.

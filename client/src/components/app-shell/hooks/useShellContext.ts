@@ -12,6 +12,8 @@ import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
+  /** Called when the user requests repo removal; the caller shows a confirm dialog. */
+  onRequestRemoveRepo?: (id: string, name: string) => void;
 }
 
 /**
@@ -19,7 +21,11 @@ interface ShellContextOptions {
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
  * selection / add / removal actions.
  */
-export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): ShellContext {
+export function useShellContext({ onOpenCommandPalette, onRequestRemoveRepo }: ShellContextOptions): ShellContext & {
+  pendingRemoveRepo: { id: string; name: string } | null;
+  confirmRemoveRepo: () => void;
+  cancelRemoveRepo: () => void;
+} {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -27,6 +33,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const { repoId, repos, activeRepo, setRepoId } = useActiveRepo();
   const { data: pulls } = usePulls(repoId);
   const deleteRepo = useDeleteRepo();
+  const [pendingRemoveRepo, setPendingRemoveRepo] = React.useState<{ id: string; name: string } | null>(null);
 
   const onSelectRepo = React.useCallback(
     (id: string) => {
@@ -41,23 +48,33 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const onRemoveRepo = React.useCallback(
     (id: string) => {
       const target = repos.find((r) => r.id === id);
-      const ok = window.confirm(
-        t("removeRepo.confirm", { name: target?.full_name ?? t("removeRepo.fallbackName") }),
-      );
-      if (!ok) return;
-      deleteRepo.mutate(id, {
-        onSuccess: () => {
-          if (repoId === id) {
-            const next = repos.find((r) => r.id !== id);
-            router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
-          }
-        },
-      });
+      const name = target?.full_name ?? t("removeRepo.fallbackName");
+      if (onRequestRemoveRepo) {
+        onRequestRemoveRepo(id, name);
+      } else {
+        setPendingRemoveRepo({ id, name });
+      }
     },
-    [repos, repoId, t, deleteRepo, router],
+    [repos, t, onRequestRemoveRepo],
   );
 
-  return React.useMemo<ShellContext>(
+  const confirmRemoveRepo = React.useCallback(() => {
+    if (!pendingRemoveRepo) return;
+    const { id } = pendingRemoveRepo;
+    setPendingRemoveRepo(null);
+    deleteRepo.mutate(id, {
+      onSuccess: () => {
+        if (repoId === id) {
+          const next = repos.find((r) => r.id !== id);
+          router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
+        }
+      },
+    });
+  }, [pendingRemoveRepo, deleteRepo, repoId, repos, router]);
+
+  const cancelRemoveRepo = React.useCallback(() => setPendingRemoveRepo(null), []);
+
+  const shellCtx = React.useMemo<ShellContext>(
     () => ({
       Link,
       activeKey: activeKeyFor(pathname),
@@ -88,4 +105,6 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       pulls,
     ],
   );
+
+  return { ...shellCtx, pendingRemoveRepo, confirmRemoveRepo, cancelRemoveRepo };
 }

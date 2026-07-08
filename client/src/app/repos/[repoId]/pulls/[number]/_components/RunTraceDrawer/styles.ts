@@ -115,6 +115,31 @@ export const s = {
   row: { display: "flex", gap: 12 } satisfies CSSProperties,
   rowLabel: { color: "var(--text-muted)", width: 110 } satisfies CSSProperties,
 
+  // ---- ContextDocsSection (context_documents trace rows) ----
+  contextDocRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    marginBottom: 6,
+    fontSize: 12.5,
+  } satisfies CSSProperties,
+  contextDocLastRow: { marginBottom: 0 } satisfies CSSProperties,
+  contextDocPath: {
+    fontFamily: "var(--font-mono, monospace)",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  contextDocTokens: { fontSize: 12, color: "var(--text-secondary)", minWidth: 56, textAlign: "right" } satisfies CSSProperties,
+  contextDocSkipReason: { fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 } satisfies CSSProperties,
+  contextDocEmpty: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
+
   // ---- Drawer body ----
   footer: { display: "flex", gap: 10 } satisfies CSSProperties,
   tabBody: { paddingTop: 18 } satisfies CSSProperties,

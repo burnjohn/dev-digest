@@ -50,6 +50,7 @@ export function buildRunTrace(input: BuildTraceInput): RunTrace {
     raw_output: input.rawOutput,
     memory_pulled: input.memoryPulled,
     specs_read: input.specsRead,
+    context_documents: [],
     log: input.log,
   };
   // Validate so a malformed trace fails loudly at write-time, not read-time.

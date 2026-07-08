@@ -11,6 +11,18 @@ export function Markdown({ children }: { children?: string | null }) {
         remarkPlugins={[remarkGfm]}
         components={{
           p: ({ children }) => <p style={{ margin: "0 0 10px" }}>{children}</p>,
+          h1: ({ children }) => (
+            <h1 style={{ fontSize: "1.35em", fontWeight: 700, color: "var(--accent)", margin: "0 0 10px" }}>{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 style={{ fontSize: "1.15em", fontWeight: 700, color: "var(--accent)", margin: "0 0 8px" }}>{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 style={{ fontSize: "1em", fontWeight: 700, color: "var(--accent)", margin: "0 0 6px" }}>{children}</h3>
+          ),
+          ul: ({ children }) => <ul style={{ margin: "0 0 10px", paddingLeft: 20, listStyle: "disc" }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ margin: "0 0 10px", paddingLeft: 20, listStyle: "decimal" }}>{children}</ol>,
+          li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
           strong: ({ children }) => (
             <strong style={{ fontWeight: 650, color: "var(--text-primary)" }}>{children}</strong>
           ),

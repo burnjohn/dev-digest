@@ -97,5 +97,142 @@
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
     "version": "v{version}"
+  },
+  "contextDocs": {
+    "title": "Project context to use",
+    "hint": "Order matters — earlier docs appear earlier in the assembled `## Project context` block. Toggle to attach.",
+    "attachedOfTotal": "{attached} of {total} attached",
+    "noRepo": "No repository selected — select a repo to browse its context documents.",
+    "filterPlaceholder": "Filter by path or category…",
+    "noDocuments": "No documents in this repository",
+    "noMatchingAvailable": "No documents match your filter.",
+    "preview": "Preview",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "tokenCountValue": "{count} tokens",
+    "serializationPreview": {
+      "toggle": "Serialization preview ({tokens} tokens total)",
+      "total": "Total: {tokens} tokens"
+    }
+  },
+  "evals": {
+    "title": "Evals",
+    "casesTitle": "Eval cases",
+    "passing": "{passed} / {total} passing",
+    "hostAgent": {
+      "label": "Host agent",
+      "noAgents": "No agents available — create one first"
+    },
+    "runAll": "Run all evals",
+    "newCase": "+ New eval case",
+    "metrics": {
+      "title": "Eval metrics",
+      "judgeScore": "Judge score",
+      "groundingPassRate": "Grounding pass rate",
+      "casesPassing": "Cases passing",
+      "cost": "Cost"
+    },
+    "empty": {
+      "title": "No eval cases yet",
+      "hint": "Accept or dismiss a finding on a PR, then use \"Attribute to skill\" on its card to turn it into a regression case — or author one by hand.",
+      "cta": "+ New eval case"
+    },
+    "status": {
+      "never_run": "Never run",
+      "passed": "Passed",
+      "failed_grounding": "Failed grounding",
+      "failed_judge": "Failed judge",
+      "error": "Error"
+    },
+    "summary": {
+      "neverRun": "never run"
+    },
+    "case": {
+      "practicesCount": "{count} practice(s)",
+      "groundingCount": "{count} grounding term(s)",
+      "run": "Run",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete eval case",
+      "deleteConfirmBody": "Delete \"{name}\"? This cannot be undone.",
+      "deleteConfirmConfirm": "Delete",
+      "deleteConfirmCancel": "Cancel"
+    },
+    "editor": {
+      "titleNew": "New eval case",
+      "titleEdit": "Edit eval case",
+      "name": "Name",
+      "namePlaceholder": "Case name",
+      "fixture": "Fixture (diff)",
+      "fixtureRequired": "A fixture is required.",
+      "fixturePlaceholder": "Paste a unified diff fragment…",
+      "diffPreview": "Preview",
+      "practices": "Practices",
+      "practicesHint": "Statements the practices judge verifies against the review output (verbatim evidence required to pass).",
+      "practicePlaceholder": "e.g. review output identifies the missing null check",
+      "addPractice": "+ Add practice",
+      "removePractice": "Remove",
+      "grounding": "Grounding terms",
+      "groundingHint": "Substrings that must all appear in the review output for the grounding gate to pass. Leave empty for no requirement.",
+      "groundingPlaceholder": "e.g. Math.random()",
+      "addGrounding": "+ Add grounding term",
+      "removeGrounding": "Remove",
+      "threshold": "Threshold",
+      "thresholdHint": "Judge score (0–1) required to pass. Defaults to 0.6.",
+      "thresholdOutOfRange": "Threshold must be between 0 and 1.",
+      "notes": "Notes",
+      "notesPlaceholder": "Optional notes",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel"
+    },
+    "history": {
+      "title": "Batch history",
+      "empty": "No batch runs yet.",
+      "timestamp": "Timestamp",
+      "hostAgent": "Host agent",
+      "model": "Model",
+      "judgeScore": "Judge score",
+      "groundingPassRate": "Grounding pass rate",
+      "casesPassing": "Cases passing",
+      "cost": "Cost",
+      "status": "Status",
+      "statusClean": "Clean",
+      "statusDegraded": "Degraded",
+      "statusCalibration": "Calibration",
+      "statusRunning": "Running",
+      "selectTwoHint": "Select exactly two batches to compare.",
+      "compareFullOnly": "Only full-batch runs can be compared.",
+      "clearHistory": "Clear history",
+      "clearHistoryConfirmTitle": "Clear eval history",
+      "clearHistoryConfirmBody": "This deletes all batch history and trend for this skill. Cases are kept.",
+      "clearHistoryConfirmConfirm": "Clear history",
+      "clearHistoryConfirmCancel": "Cancel",
+      "drilldown": {
+        "case": "Case",
+        "outcome": "Outcome",
+        "groundingMissing": "Grounding missing",
+        "judgeScore": "Judge score",
+        "cost": "Cost",
+        "errorLabel": "Error:"
+      }
+    },
+    "trend": {
+      "title": "Trend",
+      "empty": "Not enough full-batch runs yet to plot a trend.",
+      "degradedLegend": "Degraded batch",
+      "linkHint": "Hover a point to highlight its run in Batch History above."
+    },
+    "kpiDelta": {
+      "label": "vs. previous batch",
+      "noBaseline": "No baseline yet — needs at least 2 full batches to show a KPI delta."
+    },
+    "compare": {
+      "title": "Batch comparison",
+      "metric": "Metric",
+      "batchA": "Batch A",
+      "batchB": "Batch B",
+      "delta": "Delta"
+    }
   }
 }

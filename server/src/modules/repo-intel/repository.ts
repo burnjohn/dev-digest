@@ -436,6 +436,20 @@ export class RepoIntelRepository {
       .where(eq(t.fileEdges.repoId, repoId));
   }
 
+  /**
+   * Reverse import edges: for each `toFile` in `toFiles`, return every
+   * `{ fromFile, toFile }` row where `toFile` is one of the given paths.
+   * Used by `getImporters` for one BFS level of reverse reachability.
+   * Returns `[]` for empty input (never issues a query with an empty IN list).
+   */
+  async getReverseEdges(repoId: string, toFiles: string[]): Promise<IndexerEdgeRow[]> {
+    if (toFiles.length === 0) return [];
+    return this.db
+      .select({ fromFile: t.fileEdges.fromFile, toFile: t.fileEdges.toFile })
+      .from(t.fileEdges)
+      .where(and(eq(t.fileEdges.repoId, repoId), inArray(t.fileEdges.toFile, toFiles)));
+  }
+
   /** `{path, percentile}` for the given paths (smart-diff / run-executor). */
   async getFileRankFor(repoId: string, paths: string[]): Promise<FileRankRow[]> {
     if (paths.length === 0) return [];
@@ -541,6 +555,31 @@ export class RepoIntelRepository {
       })
       .from(t.fileFacts)
       .where(and(eq(t.fileFacts.repoId, repoId), inArray(t.fileFacts.filePath, files)));
+    return rows.map((r) => ({
+      filePath: r.filePath,
+      endpoints: (r.endpoints as string[]) ?? [],
+      crons: (r.crons as string[]) ?? [],
+    }));
+  }
+
+  /**
+   * Repo-wide file_facts inventory — every row for `repoId`, no `files` filter.
+   *
+   * This is a general-purpose aggregation read (e.g. onboarding's routes/
+   * endpoints inventory), NOT LLM input, so it is intentionally UNCAPPED at
+   * this layer. Do not add a `.limit()` or hub-file filter here: capping for
+   * LLM consumption belongs exclusively in the onboarding module's
+   * `buildLlmInput` (`LLM_INPUT_MAX_ENDPOINTS` / `LLM_INPUT_MAX_ROUTES_PER_FILE`).
+   */
+  async getAllFileFacts(repoId: string): Promise<IndexerFileFactsRow[]> {
+    const rows = await this.db
+      .select({
+        filePath: t.fileFacts.filePath,
+        endpoints: t.fileFacts.endpoints,
+        crons: t.fileFacts.crons,
+      })
+      .from(t.fileFacts)
+      .where(eq(t.fileFacts.repoId, repoId));
     return rows.map((r) => ({
       filePath: r.filePath,
       endpoints: (r.endpoints as string[]) ?? [],

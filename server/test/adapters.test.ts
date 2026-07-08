@@ -38,6 +38,45 @@ describe('mock adapters (no network)', () => {
     const emb = await new MockEmbedder().embed(['a', 'b']);
     expect(emb[0]!).toHaveLength(1536);
   });
+
+  it('MockGitHubClient.getRepoTree returns the default fixture tree with { path, type } entries', async () => {
+    const gh = new MockGitHubClient();
+    const tree = await gh.getRepoTree({ owner: 'a', name: 'b' }, 'main');
+    expect(tree).toEqual([
+      { path: 'src', type: 'tree' },
+      { path: 'src/index.ts', type: 'blob' },
+      { path: 'package.json', type: 'blob' },
+      { path: 'README.md', type: 'blob' },
+    ]);
+  });
+
+  it('MockGitHubClient.getRepoTree respects a MockGitHubOptions.tree override', async () => {
+    const customTree = [{ path: 'lib', type: 'tree' as const }, { path: 'lib/main.ts', type: 'blob' as const }];
+    const gh = new MockGitHubClient({ tree: customTree });
+    const tree = await gh.getRepoTree({ owner: 'a', name: 'b' });
+    expect(tree).toEqual(customTree);
+  });
+
+  it('MockGitHubClient.getFileContents returns the fixture content for a known path', async () => {
+    const gh = new MockGitHubClient();
+    const contents = await gh.getFileContents({ owner: 'a', name: 'b' }, 'package.json', 'main');
+    expect(contents).toContain('"name": "mock-repo"');
+  });
+
+  it('MockGitHubClient.getFileContents returns null for a path absent from the fixture (404→null contract)', async () => {
+    const gh = new MockGitHubClient();
+    const contents = await gh.getFileContents({ owner: 'a', name: 'b' }, 'does/not/exist.ts', 'main');
+    expect(contents).toBeNull();
+  });
+
+  // NOTE: OctokitGitHubClient (src/adapters/github/octokit.ts) is not unit-tested at the
+  // Octokit-injection level — no test in this repo mocks/injects a fake Octokit instance for
+  // ANY method on that adapter (see server/test/adapters.test.ts, server/test/onboarding-*.test.ts).
+  // That's consistent with the established convention here: Octokit HTTP behavior (incl. the
+  // getFileContents 404→null branch at octokit.ts:426-432) is exercised indirectly through
+  // MockGitHubClient-backed service tests, e.g. the lite-mode / AC-12 no-data-fallback specs in
+  // server/test/onboarding-service.test.ts. Introducing a new fake-Octokit harness here would be
+  // a new pattern, not an extension of an existing one, so it's intentionally out of scope.
 });
 
 describe('structured review pipeline (mock LLM → grounding)', () => {

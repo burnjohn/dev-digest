@@ -6,6 +6,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PrMeta } from "@devdigest/shared";
 import messages from "../../../../../../../messages/en/prReview.json";
 
@@ -36,17 +37,21 @@ const PR: PrMeta = {
 };
 
 function renderWithIntl(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        {ui}
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
   );
 }
 
 describe("PRRow — cost column", () => {
   it("renders '—' when cost_usd is null (no completed runs)", () => {
     renderWithIntl(<PRRow pr={PR} repoId="r1" />);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // PRRow may show "—" in multiple columns (COST, FINDINGS); confirm at least one.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("renders a formatted dollar amount when cost_usd is present", () => {

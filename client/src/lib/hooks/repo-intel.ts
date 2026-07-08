@@ -1,6 +1,5 @@
 /* hooks/repo-intel.ts — React Query hooks for the repo-intel (T3) index state.
-   Mirrors hooks/context.ts (useIndexStatus/useReindex) but targets the
-   repo-intel facade's HTTP surface:
+   Targets the repo-intel facade's HTTP surface:
      GET  /repos/:id/index-state  → RepoIntelState
      POST /repos/:id/resync       → fetch latest from origin + incremental
                                      reindex (202). NOT a destructive re-clone. */

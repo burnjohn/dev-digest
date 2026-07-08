@@ -4,10 +4,13 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { AppFrame, CommandPalette, ShortcutsHelp, type Crumb } from "@devdigest/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
+  const t = useTranslations("shell");
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
   const openPalette = React.useCallback(() => setPaletteOpen(true), []);
@@ -17,7 +20,9 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette });
+  const { pendingRemoveRepo, confirmRemoveRepo, cancelRemoveRepo, ...ctx } = useShellContext({
+    onOpenCommandPalette: openPalette,
+  });
 
   return (
     <>
@@ -26,6 +31,16 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
       </AppFrame>
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
+      {pendingRemoveRepo && (
+        <ConfirmModal
+          title="Remove repository"
+          body={t("removeRepo.confirm", { name: pendingRemoveRepo.name })}
+          confirmLabel="Remove"
+          danger
+          onConfirm={confirmRemoveRepo}
+          onCancel={cancelRemoveRepo}
+        />
+      )}
     </>
   );
 }

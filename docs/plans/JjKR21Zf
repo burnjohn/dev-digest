@@ -1,0 +1,839 @@
+# Development Plan: Project Context Folder
+
+**Date:** 2026-07-02
+**Requirements:** [docs/feature-requirements/2026-07-02-project-context-folder.md](../feature-requirements/2026-07-02-project-context-folder.md) (Status: draft, AC-1&#x2026;AC-21 v1 / AC-22&#x2026;AC-36 v2)
+**Execution mode:** single-agent
+**Revised:** 2026-07-02 &#x2014; plan-review updates: (1) discovery/token-count caching added (�4 Caching, Step 4, Step 9); (2) attachment scoping clarified as workspace-level, repo-agnostic path references + a deterministic, user-visible repo picker (�4, Step 8); (3) confirmed run-level "open full text" in the trace (Step 8).
+**Revised:** 2026-07-03 &#x2014; **v2 delta appended (design-mock parity)**: two-panel master-detail layout, in-browser view/edit/upload/delete via a DB-shadow overlay (`doc_overrides`), coverage ring, dedicated skill-editor Context tab, unified checkbox-list redesign of the attach/detach picker, and a no-clone/overlay-only discovery fix so Context works for ANY selected repository (including one with no readable clone). v1's 10 steps (below) are implemented and verified in the working tree &#x2014; **do not re-plan them**. v2 continues numbering at Step 11 in a new "v2 &#x2014; Design-mock parity" section near the end of this document. AC-1&#x2026;AC-21 are unchanged; v2 adds AC-22&#x2026;AC-36.
+**Scope:** full-stack (server � client � reviewer-core prompt wiring &#x2014; verification only, no code change expected)
+**Affects modules:** new server module `context-docs`, `server/src/modules/reviews/run-executor.ts`, `server/src/modules/agents/*`, `server/src/modules/skills/*`, `server/src/modules/repos/*`, `server/src/vendor/shared/` + `client/src/vendor/shared/` (mirrored), `client/src/lib/hooks/core.ts` + `client/src/lib/hooks/repo-intel.ts` (dead-scaffolding cleanup), `client/src/lib/types.ts`, `client/src/app/agents/[id]/_components/AgentEditor/`, `client/src/app/skills/_components/SkillDetail/`, client route `client/src/app/repos/[repoId]/context/` (repurposed), `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/`
+
+---
+
+## 1. Context
+
+Repositories already contain human-authored markdown (specs, design docs, incident write-ups) that encodes rules a change should respect, but review agents never see it. This feature lets a user browse every `.md` document under a repo's configured root context folders (default `specs`/`docs`/`insights`), attach documents (by path, never by copied text) to an agent's Context tab or a skill's "Project context to use" section, and have those documents read fresh from the repo clone and injected &#x2014; untrusted-wrapped &#x2014; into the reviewer's existing `## Project context` prompt slot at run time. Attachment is manual only in this iteration (no automatic per-PR selection). This is a read-only feature end to end: no in-browser editing of the documents themselves.
+
+This plan also retires a pre-existing, unimplemented "context browser" scaffold (dead hooks/contracts/route reservation from an earlier, unrelated "embedding-indexed spec chunks" concept) and **repurposes** its route path, sidebar nav key, and i18n namespace for the real feature &#x2014; see Step 1.
+
+## 2. Architecture Fit
+
+**New server module &#x2014; `server/src/modules/context-docs/`** (routes/service/repository/helpers), registered statically in `modules/index.ts`, following the exact pattern of `blast/` and `repo-intel/`:
+- `repository.ts` &#x2014; Drizzle queries against a new `context_documents` attachment table (agent/skill link rows) and the new `repos.context_folders` column; every query workspace-scoped through a join to `repos`/`agents`/`skills`.
+- `service.ts` &#x2014; discovery (walk clone dir under configured root folders), token counting (`container.tokenizer`), used-by-count aggregation, attach/detach/reorder orchestration. No adapter is imported directly &#x2014; `container.git.readFile` / `container.git.clonePathFor` / `container.tokenizer.count` only. Discovery + per-document token counts are **cached** (see �4 Caching) so the full clone walk + tokenization does not run on every request.
+- `routes.ts` &#x2014; `GET /repos/:id/context-docs` (list + discovery), `GET /repos/:id/context-docs/:encodedPath` (single doc preview text), `PUT /repos/:id/context-folders` (AC-21), plus two sub-routes attached to the **existing** `agents` and `skills` route files (not a new plugin) for attach/detach/reorder, mirroring `POST /agents/:id/skills`.
+
+**Run-time wiring** &#x2014; `run-executor.ts` gains one new step (parallel to the existing skills-injection block at `runOneAgent`): resolve attached document paths (agent-direct &#x222a; via attached skills, deduped), read each through `container.git.readFile` with path confinement, count tokens, build the `specs: string[]` array, and pass it into `reviewPullRequest({ ..., specs })`. `reviewer-core/src/prompt.ts` needs **zero changes** &#x2014; the `specs?: string[]` slot and its `wrapUntrusted('spec-N', &#x2026;)` wrapping already exist and are exercised for the first time by this feature.
+
+**`@devdigest/shared` contract additions** (mirrored in both `server/src/vendor/shared/` and `client/src/vendor/shared/` in the same step): `ContextDocument`, `ContextDocumentAttachment`-adjacent request/response shapes, `RunTraceContextDoc` + `context_documents` field on `RunTrace`.
+
+**Dead-scaffolding retirement + repurposing (Step 1, before any new code)** &#x2014; the client currently carries unimplemented plumbing from an earlier, different "Project Context" concept (embedding-indexed spec chunks with editable text and an index-status model): `useContextFiles`/`useReindexContext` hooks (`client/src/lib/hooks/core.ts`), the Zod `SpecFile`/`IndexStatus` contracts in `vendor/shared/contracts/platform.ts` (both copies), their re-export in `client/src/lib/types.ts`, and a stale doc-comment in `client/src/lib/hooks/repo-intel.ts`. These are deleted. The `/repos/[repoId]/context` route path, the `"context"` sidebar nav key (`activeKeyFor()` in `app-shell/helpers.ts`), and the `context.json` i18n namespace file are **kept and repurposed** for the real Project Context page built in this feature &#x2014; the file/route/nav-key identity survives, its (dead) contents do not.
+
+**Client** &#x2014; the page at `client/src/app/repos/[repoId]/context/page.tsx` (new content, existing route path), a new `ContextTab` component in the Agent Editor (sibling to the existing `SkillsTab`), a new "Project context to use" section in `SkillDetail`'s `ConfigTab`, and a new trace section in `TraceBody` for injected/skipped context documents.
+
+## 3. Skills & Patterns Applied
+
+**`backend-onion-architecture`:**
+- New module = `routes.ts` / `service.ts` / `repository.ts` / `helpers.ts` under `src/modules/context-docs/`, registered in `modules/index.ts` (R7).
+- `service.ts` never imports concrete adapters &#x2014; `container.git`, `container.tokenizer` only (R2).
+- Every repository query scoped by `workspace_id` via a join (attachments have no direct `workspace_id` column &#x2014; they join through `agents`/`skills`, both of which do; the *document listing* query is scoped by `repos.workspace_id`) (R1).
+- Expected failures (`repo not found`, `path outside clone`) &#x2192; `NotFoundError` / `ValidationError`, never raw `Error` (R3).
+- No cross-module internal imports: the new module never imports `agents/service.ts` or `skills/service.ts` internals; the agent/skill attach routes live in *their own* route files and call into `context-docs`' service via `container`-free direct construction (same pattern as `AgentsService` constructing `AgentsRepository` &#x2014; a small `ContextDocsRepository` is instantiated directly inside `agents/service.ts` and `skills/service.ts` is **not** done; instead see Step 4 for the exact ownership split that avoids this).
+
+**`typescript-expert`:**
+- `RunTraceContextDoc` as a discriminated-ish object (`status: 'injected' | 'skipped'`, `skip_reason` nullable) &#x2014; exported type + Zod schema together (`type-export-schemas-and-types`).
+- `z.infer` for all new DTOs, no manual interface duplication.
+- Additive-only changes to `RunTrace`/`PromptAssembly`-adjacent shared types &#x2014; old persisted JSONB traces lack `context_documents`, so the field is `.nullish()` or defaulted via `.default([])`, matching the existing `specs_read: z.array(z.string())` non-nullable-with-safe-default pattern used elsewhere in `trace.ts`.
+- Dead-code removal (Step 1) is a mechanical, verifiable operation: grep for zero remaining references to each deleted symbol before considering the deletion done ("Missing type declarations"/module-resolution failures are the signal a reference was missed).
+
+**`zod`:**
+- Request schemas (`AttachContextDocsBody`, `UpdateContextFoldersBody`) validated at the route boundary, one schema drives both validation and the TS type (`schema-use-primitives-correctly`, `parse-validate-early`).
+- `z.array(z.string()).min(0)` for `document_paths` &#x2014; empty array is a valid "detach all" state, not an error.
+
+**`drizzle-orm-patterns` / `postgresql-table-design`:**
+- New link tables `agent_context_docs` / `skill_context_docs` follow the exact shape of `agent_skills` (composite PK `(ownerId, path)`, `order integer not null default 0`) &#x2014; except the "id" here is a **path string**, not a FK to another table (documents are not rows; they are discovered live from the filesystem). Composite PK becomes `(agent_id, path)` / `(skill_id, path)`.
+- `repos.context_folders` &#x2014; new nullable `jsonb` (`text[]` is also viable; `jsonb` chosen to match the project's existing convention of `evidence_files: jsonb('evidence_files').$type<string[]>()` on `skills`) column, added via a new migration, never altering the existing `repos` table's other columns.
+- `TEXT` for all path columns (never `VARCHAR(n)`), matching `postgresql-table-design` guidance and the existing `symbols.name`/`skills.name` convention.
+
+**`react-best-practices` / `frontend-architecture` / `next-best-practices`:**
+- `ContextTab` and the Project Context page are client components (`"use client"`) using TanStack Query hooks only &#x2014; no `useEffect` for data fetching.
+- Reorder drag-and-drop reuses the exact pattern already in `SkillsTab.tsx` (`draggable`, `onDragStart`/`onDragOver`/`onDragEnd`, `moveUp`/`moveDown`-style array splice) &#x2014; no new drag library.
+- The live serialization preview (AC-9) is a pure computed value from already-fetched query data (`useMemo` only if measured expensive &#x2014; for a handful of documents, plain inline computation is fine, no premature `useMemo`).
+- Page route follows the existing `_components/<Name>/` colocation convention.
+- Dead-code removal respects the promotion/ownership rule in reverse: code with zero live consumers is removed rather than kept "just in case" &#x2014; carrying unreachable exports is its own architecture smell.
+
+## 4. Project Constraints
+
+- **Server:** new module = Fastify plugin in `src/modules/context-docs/`; registered statically in `modules/index.ts` &#x2014; no auto-discovery. Adapters via `app.container` only. Route schemas via Zod + `fastify-type-provider-zod`. Expected failures throw `AppError` subclasses.
+- **DB:** two new tables (`agent_context_docs`, `skill_context_docs`) + one new column (`repos.context_folders`) via **one** new numbered migration (`0013_context_documents.sql`) &#x2014; never alter existing columns. Every domain table gets a non-nullable `workspace_id`... **exception documented**: the two link tables intentionally have NO direct `workspace_id` column (mirroring `agent_skills`, which also has none) because tenancy is enforced transitively through the `agent_id`/`skill_id` FK's owning row, which IS workspace-scoped &#x2014; every repository query joins through the owner table and filters on its `workspace_id`. This exception is explicitly called out per `server/src/db/AGENTS.md` review expectations.
+- **`reviewer-core`:** zero I/O &#x2014; confirmed no change needed to `prompt.ts` itself; the `specs` slot and `wrapUntrusted` already exist. `INJECTION_GUARD` must not be touched. Grounding (`groundFindings()`) is unaffected &#x2014; context documents feed the prompt, not the finding-citation gate.
+- **Shared types:** `ContextDocument`, `RunTraceContextDoc`, and the `RunTrace.context_documents` field are added to `server/src/vendor/shared/contracts/` AND mirrored byte-for-byte into `client/src/vendor/shared/contracts/` in the SAME step (per `client/insights.md` 2026-06-30 &#x2014; these silently diverge otherwise). In the SAME lockstep discipline, the dead `SpecFile`/`IndexStatus` deletion in Step 1 also touches both vendored copies together.
+- **Security &#x2014; path confinement (AC-13):** a new pure helper `resolveConfinedPath(cloneRoot, contextFolders, storedPath)` in `context-docs/helpers.ts` MUST reject: (a) any resolved absolute path that does not start with `cloneRoot + path.sep` (blocks `../../secret` traversal and symlink-adjacent tricks via `path.resolve` normalization), and (b) any path whose first segment is not one of the configured `context_folders`. This is a new mechanical check &#x2014; no existing helper in the repo does this; do not reuse `path.join` alone (per the `security` skill: `path.join()` with user input allows traversal &#x2014; use `path.resolve()` + prefix check, never `path.basename()` alone since we need to preserve subdirectory structure).
+- **Security &#x2014; untrusted content (AC-11):** every injected document text goes through the EXISTING `wrapUntrusted('spec-N', text)` inside `assemblePrompt()` &#x2014; this plan does not re-implement wrapping; it only produces the `specs: string[]` array reviewer-core already accepts. No keyword filtering added (the project's `INJECTION_GUARD` is the only defense layer &#x2014; do not add a second one).
+- **Security &#x2014; attacker-controlled input trace:** the document path is user-supplied at attach time (via the editor UI, same trust level as any other authenticated admin action in this single-tenant-per-workspace app) but is validated server-side at BOTH attach time (must resolve under a configured folder at the moment of attach &#x2014; reject unknown paths early with a clear 422) AND run time (AC-12/AC-13 &#x2014; re-validated fresh in case the repo changed between attach and run). Never trust the stored path blindly at read time.
+- **Attachment scoping model (workspace-level path references):** attachments are stored on agents/skills as **workspace-level, repo-agnostic relative-path references** &#x2014; NOT repo-specific bindings (the link tables hold `(owner_id, path, order)`, no `repo_id`). The editor picker browses documents from an EXPLICIT, deterministic, user-visible selected repository (shell context / route state), but only the relative path is persisted. At review time the path is resolved against the repository of the PR being reviewed; if the file does not exist there, the attachment is skipped and recorded in Prompt Assembly as skipped/missing context (AC-12). So an attachment "hits" only in repositories that contain that path &#x2014; the intended, spec-aligned model (paths in metadata, never copied text). The picker MUST surface which repo is being browsed so the user understands the source.
+- **Caching / performance (spec �7 &#x2264; 500 ms p95):** the discovery result (the `ContextDocument[]` list incl. per-document token counts) is cached server-side so the clone walk + re-tokenization of every `.md` does NOT run on every page load / Context-tab open. Cache key = `repoId` + the repo's current clone HEAD commit (from the git client / repo-intel index state) + a hash of the effective `context_folders`. Invalidation is implicit on resync (HEAD sha changes) and explicit on `setContextFolders` (folder change alters discovery scope). Keep it lightweight &#x2014; an in-process cache in `ContextDocsService` (or a tiny cache helper) suffices for the single-instance dev deployment; no new persistence table. `used_by_agents` is NOT cached with the file list (it changes on attach/detach independently of the clone) &#x2014; compute it per request via `usedByCounts` and merge onto the cached list.
+- **Zero LLM calls (AC-3):** discovery, token counting, and injection preparation must not call any `container.llm(...)`. This is enforced structurally &#x2014; `context-docs/service.ts` never touches `container.llm`.
+- **Determinism/reuse:** token counting reuses `container.tokenizer.count()` (existing `TiktokenTokenizer`) &#x2014; no new tokenizer, no LLM-based estimate.
+- **Naming vs. the retired scaffold:** the new API surface uses `/repos/:id/context-docs` (not `/repos/:id/context` &#x2014; that path is reserved for the PAGE route, not an API route: no server route ever existed at `/repos/:id/context`, only a client stub referenced it, and that stub is deleted in Step 1). The new shared contract is named `ContextDocument` (not `SpecFile`, which is deleted). The new client query key is `["context-docs", repoId]` (not `["context", repoId]`, which is deleted along with `useContextFiles`). The page route `client/src/app/repos/[repoId]/context/page.tsx`, the `"context"` sidebar nav key, and the `context.json` i18n namespace file are KEPT and get new, real content &#x2014; this is intentional reuse of a route/nav/i18n identity, not a data-contract reuse.
+- **i18n:** all new UI strings via next-intl. The Project Context page's strings go into the EXISTING `context.json` file (repurposed &#x2014; old keys replaced, not appended to), since that is the namespace the route/nav key already imply. Agent/skill editor strings go into the existing `agents.json`/`skills.json` namespaces as new keys, matching how the existing `skills.*` sub-keys live under the `agents` namespace.
+- **Verification gate for the Step 1 cleanup specifically:** `pnpm typecheck` (both `server` and `client`), `pnpm build` (client), and existing unit tests must all pass after the deletions, AND a grep for each deleted symbol name (`SpecFile`, `IndexStatus` &#x2014; Zod one only, `useContextFiles`, `useReindexContext`) across `client/src` and `server/src` must return zero matches outside historical comments that are also being fixed in the same step. This gate is non-negotiable before Step 1 is considered done.
+
+## 5. Implementation Steps
+
+Single-agent execution &#x2014; all steps run strictly in sequence, each producing an independently compiling, independently testable commit. Owned paths are still declared per step for clarity even though only one implementer executes them. Step 1 (cleanup) runs FIRST because Step 7 later writes new content into the very same route/nav/i18n identity Step 1 clears out &#x2014; sequencing prevents the new page from ever being built on top of, or confused with, the dead scaffold.
+
+---
+
+### Step 1: Retire dead "context browser" scaffolding; repurpose its route/nav/i18n identity
+
+**Dependencies:** none
+**Owned paths:**
+- `server/src/vendor/shared/contracts/platform.ts` (remove `SpecFile`, `IndexStatus` Zod schema/type &#x2014; server copy)
+- `client/src/vendor/shared/contracts/platform.ts` (remove `SpecFile`, `IndexStatus` Zod schema/type &#x2014; client copy)
+- `server/src/vendor/shared/index.ts` (fix barrel doc-comment mentioning `SpecFile`)
+- `client/src/vendor/shared/index.ts` (fix barrel doc-comment mentioning `SpecFile`)
+- `client/src/lib/types.ts` (remove `SpecFile`/`IndexStatus` re-export)
+- `client/src/lib/hooks/core.ts` (remove `useContextFiles`, `useReindexContext`, and their now-unused `SpecFile`/`IndexStatus` imports)
+- `client/src/lib/hooks/repo-intel.ts` (fix stale doc-comment at line 2 referencing a non-existent `hooks/context.ts`)
+
+**What to do:**
+1. Verify before deleting (do not trust this plan's claims blindly &#x2014; re-confirm against the current tree, since code may have moved since this plan was written):
+   - Confirm `server/src/modules/repo-intel/types.ts` has its OWN, textually distinct `IndexStatus` string-union type (`'full' | 'partial' | 'degraded' | 'failed'`) used by `repo-intel/repository.ts` and `pipeline/incremental.ts`/`full.ts` &#x2014; this is a DIFFERENT symbol that merely shares a name with the dead Zod `IndexStatus` in `vendor/shared/contracts/platform.ts`. Do NOT touch `server/src/modules/repo-intel/types.ts` or anything importing `IndexStatus` from `'../types.js'` inside `repo-intel/` &#x2014; those imports resolve to the live type and must be left exactly as-is.
+   - Grep the whole `client/src` and `server/src` trees for `SpecFile` and for `IndexStatus` and confirm the only occurrences are: the two `vendor/shared/contracts/platform.ts` definitions, the two barrel `index.ts` doc-comments, `client/src/lib/types.ts`, and `client/src/lib/hooks/core.ts` &#x2014; plus the unrelated live `repo-intel/types.ts` occurrences, which are out of scope.
+   - Confirm no page exists at `client/src/app/repos/[repoId]/context/` (no `page.tsx` under that path today) and that `useContextFiles`/`useReindexContext` have no call sites anywhere outside their own definitions in `core.ts`.
+2. In `server/src/vendor/shared/contracts/platform.ts`, delete the `SpecFile` Zod object + type and the `IndexStatus` Zod object + type (the `// ---- Project Context ----` section). Do not touch the `// ---- Run request &#x2026;` section immediately after it.
+3. Apply the identical deletion to `client/src/vendor/shared/contracts/platform.ts` (byte-for-byte mirrored change, in the same commit &#x2014; lockstep rule).
+4. In both `vendor/shared/index.ts` barrel files, edit the doc-comment line `*  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile, &#x2026;` to remove `SpecFile,` from the list (e.g. `*  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, &#x2026;`).
+5. In `client/src/lib/types.ts`, remove `SpecFile,` and `IndexStatus,` from the `export type { ... } from "@devdigest/shared";` list (lines ~30&#x2013;31).
+6. In `client/src/lib/hooks/core.ts`, delete the `useContextFiles` and `useReindexContext` function exports (the `// ---- Project Context (A3 contract; safe to call once API exposes it) ----` block), and remove `SpecFile` and `IndexStatus` from the top-of-file type import list (only if nothing else in that file still uses them after the two functions are removed &#x2014; verify with a final read of the file).
+7. In `client/src/lib/hooks/repo-intel.ts`, fix the doc-comment at the top: remove the sentence "Mirrors hooks/context.ts (useIndexStatus/useReindex) but targets the" and replace with an accurate one-line description of what the file does (repo-intel T3 index-state hooks), since `hooks/context.ts` never existed as a file and the functions it names (`useIndexStatus`/`useReindex`) are not the ones actually being deleted here (a further confirmation that this comment was already stale/aspirational, not a description of the code this plan deletes) &#x2014; do not delete the file itself, only correct the comment.
+8. Leave `client/messages/en/context.json` FILE IN PLACE (do not delete it) but do not edit its contents in this step &#x2014; Step 7 rewrites its contents to match the real Project Context page. Leave `client/src/components/app-shell/helpers.ts`'s `"context"` nav key and `client/src/vendor/ui/nav.ts` untouched in this step (no page exists yet to link to; Step 7 populates the page these keys point at).
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm build`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+- [ ] `cd client && pnpm test`
+- [ ] Grep confirms ZERO remaining references to `SpecFile` anywhere in `client/src` or `server/src`
+- [ ] Grep confirms the Zod `IndexStatus` from `vendor/shared/contracts/platform.ts` has zero remaining references; a separate grep confirms `server/src/modules/repo-intel/types.ts`'s `IndexStatus` string-union type and its 5 known call sites are UNCHANGED and still compile
+- [ ] Grep confirms zero remaining references to `useContextFiles` and `useReindexContext`
+- [ ] `client/src/lib/hooks/repo-intel.ts:2` no longer mentions a nonexistent `hooks/context.ts`
+
+**Commit:** `chore(cleanup): remove dead context-browser scaffolding (SpecFile/IndexStatus/useContextFiles/useReindexContext), keep route/nav/i18n identity for reuse`
+
+---
+
+### Step 2: DB migration &#x2014; attachment tables + repo root-folder config
+
+**Dependencies:** Step 1 (no code dependency; sequenced after cleanup per plan ordering)
+**Owned paths:**
+- `server/src/db/schema/context-docs.ts` (new file)
+- `server/src/db/schema/repos.ts` (add one column)
+- `server/src/db/schema.ts` (barrel &#x2014; add exports)
+- `server/src/db/migrations/0013_context_documents.sql` (generated, then reviewed)
+
+**What to do:**
+1. Create `server/src/db/schema/context-docs.ts` with two new Drizzle tables:
+   - `agentContextDocs`: `agentId uuid NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `path text NOT NULL`, `order integer NOT NULL DEFAULT 0`, composite PK `(agent_id, path)`.
+   - `skillContextDocs`: `skillId uuid NOT NULL REFERENCES skills(id) ON DELETE CASCADE`, `path text NOT NULL`, `order integer NOT NULL DEFAULT 0`, composite PK `(skill_id, path)`.
+   - Add an index on each table's owner-id column (`agent_context_docs_agent_idx`, `skill_context_docs_skill_idx`) per `postgresql-table-design` (FK columns are not auto-indexed).
+2. In `server/src/db/schema/repos.ts`, add `contextFolders: jsonb('context_folders').$type<string[]>()` (nullable &#x2014; `null` means "use the default `specs`/`docs`/`insights`" per AC-2). Do not touch any other column.
+3. Update `server/src/db/schema.ts`: add `export * from './schema/context-docs';` to the re-export list, import `agentContextDocs, skillContextDocs` and add them to the `schema` object.
+4. Run `cd server && pnpm db:generate`, review the generated SQL lands as `0013_context_documents.sql` (rename if the auto-generated slug differs &#x2014; keep the numeric prefix `0013`), confirm it only ADDS (two new tables + one new nullable column, both indexes) and alters nothing existing.
+5. Run `cd server && pnpm db:migrate` locally to confirm it applies cleanly against the dev DB.
+
+**Verify:**
+- [ ] Compiles (`cd server && pnpm typecheck`)
+- [ ] `pnpm db:migrate` applies without error
+- [ ] Migration file contains only `CREATE TABLE` / `ALTER TABLE ... ADD COLUMN` statements &#x2014; no `ALTER COLUMN` / `DROP COLUMN` on any pre-existing table
+
+**Commit:** `feat(db): add context-document attachment tables and repo root-folder config column`
+
+---
+
+### Step 3: Shared contracts &#x2014; `ContextDocument`, attachment DTOs, `RunTraceContextDoc`
+
+**Dependencies:** Step 2 (schema names referenced conceptually, not imported)
+**Owned paths:**
+- `server/src/vendor/shared/contracts/context-docs.ts` (new file)
+- `server/src/vendor/shared/contracts/trace.ts` (add `context_documents` field)
+- `server/src/vendor/shared/index.ts` (barrel export)
+- `client/src/vendor/shared/contracts/context-docs.ts` (mirrored copy)
+- `client/src/vendor/shared/contracts/trace.ts` (mirrored copy)
+- `client/src/vendor/shared/index.ts` (barrel export)
+
+**What to do:**
+1. In `server/src/vendor/shared/contracts/context-docs.ts`, define (Zod schema + inferred type for each):
+   - `ContextDocument`: `{ path: string; category: string; token_count: number (int, &#x2265;0); used_by_agents: number (int, &#x2265;0) }` &#x2014; matches spec �9 exactly.
+   - `ContextFolders`: `{ folders: z.array(z.string().min(1)) }` &#x2014; request/response body for `PUT /repos/:id/context-folders`.
+   - `ContextDocAttachment`: `{ document_paths: z.array(z.string()) }` &#x2014; the request body shape for setting an agent's or skill's ordered attachment list (mirrors `SetSkillsBody`'s `skill_ids` shape).
+   - `AgentContextDocLink` / `SkillContextDocLink`: `{ owner_id: string; path: string; order: number.int() }` &#x2014; the response shape for GET (mirrors `AgentSkillLink`).
+   - Before naming anything, grep the WHOLE `vendor/shared` dir for each candidate name (per `server/insights.md` 2026-07-02 mistake entry &#x2014; `ContextDocument`/`ContextFolders`/`ContextDocAttachment` do not currently exist anywhere in `contracts/`, and `SpecFile`/the Zod `IndexStatus` were already removed in Step 1 so there is no residual collision).
+2. In `server/src/vendor/shared/contracts/trace.ts`, add:
+   ```ts
+   export const RunTraceContextDoc = z.object({
+     path: z.string(),
+     token_size: z.number().int(),
+     status: z.enum(['injected', 'skipped']),
+     skip_reason: z.string().nullable(),
+   });
+   export type RunTraceContextDoc = z.infer<typeof RunTraceContextDoc>;
+   ```
+   Add `context_documents: z.array(RunTraceContextDoc).default([])` to the `RunTrace` object schema (use `.default([])`, NOT `.nullish()`, so every consumer gets `[]` rather than `undefined` for old persisted traces missing the key &#x2014; matches `tool_calls`/`memory_pulled`'s existing non-nullable-array pattern, but needs a `.default()` specifically because OLD JSONB documents predate this field entirely, same reasoning as the documented `.nullish()` gotcha in `server/insights.md` 2026-06-26 but resolved via `.default()` since this is a new array field, not a required scalar).
+3. Export both from `server/src/vendor/shared/index.ts`.
+4. Copy both files byte-for-byte into `client/src/vendor/shared/contracts/` and update `client/src/vendor/shared/index.ts` identically &#x2014; this is the ONE step where server and client shared copies change together (per the mandatory lockstep rule; Step 1's cleanup deletion followed the same lockstep discipline).
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` &#x2014; existing `contracts.test.ts` fixtures still parse (no required field broke an old fixture; `context_documents` defaults to `[]` so no fixture update needed)
+- [ ] Grep confirms no duplicate export name across `server/src/vendor/shared/contracts/*.ts`
+
+**Commit:** `feat(shared): add ContextDocument, context-doc attachment, and RunTraceContextDoc contracts`
+
+---
+
+### Step 4: Server module `context-docs` &#x2014; discovery, token count, used-by count, root-folder config
+
+**Dependencies:** Step 2, Step 3
+**Owned paths:**
+- `server/src/modules/context-docs/repository.ts` (new)
+- `server/src/modules/context-docs/service.ts` (new)
+- `server/src/modules/context-docs/routes.ts` (new)
+- `server/src/modules/context-docs/helpers.ts` (new)
+- `server/src/modules/context-docs/constants.ts` (new)
+- `server/src/modules/index.ts` (add one import + one registry entry)
+
+**What to do:**
+1. `constants.ts`: `export const DEFAULT_CONTEXT_FOLDERS = ['specs', 'docs', 'insights'] as const;`
+2. `helpers.ts`:
+   - `resolveConfinedPath(cloneRoot: string, folders: string[], storedPath: string): string | null` &#x2014; pure function. Uses `node:path`: `const resolved = path.resolve(cloneRoot, storedPath)`. Returns `null` (meaning "reject") unless BOTH: (a) `resolved === cloneRoot || resolved.startsWith(cloneRoot + path.sep)`, AND (b) the first path segment of the normalized relative path (`path.relative(cloneRoot, resolved).split(path.sep)[0]`) is included in `folders`. Returns the confined absolute path on success. This is the AC-13 mechanical gate &#x2014; MUST be a pure function with no I/O so it is trivially unit-testable.
+   - `categoryFor(relativePath: string): string` &#x2014; returns the first path segment (the root folder name) as the category badge value.
+   - `toContextDocumentDto(path: string, tokenCount: number, usedBy: number): ContextDocument` &#x2014; simple mapper.
+3. `repository.ts` (`ContextDocsRepository`, constructed with `Db`):
+   - `getContextFolders(workspaceId, repoId): Promise<string[]>` &#x2014; reads `repos.contextFolders`, workspace-scoped (`and(eq(repos.id, repoId), eq(repos.workspaceId, workspaceId))`), falls back to `DEFAULT_CONTEXT_FOLDERS` when null.
+   - `setContextFolders(workspaceId, repoId, folders: string[]): Promise<boolean>` &#x2014; update, workspace-scoped, returns false if no row matched (&#x2192; service throws `NotFoundError`).
+   - `agentAttachments(agentId): Promise<{ path: string; order: number }[]>` &#x2014; select from `agent_context_docs` ordered by `order`.
+   - `setAgentAttachments(agentId, paths: string[]): Promise<void>` &#x2014; delete-then-bulk-insert with `order = index`, mirrors `AgentsRepository.setSkills`.
+   - `skillAttachments(skillId): Promise<{ path: string; order: number }[]>` &#x2014; same shape for skills.
+   - `setSkillAttachments(skillId, paths: string[]): Promise<void>`.
+   - `usedByCounts(workspaceId): Promise<Map<string, number>>` &#x2014; a single query unioning direct agent attachments with skill-attachment-via-agent_skills-join, counting DISTINCT agent ids per path, scoped through `agents.workspaceId`. (Two sub-queries unioned, or one query with a `UNION` of `(agent_id, path)` pairs from `agent_context_docs` and from `agent_skills JOIN skill_context_docs`, then `GROUP BY path, COUNT(DISTINCT agent_id)`.)
+   - Every query here is scoped by joining through `repos.workspace_id` (for folder config) or `agents.workspace_id` / (`skills` has no direct workspace column visibility needed for attachment rows since skill ownership is validated via the skill's own workspace check in the service layer before repository calls &#x2014; but `usedByCounts` MUST filter through `agents.workspace_id` since agents are always workspace-owned).
+4. `service.ts` (`ContextDocsService`, constructed with `Container`):
+   - `listDocuments(workspaceId, repoId): Promise<ContextDocument[]>` &#x2014; looks up the repo (404 if missing/cross-workspace via `container.db` direct select or a small `ReposLookup` &#x2014; reuse `RepoRepository` is NOT allowed cross-module per R6; instead do a minimal direct workspace-scoped select on `repos` inside `ContextDocsRepository` itself, i.e. `getRepoClonePath(workspaceId, repoId): Promise<{ clonePath: string | null } | undefined>` &#x2014; add this as another repository method rather than importing `repos` module's repository class). Then: get context folders, walk `container.git.clonePathFor({owner,name})`-rooted directory tree (need owner/name too &#x2014; extend the same lookup method to return `{ clonePath, owner, name }` from the `repos` row) restricted to the configured folders, filter to `*.md`, read each file via `container.git.readFile`, count tokens via `container.tokenizer.count(content)`, compute `used_by_agents` from `usedByCounts()`. Returns `[]` (not an error) when clone_path is null / folders don't exist (AC-18's empty state precondition &#x2014; mechanical "nothing found", never a thrown error). The walk + read + tokenize result is memoized behind the �4 cache (key: `repoId` + clone HEAD sha + `context_folders` hash); on a cache hit, skip the filesystem walk entirely and only recompute `used_by_agents`. `setContextFolders` must invalidate the repo's cached entry.
+   - `previewDocument(workspaceId, repoId, path): Promise<{ path: string; content: string } | undefined>` &#x2014; resolves + confines the path (reuse `resolveConfinedPath`), reads via `container.git.readFile`, returns `undefined` (&#x2192; 404) if confinement fails or file missing.
+   - `getContextFolders` / `setContextFolders` &#x2014; thin passthroughs to the repository, with `ValidationError` on an empty-string folder name.
+   - `agentAttachments(agentId): Promise<AgentContextDocLink[]>`, `setAgentAttachments(workspaceId, agentId, paths): Promise<...>` &#x2014; validates the agent exists in the workspace first (reuse a minimal workspace-scoped agent existence check via a NEW small repository method here too, OR accept `agentId` pre-validated by the caller route &#x2014; **decision: routes.ts for agent-side attachment lives INSIDE `agents/routes.ts`, not `context-docs/routes.ts`**, so the existing `AgentsService.get(workspaceId, id)` 404 check in that file already guards it before delegating to `ContextDocsService`; `context-docs/service.ts` itself does NOT need to re-validate agent workspace ownership because it is only ever called after that guard &#x2014; document this ownership boundary explicitly in a code comment). Same pattern for skill-side attachment inside `skills/routes.ts` / a thin `SkillsService` method.
+   - Walking the directory tree: implement with `node:fs/promises` `readdir(..., { withFileTypes: true, recursive: true })` (Node &#x2265;22, available per root `AGENTS.md` stack) scoped to start at each configured folder under the clone root &#x2014; never walk the whole clone (avoids accidentally reading `.git/` or `node_modules/`).
+5. `routes.ts` (`context-docs` plugin &#x2014; owns ONLY the repo-scoped browse/preview/config endpoints, per AC-8):
+   - `GET /repos/:id/context-docs` &#x2192; `service.listDocuments`.
+   - `GET /repos/:id/context-docs/preview?path=...` &#x2192; `service.previewDocument` (query param, not a path segment, to avoid URL-encoding pitfalls with nested slashes) &#x2192; `NotFoundError` if undefined.
+   - `PUT /repos/:id/context-folders` &#x2192; `service.setContextFolders`, body validated by `ContextFolders` schema.
+   - `GET /repos/:id/context-folders` &#x2192; `service.getContextFolders` (so the client can show the currently-configured set, defaulted).
+6. Register in `server/src/modules/index.ts`: `import contextDocs from './context-docs/routes.js';` + add `contextDocs` to the `modules` object.
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` (new hermetic tests from Step 9 not yet written &#x2014; this checkpoint just confirms no regression)
+- [ ] Manual smoke: `pnpm dev`, `curl localhost:3001/repos/:id/context-docs` against a seeded repo returns `[]` or a document list without 500
+- [ ] Cache behavior: a second `GET /repos/:id/context-docs` at the same HEAD/folders does not re-read files (verify via a temporary read-counter or the Step 9 unit test); a `PUT /repos/:id/context-folders` change invalidates it
+
+**Commit:** `feat(server): add context-docs module &#x2014; discovery, token count, used-by count, root-folder config`
+
+---
+
+### Step 5: Agent-side and skill-side attachment routes
+
+**Dependencies:** Step 4
+**Owned paths:**
+- `server/src/modules/agents/routes.ts` (add 2 routes)
+- `server/src/modules/agents/service.ts` (add 2 methods)
+- `server/src/modules/skills/routes.ts` (add 2 routes)
+- `server/src/modules/skills/service.ts` (add 2 methods)
+
+**What to do:**
+1. In `agents/service.ts`, add a `ContextDocsService` instance (constructed the same way `AgentsRepository` is &#x2014; via `this.container`) and two methods:
+   - `contextDocLinks(workspaceId, agentId): Promise<AgentContextDocLink[] | undefined>` &#x2014; `get(workspaceId, agentId)` 404-guard first (existing pattern), then delegate.
+   - `setContextDocs(workspaceId, agentId, paths: string[]): Promise<AgentContextDocLink[] | undefined>` &#x2014; same guard, then delegate to `ContextDocsService.setAgentAttachments` + return the refreshed list.
+2. In `agents/routes.ts`, add:
+   - `GET /agents/:id/context-docs` &#x2192; `service.contextDocLinks`, `NotFoundError` if undefined.
+   - `POST /agents/:id/context-docs` (body: `ContextDocAttachment` = `{ document_paths: string[] }`) &#x2192; `service.setContextDocs`, `NotFoundError` if undefined. (Mirrors the exact shape of the existing `/agents/:id/skills` route &#x2014; full-replace-and-reorder semantics, not incremental link/unlink, since AC-20 only requires persisting the final order.)
+3. Apply the identical pattern to `skills/service.ts` / `skills/routes.ts`: `GET /skills/:id/context-docs`, `POST /skills/:id/context-docs`.
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] Manual smoke: `POST /agents/:id/context-docs` with `{"document_paths": ["specs/foo.md"]}` then `GET` returns it back in order
+
+**Commit:** `feat(server): wire agent and skill context-document attachment routes`
+
+---
+
+### Step 6: Run-time injection &#x2014; `run-executor.ts` reads, resolves, dedupes, injects, traces
+
+**Dependencies:** Step 3, Step 4, Step 5
+**Owned paths:**
+- `server/src/modules/reviews/run-executor.ts` (extend `runOneAgent`, add one private method)
+
+**What to do:**
+1. Add a new private method `buildContextDocs(workspaceId: string, repoId: string, repo: RepoRow-like, agentId: string, runLog: RunLogger): Promise<{ specs: string[]; trace: RunTraceContextDoc[] }>`:
+   - Resolve the agent's direct attachments (`ContextDocsRepository.agentAttachments(agentId)`, ordered) and, for each of the agent's linked+enabled skills (already fetched earlier in `runOneAgent` via `this.agents.linkedSkills(agent.id)` &#x2014; REUSE that call's result, do not re-fetch), that skill's attachments (`ContextDocsRepository.skillAttachments(skillId)`, ordered).
+   - Merge into one ordered list: agent-direct paths first (in their order), then skill-derived paths (in skill order, then per-skill attachment order), **deduping by path** (AC-14) &#x2014; first occurrence wins, keep-order dedup (mirrors the `dedupeStrings` linear-scan pattern already used in `blast/service.ts`).
+   - Resolve the repo's context folders (`ContextDocsRepository.getContextFolders`) and clone root (`container.git.clonePathFor(repo)`).
+   - For each deduped path: run `resolveConfinedPath(cloneRoot, folders, path)`. If it returns `null` &#x2192; push `{ path, token_size: 0, status: 'skipped', skip_reason: 'outside clone root or configured folders' }` (AC-13), do NOT attempt a read.
+   - If confined: try `container.git.readFile(repo, relativePath)`. On failure (ENOENT / any read error) &#x2192; push `{ path, token_size: 0, status: 'skipped', skip_reason: 'file not found in clone' }` (AC-12). On success: count tokens via `container.tokenizer.count(text)`, push `{ path, token_size, status: 'injected', skip_reason: null }`, and append `wrapUntrusted` is NOT applied here (that stays reviewer-core's job) &#x2014; append the RAW text to the `specs: string[]` array in dedup order.
+   - Log via `runLog.info` a one-line summary (e.g. `context docs: 2 injected (410 tokens), 1 skipped`) &#x2014; matches the existing `skills: N skill(s) injected` logging convention at `run-executor.ts:288-290`.
+   - Return `{ specs, trace }`.
+2. In `runOneAgent`, call this new method right after the existing skills-injection block (do NOT touch the existing `skillBodies` spread &#x2014; additive only, per the documented 2026-06-30 mistake about deleting an existing spread). Store the result in a local `contextDocsResult`.
+3. Add `...(contextDocsResult.specs.length ? { specs: contextDocsResult.specs } : {})` to the `reviewPullRequest({...})` call options object &#x2014; additive spread alongside the existing `skills`/`callers`/`repoMap`/`intent` spreads.
+4. In the `RunTrace` object constructed after a successful run (`trace: RunTrace = {...}`), set:
+   - `specs_read: contextDocsResult.trace.filter(d => d.status === 'injected').map(d => d.path)` (repurposing the previously-always-`[]` field per the confirmed Recommendation 3).
+   - `context_documents: contextDocsResult.trace` (the full array &#x2014; both injected and skipped).
+5. In `traceFromBuffer` (the minimal failure-path trace), set `context_documents: []` and leave `specs_read: []` (a failed/cancelled run never reached the point of resolving context docs, or did but the trace is best-effort minimal on that path &#x2014; keep it simple and empty, consistent with the other minimal-trace fields).
+6. Confirm the two `insights.md`-documented invariants are NOT broken: the `skills` spread and all other existing spreads remain untouched &#x2014; do a full diff read before committing.
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+- [ ] Manual smoke: attach a document to a seeded agent, trigger a review run, inspect `run_traces.trace->>'context_documents'` via psql shows the injected doc with correct token_size
+- [ ] Manual smoke: attach a document with a since-deleted path, confirm the run completes normally and the trace records a `skipped` entry with `skip_reason`
+
+**Commit:** `feat(server): inject attached context documents into the review prompt and run trace`
+
+---
+
+### Step 7: Client &#x2014; Project Context page (browse, preview, token count, used-by count, root-folder config)
+
+**Dependencies:** Step 1 (cleanup + retained route/nav/i18n identity), Step 3 (contracts), Step 4 (API)
+**Owned paths:**
+- `client/src/lib/hooks/context-docs.ts` (new)
+- `client/src/app/repos/[repoId]/context/page.tsx` (new content at the retained route path)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/` (new folder: `ContextDocsView.tsx`, `styles.ts`, `index.ts`)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` (new: read-only markdown preview using vendored `Markdown.tsx`)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/FoldersConfig/` (new: root-folder-name editor)
+- `client/messages/en/context.json` (REWRITE contents &#x2014; retained namespace file, old dead-scaffold keys replaced with the real page's keys)
+
+**What to do:**
+1. `hooks/context-docs.ts`: `useContextDocs(repoId)` &#x2192; `GET /repos/:id/context-docs`, query key `["context-docs", repoId]`; `useContextFolders(repoId)` &#x2192; `GET /repos/:id/context-folders`, key `["context-folders", repoId]`; `useSetContextFolders(repoId)` mutation &#x2192; `PUT /repos/:id/context-folders`, invalidates both `context-folders` and `context-docs` keys (folder change affects discovery); `useContextDocPreview(repoId, path)` &#x2192; `GET /repos/:id/context-docs/preview?path=...`, `enabled: !!path`. This is a NEW hook file with NEW query keys &#x2014; it does not resurrect or rename the deleted `useContextFiles`/`useReindexContext`.
+2. `ContextDocsView.tsx`: renders a filterable table (path, category badge, token count, used-by count, preview button) sourced from `useContextDocs`. Empty state via vendored `EmptyState` when the list is empty AND folders resolved successfully (AC-18) &#x2014; no attach/detach controls anywhere on this page (AC-8, hard constraint). Loading via vendored `Skeleton`.
+3. `FoldersConfig`: small inline editable chip-list (add/remove folder name), calls `useSetContextFolders` on save. Defaults shown are `specs`/`docs`/`insights` when the API returns the default set.
+4. `PreviewModal`: uses vendored `Modal` + `Markdown` components, read-only (AC-17) &#x2014; no textarea, no save button, no edit-mode toggle (explicitly different from the OLD, now-deleted `context.json`'s `mode.edit`/`editor.save` scaffolding keys &#x2014; do not reintroduce those keys or that UX; Step 1 already removed the code that used them, this step now also replaces the leftover JSON keys themselves).
+5. `page.tsx`: Server Component shell resolving `repoId` from `params` (await per Next 15 async params convention), renders `ContextDocsView` client component.
+6. Rewrite `client/messages/en/context.json` from scratch: delete the old keys (`title`, `chunks`, `reindex`, `indexing`, `resync`, `resyncing`, `indexStatus`, `loadError`, `kb`, `empty.title`/`empty.body` describing "spec files"/".devdigest/specs/", `mode.preview`/`mode.edit`, `editor.*`) and replace with keys for: page title, empty state title/body (matching THIS feature's discovery model &#x2014; configured root folders, not `.devdigest/specs/`), category badges, token count label, used-by count label, preview action, folders-config section title/add/remove/save. Keep the file at the same path so the namespace load (whatever registers `context.json` for the `context` i18n namespace) keeps working unchanged.
+7. Confirm (do not just assume) that `client/src/lib/hooks/core.ts`, `vendor/shared/contracts/platform.ts` (both copies), and `client/src/lib/types.ts` were already cleaned in Step 1 and stay that way &#x2014; this page must build ONLY on the new `context-docs.ts` hooks and `ContextDocument` contract, never on anything this plan deleted.
+
+**Verify:**
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm test` (new tests added in Step 9)
+- [ ] Manual: navigate to `/repos/:repoId/context`, confirm sidebar highlights the existing "context" nav item (nav key untouched since Step 1, now finally pointing at real content)
+- [ ] Manual: confirm no attach/detach control appears anywhere on this page
+- [ ] Grep confirms `context.json` no longer contains any of the old dead-scaffold keys (`chunks`, `reindex`, `indexStatus`, `mode.edit`, `editor.save`, etc.)
+
+**Commit:** `feat(client): add Project Context page &#x2014; browse, preview, token/used-by counts, root-folder config`
+
+---
+
+### Step 8: Client &#x2014; Agent Editor Context tab, Skill editor "Project context to use" section, reorder, live serialization preview, trace UI
+
+**Dependencies:** Step 7 (shares hooks/components), Step 6 (trace shape)
+**Owned paths:**
+- `client/src/lib/hooks/context-docs.ts` (extend: agent/skill attachment hooks)
+- `client/src/app/agents/[id]/_components/AgentEditor/constants.ts` (add tab entry)
+- `client/src/app/agents/[id]/_components/AgentEditor/AgentEditor.tsx` (wire new tab)
+- `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/` (new: `ContextTab.tsx`, `styles.ts`, `index.ts`)
+- `client/src/app/skills/_components/SkillDetail/ConfigTab.tsx` (add "Project context to use" section)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx` (add context-documents section)
+- `client/messages/en/agents.json` (add `context.*` keys under the `agents` namespace, matching the existing `skills.*` sibling keys)
+- `client/messages/en/skills.json` (add `contextDocs.*` keys)
+- `client/messages/en/runs.json` (add trace section keys)
+
+**What to do:**
+1. Extend `hooks/context-docs.ts`:
+   - `useAgentContextDocs(agentId)` &#x2192; `GET /agents/:id/context-docs`, key `["agent-context-docs", agentId]`.
+   - `useSetAgentContextDocs(agentId)` mutation &#x2192; `POST /agents/:id/context-docs`, invalidates the same key.
+   - `useSkillContextDocs(skillId)` / `useSetSkillContextDocs(skillId)` &#x2014; identical shape for skills, key `["skill-context-docs", skillId]`.
+2. `ContextTab.tsx` (Agent Editor) &#x2014; direct structural copy of `SkillsTab.tsx`'s layout and drag-reorder logic (linked-list section with drag handles, `moveUp`/`moveDown`/detach; available-documents section with filter input + Attach button), but sourced from `useContextDocs(selectedRepoId)` &#x2014; agents are workspace-level (no owning repo), so the picker MUST use an EXPLICIT, deterministic, user-visible selected repository from shell context / route state, and surface which repo is being browsed so the user understands the source (never an implicit "active-repo" guess). The saved attachment stores ONLY the repo-relative path (repo-agnostic; resolved against the PR's repo at run time &#x2014; see the attachment-scoping model in �4) &#x2014; instead of `useSkills()`, and `useAgentContextDocs`/`useSetAgentContextDocs` instead of the skill equivalents. Each row shows path, category badge (color-coded by root folder name, reusing the `TYPE_COLOR`-style lookup pattern but keyed by folder name), token count, and a preview control (opens the same `PreviewModal` component built in Step 7 &#x2014; export it from `ContextDocsView`'s index or promote it to a shared location if a second consumer needs it, per `frontend-architecture`'s promotion rule: "code starts feature-scoped; promote to shared only on the second consumer" &#x2014; this Step IS that second consumer, so promote `PreviewModal` to `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` staying put and imported directly, OR move to a shared location; decide simplicity: since both consumers are under different route trees, promote it to `client/src/vendor/ui/kit/` only if it has zero page-specific coupling &#x2014; otherwise keep it in `context/_components/` and import cross-tree, which is acceptable for client code that isn't a "feature" in the strict FSD sense here; the project has no FSD enforcement &#x2014; follow the existing precedent where `RunTraceDrawer`'s sub-components are imported from PR-detail-tree code elsewhere in the app).
+
+   **NOTE (superseded by v2 Step 16):** the resulting `ContextDocsList` component (used by BOTH this tab and the skill editor's section below) shipped in v1 with a SPLIT two-section layout (a "linked" list with drag/reorder above a separate "available documents" list with per-row Attach buttons). v2 Step 16 REDESIGNS this into a single unified checkbox list per the design mock &#x2014; do not extend the split-section design further; v2 replaces it wholesale.
+   - Filter input matches document path/category (AC-6 "name/path filter").
+   - Live serialization preview (AC-9): a small collapsible panel below the linked-documents list showing, computed client-side from the current linked list's `ContextDocument` metadata (already in the `useContextDocs` cache &#x2014; no new fetch): an ordered list of `spec-0`, `spec-1`, &#x2026; labels with their paths, and a running token total. Pure computed value, no `useEffect`.
+3. Add `{ key: "context", labelKey: "editor.tabs.context", icon: "FileText" }` to `AgentEditor/constants.ts`'s `TABS` array (after `skills`), and wire `tab === "context" ? <ContextTab agent={agent} /> : ...` in `AgentEditor.tsx`.
+4. In `SkillDetail/ConfigTab.tsx`, add a new "Project context to use" section using the same `ContextTab`-style list (extract the reusable list-row rendering into a small shared sub-component consumed by both `ContextTab` (agent) and this section (skill) if the duplication is substantial &#x2014; apply the promotion rule again: two consumers now exist, so factor the row-rendering + drag logic into one shared component parameterized by `linkedIds`/`attach`/`detach`/`moveUp`/`moveDown` callbacks, analogous to how `SkillsTab` is currently NOT shared with anything else but this feature creates the second consumer that justifies extraction).
+
+   **NOTE (superseded by v2 Step 15):** v2 moves this section OUT of `ConfigTab.tsx` entirely into a new, dedicated `SkillDetail/ContextTab.tsx` (a sibling tab, matching the agent editor and the design mock's tab row: Config / Context / Preview / Evals / Stats / Versions). Embedding it inside `ConfigTab` was the v1 interim placement; v2 Step 15 relocates it &#x2014; do not treat its ConfigTab placement as permanent when reading later code.
+5. `TraceBody.tsx`: add a new section (or extend the existing "Prompt Assembly" section) rendering `trace.context_documents`: for each entry show path + token_size + status badge (injected=ok color, skipped=muted with the skip_reason as a tooltip/subtitle); an "open full text" action for injected docs &#x2014; since the full injected text is already inside `prompt_assembly.specs` (the joined string), either (a) parse out the corresponding `wrapUntrusted('spec-N', ...)` block by index for display, or (b) simpler and more robust: show the per-document metadata (path/tokens/status) in the new section AND keep the existing `PromptBlock` rendering of `trace.prompt_assembly.specs` (already implemented, shows the raw joined text) as the "full text" &#x2014; the "open full text" requirement of AC-15 is satisfied by the existing `defaultOpen={false}` collapsible `TraceSection` for Prompt Assembly, which the new context-documents section links to/sits directly above. Prefer approach (b) &#x2014; it reuses existing rendering rather than fragile string-parsing by label index.
+6. Add i18n keys in the three touched namespace files. Do not touch `context.json` again in this step (already rewritten in Step 7).
+
+**Verify:**
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm test`
+- [ ] Manual: Agent Editor &#x2192; Context tab shows documents, attach/detach/reorder persists (`GET /agents/:id/context-docs` reflects the change after reload)
+- [ ] Manual: Skill editor &#x2192; "Project context to use" section behaves identically
+- [ ] Manual: run a review with attached docs, open the run's trace drawer, confirm the new context-documents section lists injected + skipped entries correctly
+
+**Commit:** `feat(client): add Context tab (agents), Project context section (skills), reorder, and trace UI`
+
+---
+
+### Step 9: Tests &#x2014; server hermetic coverage for discovery, confinement, dedup, injection, trace
+
+**Dependencies:** Step 4, Step 5, Step 6
+**Owned paths:**
+- `server/test/context-docs-helpers.test.ts` (new &#x2014; pure function tests, no DB)
+- `server/test/context-docs-service.test.ts` (new &#x2014; hermetic, mock `container.git`/`container.tokenizer`/`container.db`)
+- `server/test/context-docs-routes.test.ts` (new &#x2014; hermetic route test, mirrors the pattern in `server/test/blast-routes.test.ts` per `server/insights.md` 2026-07-02 pattern entry: mock db with call-counted fixture rows, `overrides: { auth: MockAuthProvider }`)
+- `server/test/run-executor-context-docs.test.ts` (new &#x2014; hermetic, extends existing run-executor test fixtures if present, else new file)
+
+**What to do:**
+1. `context-docs-helpers.test.ts`: unit-test `resolveConfinedPath` exhaustively &#x2014; valid path inside a configured folder (accept), `../../secret` traversal (reject), path resolving outside clone root via absolute-path injection (reject), path under an unconfigured folder e.g. `node_modules/x.md` (reject), path exactly at clone root with no subfolder (reject &#x2014; must be under a configured folder, not the root itself), empty `folders` array (reject everything). Also test `categoryFor`.
+2. `context-docs-service.test.ts`: mock `container.git` (`clonePathFor`, `readFile`) and `container.tokenizer` (`count`) per the existing `src/adapters/mocks.ts` pattern; verify `listDocuments` returns `[]` on no clone path (not an error), returns correct `token_count`/`category` for discovered files, and `usedByCounts` correctly attributes both direct and skill-derived attachments. Also verify the discovery cache: a second `listDocuments` at the same repo HEAD + folders does NOT re-invoke `container.git.readFile` (assert the mock read call-count is unchanged), while a `setContextFolders` change (or a changed HEAD sha) forces a re-read.
+3. `context-docs-routes.test.ts`: hermetic Fastify `inject()` tests for `GET/PUT /repos/:id/context-folders`, `GET /repos/:id/context-docs`, workspace-scoping (cross-workspace repo id &#x2192; 404), and the agent/skill attachment routes added in Step 5.
+4. `run-executor-context-docs.test.ts`: hermetic test asserting: (a) an agent with one directly-attached doc and one skill-attached doc (same doc attached to both) results in exactly one entry in the final `specs` array passed to `reviewPullRequest` (AC-14 dedup); (b) a stale/deleted path produces a `skipped` trace entry and the run still completes successfully (AC-12); (c) a path-traversal-crafted stored path never reaches `container.git.readFile` (AC-13 &#x2014; assert the mock read function was never called with that path).
+
+**Verify:**
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` &#x2014; all new + existing hermetic tests pass
+- [ ] No test mocks the database (hermetic tests use `src/adapters/mocks.ts`, not a real DB) per `server/AGENTS.md` testing rule
+
+**Commit:** `test(server): add hermetic coverage for context-docs discovery, confinement, dedup, and run injection`
+
+---
+
+### Step 10: Tests &#x2014; client coverage for Context tab, Project Context page, trace UI
+
+**Dependencies:** Step 7, Step 8
+**Owned paths:**
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/ContextDocsView.test.tsx` (new)
+- `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/ContextTab.test.tsx` (new)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.test.tsx` (extend if exists, else new)
+
+**What to do:**
+1. `ContextDocsView.test.tsx`: fetch mocked (per client testing convention &#x2014; no running server), assert empty state renders when the API returns `[]` (AC-18), document rows render path/category/token/used-by, preview modal opens read-only content, folder-config save calls the PUT endpoint, and &#x2014; critically &#x2014; assert NO attach/detach control is rendered anywhere on the page (AC-8 negative assertion).
+2. `ContextTab.test.tsx`: fetch mocked; assert attach/detach/reorder call the correct mutation endpoints with the correct ordered `document_paths` array; assert the live serialization preview updates when the linked set changes (AC-9).
+3. `TraceBody.test.tsx`: assert a `RunTrace` fixture with `context_documents` containing one injected + one skipped entry renders both, with the skip reason visible for the skipped one.
+
+**Verify:**
+- [ ] `cd client && pnpm test`
+- [ ] `cd client && pnpm typecheck`
+
+**Commit:** `test(client): add coverage for Project Context page, agent Context tab, and trace UI`
+
+---
+
+## 6. Acceptance Criteria (v1)
+
+- [ ] AC-1: `GET /repos/:id/context-docs` lists every `.md` under configured root folders at any depth, each with repo-relative path &#x2014; Step 4, Step 7
+- [ ] AC-2: Custom folder set restricts discovery; absent &#x2192; defaults to `specs`/`docs`/`insights` &#x2014; Step 2 (`repos.context_folders`), Step 4
+- [ ] AC-3: Zero LLM calls in discovery/token-count/injection &#x2014; Step 4, Step 6 (structurally enforced &#x2014; `context-docs/service.ts` never touches `container.llm`)
+- [ ] AC-4: Token count via existing deterministic tokenizer &#x2014; Step 4 (`container.tokenizer.count`)
+- [ ] AC-5: `used_by_agents` = direct + via-skill distinct agent count &#x2014; Step 4 (`usedByCounts`)
+- [ ] AC-6: Editors show path/category/token/preview + name/path filter &#x2014; Step 8 (`ContextTab`, skill "Project context to use" section)
+- [ ] AC-7: Attach/detach persists as path only, never text &#x2014; Step 2 (link tables have no text column), Step 5, Step 8
+- [ ] AC-8: Attach/detach controls ONLY in editors; page is browse/preview/config only &#x2014; Step 7 (page has no attach control), Step 8 (editors own attach), verified by negative test in Step 10
+- [ ] AC-9: Live serialization preview updates with the attached set &#x2014; Step 8 (client-computed, no new endpoint)
+- [ ] AC-10: Run time reads attached docs (direct + via skills) fresh from clone, injects into `## Project context` &#x2014; Step 6
+- [ ] AC-11: Untrusted-wrapped + injection-guarded &#x2014; reuses existing `wrapUntrusted`/`INJECTION_GUARD` in `reviewer-core/src/prompt.ts` (verified unchanged, exercised for the first time) &#x2014; Step 6
+- [ ] AC-12: Missing file &#x2192; skip, run completes, trace records skip+path &#x2014; Step 6, tested in Step 9
+- [ ] AC-13: Path outside clone/folders &#x2192; skip, recorded, never read &#x2014; Step 4 (`resolveConfinedPath`), Step 6, tested in Step 9
+- [ ] AC-14: Same doc direct + via-skill &#x2192; injected exactly once &#x2014; Step 6 (dedup), tested in Step 9
+- [ ] AC-15: Run trace records injected docs with path+token size, full text openable &#x2014; Step 3 (`context_documents` field), Step 6, Step 8 (trace UI)
+- [ ] AC-16: Skipped docs listed with path + skip reason &#x2014; Step 3, Step 6, Step 8
+- [ ] AC-17: Preview renders read-only &#x2014; Step 7 (`PreviewModal`, no edit affordance) &#x2014; **superseded in v2 by AC-23 (Preview is now one of two modes, still read-only in Preview mode)**
+- [ ] AC-18: No `.md` found &#x2192; empty state, not error/blank &#x2014; Step 4 (`listDocuments` returns `[]`, never throws for "nothing found"), Step 7 (`EmptyState`)
+- [ ] AC-19: Eval/integration scenario &#x2014; out of automated-test scope for this plan; its deterministic precondition (AC-10/AC-11) is covered
+- [ ] AC-20: Reorder via drag handle persists and controls injection order &#x2014; Step 5 (order column), Step 6 (order-preserving merge), Step 8 (drag UI)
+- [ ] AC-21: Root-folder set is user-editable and applies to subsequent discovery &#x2014; Step 2 (`repos.context_folders`), Step 4 (`PUT /repos/:id/context-folders`), Step 7 (`FoldersConfig`)
+
+**Cleanup acceptance checks (Step 1, not spec AC-numbered but gating for this plan):**
+- [ ] Zero references to `SpecFile` remain in `client/src` or `server/src`
+- [ ] Zero references to the dead Zod `IndexStatus` (from `vendor/shared/contracts/platform.ts`) remain; the LIVE `repo-intel/types.ts` `IndexStatus` string-union and its 5 call sites are unchanged and still compile
+- [ ] Zero references to `useContextFiles` / `useReindexContext` remain
+- [ ] `client/src/lib/hooks/repo-intel.ts:2` no longer references a nonexistent `hooks/context.ts`
+- [ ] `pnpm typecheck` (server + client), `pnpm build` (client), and existing unit tests all pass after the deletions
+
+## 7. Testing Plan (v1)
+
+**Server:** all new tests are hermetic (`.test.ts`, mocked `container.git`/`container.tokenizer`/`db` fixtures per `src/adapters/mocks.ts` and the `blast-routes.test.ts` call-counted-db pattern) &#x2014; no integration (`.it.test.ts`) tests are added by this plan, since the feature has no behavior that specifically requires Testcontainers/real-Postgres semantics beyond what the existing migration-apply smoke test in Step 2 already covers manually.
+
+**Client:** Vitest + RTL, fetch mocked, no running server needed, per `client/AGENTS.md`.
+
+| Test | Type | Covers |
+|---|---|---|
+| Step 1 cleanup gate (typecheck/build/test pass, zero dangling references) | mechanical (grep + existing suites) | Cleanup acceptance checks |
+| `resolveConfinedPath` traversal/confinement matrix | hermetic (pure fn) | AC-13 |
+| `ContextDocsService.listDocuments` empty/populated/no-clone-path | hermetic | AC-1, AC-2, AC-4, AC-18 |
+| `ContextDocsService` discovery cache &#x2014; hit skips re-read; folder-change + HEAD-sha-change invalidate | hermetic | Non-functional �7 perf (&#x2264; 500 ms p95) |
+| `usedByCounts` direct + via-skill attribution | hermetic | AC-5 |
+| `context-docs` route workspace-scoping (cross-workspace 404) | hermetic | Non-functional �7 workspace isolation |
+| Agent/skill attachment routes (attach/detach/reorder persistence) | hermetic | AC-7, AC-20 |
+| `run-executor` dedup (direct + skill, same path &#x2192; once) | hermetic | AC-14 |
+| `run-executor` stale path &#x2192; skip + trace, run still completes | hermetic | AC-12 |
+| `run-executor` traversal path never reaches `readFile` | hermetic | AC-13 |
+| `ContextDocsView` empty state, no attach controls | RTL | AC-8, AC-18 |
+| `ContextDocsView` preview read-only rendering | RTL | AC-17 |
+| `ContextTab` attach/detach/reorder mutation calls | RTL | AC-6, AC-7, AC-20 |
+| `ContextTab` live serialization preview updates | RTL | AC-9 |
+| `TraceBody` context-documents section (injected + skipped) | RTL | AC-15, AC-16 |
+
+## 8. Out of Scope (v1)
+
+- **Automatic per-PR document selection ("flash-selector")** &#x2014; explicit spec Non-goal; manual attach only in this feature.
+- **A dedicated spec-conformance agent that blocks merges** &#x2014; planned for a later lesson (L06); this feature only makes the reviewer read attached context.
+- ~~**In-browser editing / write-back of documents to the repo clone**~~ &#x2014; **superseded by v2 (AC-22&#x2026;AC-31): in-browser view/edit/upload is now in scope, via a DB overlay, never a clone write.** The clone itself remains permanently read-only (unchanged v1 decision) &#x2014; only the *editing surface* changed, from "deferred" to "DB-shadow overlay."
+- **Automatic truncation or token-budget enforcement across attached documents** &#x2014; token counts are shown for manual management only; no auto-trim in this feature.
+- **Snapshotting / versioning of attached document content** &#x2014; an attachment is a live path reference re-resolved at each run; no per-attachment content history is kept. **(v2 note: `doc_overrides.version` is a last-write-wins counter for race safety, NOT a version history &#x2014; no prior versions are retrievable.)**
+- **AC-19's eval/integration acceptance scenario** ("agent with an attached invariant flags a violating PR") &#x2014; this is a qualitative eval-harness scenario per the spec's own annotation ("verify: eval / integration review scenario"), not a deterministic unit/integration test; only its deterministic precondition (AC-10/AC-11 &#x2014; the invariant text reaches the prompt) is covered by this plan's automated tests.
+- **Renaming the sidebar nav key, the route folder name, or the `context.json` filename itself** &#x2014; Step 1 repurposes their CONTENTS for the real feature but does not rename the identifiers themselves (the nav key stays `"context"`, the route stays `/repos/[repoId]/context`, the message file stays `context.json`) since that repurposing is what resolves the collision cleanly per the coordinator's confirmed decision; renaming them further is unnecessary churn outside this feature's goal.
+
+---
+---
+
+## v2 &#x2014; Design-mock parity
+
+**Requirements:** AC-22&#x2026;AC-36 (spec revised 2026-07-03; AC-34 added during plan review to close a gap in AC-33's "deleted" trigger; AC-35 added during plan review for the skill-editor Context tab; AC-36 added during plan review to guarantee the Context page works for ANY repo, including one with no readable clone &#x2014; see Step 15, Step 12).
+**Builds on:** v1 Steps 1&#x2013;10 above (implemented, verified, uncommitted in the working tree). Do not re-open v1 steps; v2 steps only ADD to or, where explicitly stated, REWRITE a v1-owned file (the rewrite is called out per-step so ownership never overlaps two steps).
+**Execution mode:** single-agent, continuing strictly after Step 10.
+
+### v2 Context
+
+v1 shipped a read-only Project Context page (single-column table + modal preview) and read-only run-time injection straight from the clone. It also shipped the agent editor's Context tab and a skill editor "Project context to use" section &#x2014; both as a two-section (linked list + separate available-documents list) attach/detach picker embedded directly inside the skill's `ConfigTab`. v2 achieves full design-mock parity across THREE surfaces:
+
+1. **The Project Context page** &#x2014; rewritten into a two-panel master-detail layout with inline view/edit, upload, delete, and a coverage ring &#x2014; all backed by a new `doc_overrides` database table so the clone (hard-reset by `sync()` on every poll) never has to be written to.
+2. **The attach/detach picker** (`ContextDocsList`, shared by both editors) &#x2014; redesigned from the v1 two-section layout into the mock's single unified checkbox list.
+3. **The skill editor** &#x2014; gains its own dedicated "Context" tab (matching the agent editor and the mock's tab row), instead of the picker being embedded inside Config.
+
+Every read path that currently reads "the document" &#x2014; discovery/listing, preview, and run-time injection &#x2014; must now resolve "effective content" as **overlay body if a `doc_overrides` row exists for that `(repo_id, path)`, otherwise the clone file** (AC-25). A document with an overlay but no clone file is "overlay-only" (AC-27) and is discovered purely from `doc_overrides`. A coverage percentage (distinct-agents-using � total-workspace-agents � 100) is added alongside the existing "used by N agents" count. Deletion of an overlay is supported (AC-34) with two branches: reverting to clone content (if a clone file exists) or removing the document entirely (if overlay-only).
+
+### v2 Architecture Fit
+
+- **`doc_overrides` table** (new migration `0014`) &#x2014; `(repo_id, path)` unique, `body text not null`, `version integer not null default 1`. No direct `workspace_id` column &#x2014; same documented exception as `agent_context_docs`/`skill_context_docs`: every query joins through `repos.workspace_id`.
+- **`context-docs/repository.ts`** gains an overlay sub-repository's worth of methods (kept in the SAME repository class &#x2014; one more table owned by the same module, not a new module): `getOverlay(repoId, path)`, `listOverlays(repoId)`, `upsertOverlay(repoId, path, body)`, `deleteOverlay(repoId, path)` &#x2014; all workspace-scoped via a join to `repos`.
+- **`context-docs/service.ts`** gains the overlay-preferring read path: `listDocuments` now merges the clone-discovered inventory with `listOverlays` (union of paths, overlay wins on conflict, `source` computed at merge time &#x2014; never stored), `previewDocument`/a new `getDocumentContent` prefers the overlay body, and new methods `saveDocument` (upsert) and `deleteDocument` (conditional revert-vs-remove per AC-34) are added. A new `coverage(workspaceId)` computation reuses `usedByCounts` and divides by a new `countWorkspaceAgents(workspaceId)` repository method.
+- **`context-docs/routes.ts`** gains `PUT /repos/:id/context-docs` (create/upload &#x2014; body `{ path, body }`) and `DELETE /repos/:id/context-docs` (body `{ path }` &#x2014; AC-34); the v1 `GET /repos/:id/context-docs/preview` route is RENAMED to `GET /repos/:id/context-docs/content` (see Step 12).
+- **`run-executor.ts`'s `buildContextDocs`** gains one overlay lookup per resolved path, tried BEFORE the existing `resolveConfinedPath` + `container.git.readFile` branch &#x2014; overlay content is used as-is when present (still subject to the same confinement check on the PATH, since a stored attachment path must still resolve under a configured folder; only the CONTENT source changes, not the path-safety gate).
+- **Project Context page client** &#x2014; `ContextDocsView.tsx` and `styles.ts` are REWRITTEN (not extended) into a two-panel layout: `DocList` (left, replaces the table body) + `DocDetail` (right, new &#x2014; Preview/Edit toggle, `Markdown` render or `Textarea` edit, Save/Delete/Upload controls, `CircularScore` coverage ring). `PreviewModal` is retired (its read-only rendering logic moves into a new `DocPreviewPane`, consumed by `DocDetail`'s Preview mode AND the redesigned `ContextDocsList` picker). `FoldersConfig` is reused unchanged.
+- **Picker client** &#x2014; `ContextDocsList.tsx` (shared by the agent Context tab and the new skill Context tab) is REDESIGNED from its v1 two-section layout into a single unified list: each row = drag handle + checkbox (checked = attached) + path + category badge + Preview button; header shows an "X of Y attached" pill + the browsed-repo badge + an order-matters hint. Only CHECKED (attached) rows are draggable/reorderable.
+- **Skill editor client** &#x2014; `SkillDetail.tsx` gains a `context` tab entry (between `config` and `preview`) and a new `SkillDetail/ContextTab.tsx` that renders the shared `ContextDocsList`; `ConfigTab.tsx` loses its embedded v1 section (moved, not duplicated).
+
+### v2 Skills & Patterns Applied
+
+**`backend-onion-architecture`:**
+- The overlay CRUD stays inside the EXISTING `context-docs` module &#x2014; it is the same bounded concept (context documents), not a new domain. Adding it to a fresh module would split one concept across two modules for no reason; `ContextDocsRepository`/`ContextDocsService` simply grow.
+- `service.ts` still never imports concrete adapters; overlay reads/writes go through `this.repo` (the existing `ContextDocsRepository`), same as v1.
+- `routes.ts` still only validates + delegates; the revert-vs-remove branching logic for delete (AC-34) is BUSINESS LOGIC and belongs in `service.ts`, not the route handler.
+
+**`typescript-expert`:**
+- `source: z.enum(['clone', 'overlay', 'overlay-only'])` added to `ContextDocument` &#x2014; additive field, existing consumers that destructure specific fields are unaffected; consumers that spread the whole object get the new field for free.
+- `coverage: z.number().int().min(0).max(100)` &#x2014; additive, non-nullable (spec says "rendered `0` when the workspace has no agents" &#x2014; never `null`).
+- The new `DocOverride`/edit-request/upload-request contracts follow the same "Zod schema + `z.infer` type together" pattern as v1's Step 3.
+
+**`zod`:**
+- `SaveContextDocBody = z.object({ path: z.string().min(1), body: z.string() })` &#x2014; `body` allowed to be an empty string (an empty document is valid per v1's existing "empty document &#x2192; 0 tokens" edge case, extended to overlays); `path` must be non-empty but is NOT re-validated for folder-confinement at the schema layer (that is a business rule checked in `service.ts` against the repo's configured folders, consistent with v1's existing attach-time-validation pattern already documented in v1 �4 "Security &#x2014; attacker-controlled input trace").
+- `DeleteContextDocBody = z.object({ path: z.string().min(1) })`.
+
+**`drizzle-orm-patterns` / `postgresql-table-design`:**
+- `doc_overrides`: `repoId uuid not null references repos(id) on delete cascade`, `path text not null`, `body text not null`, `version integer not null default 1`, unique constraint on `(repo_id, path)` (mirrors the composite-PK pattern used for the v1 link tables, but here a plain `unique()` index is used rather than a composite PK since `id` &#x2014; a surrogate uuid PK &#x2014; is still useful for a single-row `RETURNING` on upsert; decision: use a surrogate `id uuid primary key default gen_random_uuid()` PLUS a `unique(repo_id, path)` constraint, since upsert-by-natural-key with Drizzle's `.onConflictDoUpdate` needs a named unique constraint target anyway, and a surrogate id keeps `RETURNING id` simple for the version-bump read-back).
+- Index on `repo_id` (`doc_overrides_repo_idx`) for the `listOverlays(repoId)` per-repo query, per `postgresql-table-design` FK-not-auto-indexed guidance.
+- `TEXT` for `path` and `body` (never `VARCHAR(n)` &#x2014; `body` can be arbitrarily long markdown).
+- Upsert via Drizzle's `.insert(...).onConflictDoUpdate({ target: [doc_overrides.repoId, doc_overrides.path], set: { body: ..., version: sql\`${doc_overrides.version} + 1\` } })` &#x2014; the mechanical "last write wins, bumped version" behavior the spec's edge-case table requires (�6 "Two saves race on the same document").
+
+**`react-best-practices` / `frontend-architecture` / `next-best-practices`:**
+- `DocDetail`'s Preview/Edit toggle is local `useState` &#x2014; no server round-trip to switch modes; Edit mode's initial textarea value comes from the already-fetched effective-content query (overlay-if-present-else-clone), never a separate "get me the raw clone file" call.
+- Save is a `useMutation` that invalidates `["context-docs", repoId]` (list &#x2014; token count/source may have changed) AND the content-detail query key for that specific path &#x2014; satisfies AC-33's auto-refresh requirement via React Query's normal invalidate-on-mutate flow (no polling, no manual refetch button beyond the explicit "refresh" toolbar affordance in AC-32, which triggers the same invalidate).
+- `CircularScore` (existing vendored component, confirmed present at `client/src/vendor/ui/primitives/CircularScore.tsx`) is reused as-is for the coverage ring &#x2014; no new charting component needed.
+- `Markdown` (existing vendored component at `client/src/vendor/ui/primitives/Markdown.tsx`) is reused as-is for Preview-mode rendering &#x2014; no new markdown renderer.
+- `Textarea` (existing vendored component at `client/src/vendor/ui/kit/Textarea.tsx`) is reused as-is for Edit mode &#x2014; confirm its props support a controlled `value`/`onChange` before wiring (verify by reading the file in Step 14; do not assume).
+- `Checkbox` (existing vendored component, confirmed present at `client/src/vendor/ui/kit/Checkbox.tsx`, controlled `checked`/`onChange` props) is reused as-is for the redesigned `ContextDocsList` row &#x2014; no new checkbox component.
+- `PreviewModal`'s retirement follows the promotion rule in reverse: a component whose only consumer's UX is being replaced is deleted, not kept "just in case" &#x2014; its consumers (the v1 `ContextDocsView` row action, replaced by the rewrite, and `ContextDocsList`'s preview control) are explicitly re-pointed at a small extracted `DocPreviewPane` (the read-only rendering half of the new `DocDetail`, factored out so the picker keeps a lightweight read-only preview without dragging in Edit-mode/Save/Delete/Upload UI it doesn't need).
+- **Tab-set regression class (from the agent editor's own fixed history):** `client/src/app/agents/[id]/page.tsx` derives `VALID_TABS = TABS.map(t => t.key)` from the editor's own tab-definition array specifically because a prior version hardcoded a separate valid-tabs list that drifted from `TABS` (adding a tab to `TABS` without adding it to the gate silently reverted `?tab=context` to `config`). The skill editor's `SkillDetail.tsx` does NOT currently have an external `?tab=` URL-synced gate at all (v1: tab state is local `useState("config")`, no query-string persistence) &#x2014; so this specific regression class does not apply to it verbatim. What DOES carry over: `SkillDetail.tsx`'s `TABS` array (the rendered tab list) and its render switch (`{tab === "..." && <...Tab .../>}`) are two separate lists that must be kept in sync BY HAND (no derivation possible, since there's no separate gate array to derive from) &#x2014; Step 15 must add the `context` entry to BOTH in the same edit and a test must assert the tab is clickable and renders its content, closing the same class of drift the agent page's fix closed for its own two lists (`TABS` vs. render switch).
+- **No-clone repo is a first-class case, not an error state:** `DocList`/`DocDetail` render identically whether the repo has a clone or not — a no-clone repo simply has zero `source: 'clone'`/`'overlay'` documents and only ever shows `source: 'overlay-only'` ones (plus whatever the user uploads going forward). No special "this repo has no clone" banner/empty-state branch is introduced in the client; the existing empty-state (zero documents) and populated-list rendering already cover it once the server-side fix (Step 12) stops discovery from silently returning nothing.
+
+### v2 Project Constraints
+
+- **DB &#x2014; exactly one new migration:** `server/src/db/migrations/0014_doc_overrides.sql`, additive only (`CREATE TABLE doc_overrides`), never touching `0013`'s tables or any other existing table/column. Per the coordinator's grounding note, `db:generate` is confirmed clean at the start of v2 (the drizzle snapshot chain was repaired in v1 Step 2) &#x2014; a straightforward `pnpm db:generate` run is expected to produce a clean `0014` with no manual snapshot surgery.
+- **Clone stays strictly read-only (non-negotiable, restated from spec �7 and v1's Non-goals):** no v2 step may introduce a `container.git.writeFile`/commit/push call anywhere. Grep confirmation of this is part of every v2 step's Verify checklist that touches `service.ts` or `run-executor.ts`.
+- **Overlay content is untrusted (AC-30):** the overlay-branch in `run-executor.ts`'s `buildContextDocs` feeds the SAME `specs: string[]` array as the clone-branch &#x2014; both go through `assemblePrompt()`'s existing `wrapUntrusted('spec-N', &#x2026;)` + `INJECTION_GUARD` unchanged. No new sanitization, no keyword filtering, no second guard layer (mirrors v1 �4's existing "no keyword filtering added" rule).
+- **Read-path precedence is a single rule enforced in exactly one place per surface, never duplicated:** discovery (`listDocuments`), preview/content-fetch (`getDocumentContent`), and run-time injection (`buildContextDocs`) each independently call `this.repo.getOverlay(repoId, path)` (or the batched `listOverlays` for the list case) and prefer it &#x2014; but the "prefer overlay" DECISION LOGIC (if overlay exists, use its body and mark source accordingly) must be implemented as one small shared helper in `context-docs/helpers.ts` (e.g. `resolveEffectiveContent(cloneContent: string | undefined, overlayBody: string | undefined): { content: string; source: ContextDocument['source'] } | undefined`) &#x2014; NOT reimplemented three times with subtly different edge-case handling. This is a new mechanical helper, added in Step 11, consumed by Step 12 (service) and Step 13 (run-executor).
+- **`source` is never a stored column &#x2014; always computed at merge/read time** (per Recommendation 2, adopted): `overlay-only` when no clone file exists at that path, `overlay` when both an overlay row and a clone file exist, `clone` when only a clone file exists. A document with neither (deleted from both sides) does not appear in `listDocuments` at all &#x2014; it simply isn't discovered.
+- **Coverage denominator = ALL workspace agents, enabled or not** (per Recommendation 3, adopted &#x2014; matches v1's existing `used_by_agents` universe, which also does not filter on `agents.enabled`). `coverage = 0` (never `NaN`/`Infinity`) when `countWorkspaceAgents` returns 0 &#x2014; guard the division explicitly, do not rely on JS's `0/0 = NaN` silently reaching the client.
+- **Discovery cache stays clone-only; overlay merge is per-request** (per Recommendation 1, adopted): v1's `discoveryCache` (keyed by `repoId` + clone HEAD sha + folders hash) is UNCHANGED in what it stores &#x2014; still just the clone-file inventory + token counts. The overlay merge (fetch `listOverlays(repoId)`, union with the cached clone inventory, recompute token counts for any path where an overlay's body differs from what's already counted) happens OUTSIDE the cache, on every `listDocuments` call, exactly like `used_by_agents` already does in v1. This means an overlay's token count is recomputed via `container.tokenizer.count()` on every list call for overlaid paths &#x2014; acceptable cost (a handful of documents, no filesystem I/O for the overlay branch, DB read only) and it is what guarantees AC-24/AC-25/AC-27's "immediately reflected" behavior without adding overlay-awareness to the cache key.
+- **Delete NEVER touches clone files (AC-34, non-negotiable):** `deleteDocument` calls `this.repo.deleteOverlay(repoId, path)` and NOTHING else &#x2014; no `container.git` call of any kind. The UI-level distinction ("revert" vs "remove entirely") is a PRESENTATION consequence of the SAME underlying operation (delete the overlay row), not two different server operations &#x2014; the client re-fetches `listDocuments`/`getDocumentContent` after the delete mutation and naturally sees either the reverted clone content or the document's disappearance, depending on whether a clone file existed. Do not build a second "revert" endpoint &#x2014; one `DELETE` endpoint, computed-at-read-time consequence.
+- **Delete UI is enabled only when the selected document HAS an overlay** (AC-34 restated + coordinator's UI note) &#x2014; a pure clone-sourced document (`source: 'clone'`) has no delete control; the client gates this on `doc.source !== 'clone'`.
+- **Every new/changed query workspace-scoped:** `doc_overrides` has no direct `workspace_id` &#x2014; every repository method added in Step 11 joins through `repos` and filters on `repos.workspaceId`, mirroring the documented exception for `agent_context_docs`/`skill_context_docs`. `countWorkspaceAgents` is a direct, already-workspace-scoped query (`agents.workspaceId`), same pattern as `usedByCounts`.
+- **Zero LLM calls (restated):** overlay CRUD, coverage computation, and the merge logic never touch `container.llm`. Coverage is pure arithmetic over already-fetched counts.
+- **i18n:** all new UI strings for the Project Context page (toolbar add/upload/refresh, Preview/Edit toggle labels, Save/Delete buttons, coverage ring tooltip, upload dialog) go into the EXISTING `context.json` namespace (extended, not re-forked) &#x2014; v1 Step 7 already rewrote this file's structure; v2 adds new keys under it (e.g. `toolbar.*`, `detail.*`, `mode.preview`/`mode.edit` reintroduced deliberately this time &#x2014; this is NOT the same dead scaffolding v1 deleted; it is real, wired UI). The redesigned `ContextDocsList` (shared picker) strings live in the EXISTING `agents.json`'s `context.*` sub-namespace (v1 Step 8) &#x2014; reused/extended for the new unified-list labels (`attachedCount`, `orderHint`, etc.), NOT duplicated into `skills.json`; the skill Context tab passes the SAME `t` scope convention `ContextDocsList` already expects (a pre-scoped translator), so no new skill-side i18n keys are needed for the list itself &#x2014; only for the new `SkillDetail/ContextTab.tsx` wrapper's own minimal chrome (a tab label key `skills.tabs.context`, if `SkillDetail.tsx`'s tab labels aren't already i18n-driven &#x2014; verify in Step 15, since v1's `SkillDetail.tsx` currently uses hardcoded English tab labels ("Config", "Preview", etc.), so the new `context` entry should match whatever convention the OTHER four entries use, hardcoded or not &#x2014; do not unilaterally introduce i18n for one tab label while its four siblings remain hardcoded strings; consistency with the existing four wins over ideal i18n coverage in this specific step).
+- **File-size / content-type guard on upload (defense-in-depth, security skill A08):** the upload/create endpoint (`PUT /repos/:id/context-docs`) validates that `path` ends in `.md` (matches the discovery filter's own `.md` extension check &#x2014; an uploaded non-markdown document would never be discovered anyway, so reject it explicitly at write time rather than silently accepting an unreachable row) and caps `body` length server-side (e.g. reject over ~2 MB &#x2014; a markdown context document has no legitimate reason to be larger; this guards against a pathological paste/upload bloating `doc_overrides` and the injected prompt) &#x2014; this is a NEW validation not present in v1 (v1 never accepted arbitrary content, only read existing repo files), so it must be added deliberately in Step 12, not inherited from anywhere.
+- **Path confinement still applies to overlay paths (AC-13's gate is not bypassed by overlays):** `saveDocument`/upload still validates the target `path` resolves under one of the repo's configured `context_folders` (same `resolveConfinedPath`-style check used in v1, but WITHOUT requiring the path to exist in the clone &#x2014; confinement checks the PATH SHAPE, not file existence). A path like `../../etc/passwd` must be rejected even though there is no clone read involved in an overlay-only save; reuse the existing pure helper's segment/prefix logic conceptually (it needs a clone-root-free variant since an overlay-only path may not correspond to any real clone-relative resolution target &#x2014; see Step 12 for the exact adapted check: validate the first path segment is one of the configured folders and the path contains no `..` segments, without requiring `path.resolve` against a real clone root that may not exist for a repo with no clone yet).
+- **Picker redesign scope (unified checkbox list, v2 Step 16):** the SINGLE list replaces BOTH the v1 "linked" section and "available documents" section &#x2014; every repo document (clone + overlay-only, via the same `listDocuments` the Project Context page uses) renders as one row; `checked` = path is in the current linked-paths array; toggling the checkbox calls the SAME `onSetLinked` callback the v1 version already used (attach = append to the array, detach = filter it out) &#x2014; the callback CONTRACT does not change, only the row rendering and the "how do I attach" interaction (checkbox toggle vs. a separate Attach button) change. Only rows where `checked === true` are `draggable` (order is only meaningful for attached docs); unchecked rows render without a drag handle (or with a visually disabled one) since reordering an unattached document has no effect. The reorder mechanic itself (drag start/over/end, `moveUp`/`moveDown` array-splice) is UNCHANGED from v1 &#x2014; only which rows participate changes.
+- **Empty-state fix (v1 bug surfaced by the redesign, v2 Step 16):** v1's split layout showed "All available documents are already linked" (`t("allLinked")`) whenever the unlinked-documents list was empty &#x2014; but that message is WRONG when the repo simply has ZERO documents at all (not "all linked", just "none exist"). The redesign must distinguish these two states explicitly: `docs.length === 0` &#x2192; a "No documents in this repository" empty state (new key, e.g. `t("noDocuments")`); `docs.length > 0 && linkedPaths.length === docs.length` (every document is attached, none left to toggle on &#x2014; though in the unified-checkbox design this isn't really a distinct empty state since attached rows still render, checked &#x2014; so this v1-specific "all linked" empty state may not have a direct equivalent in the new design at all, since unattached rows simply don't exist to show as a separate empty section anymore; the fix is really "when the list-with-checkboxes has zero documents, show `noDocuments`, not any variant of `allLinked`" &#x2014; Step 16 must not port the old `allLinked` string into the new design's zero-document case).
+
+### v2 Implementation Steps (continuing from Step 10)
+
+---
+
+#### Step 11: DB migration + shared contracts &#x2014; `doc_overrides` table, `ContextDocument.source`/`coverage`, overlay/edit/upload/delete contracts
+
+**Dependencies:** Step 10 (v1 complete)
+**Owned paths:**
+- `server/src/db/schema/context-docs.ts` (extend &#x2014; add `docOverrides` table)
+- `server/src/db/schema.ts` (barrel &#x2014; add export)
+- `server/src/db/migrations/0014_doc_overrides.sql` (generated, then reviewed)
+- `server/src/vendor/shared/contracts/context-docs.ts` (extend &#x2014; `source`/`coverage` fields, new request/response shapes)
+- `client/src/vendor/shared/contracts/context-docs.ts` (mirrored copy)
+
+**What to do:**
+1. In `server/src/db/schema/context-docs.ts`, add:
+   ```ts
+   export const docOverrides = pgTable(
+     'doc_overrides',
+     {
+       id: uuid('id').primaryKey().defaultRandom(),
+       repoId: uuid('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
+       path: text('path').notNull(),
+       body: text('body').notNull(),
+       version: integer('version').notNull().default(1),
+     },
+     (t) => ({
+       repoPathUnique: unique('doc_overrides_repo_path_unique').on(t.repoId, t.path),
+       repoIdx: index('doc_overrides_repo_idx').on(t.repoId),
+     }),
+   );
+   ```
+   Import `repos` from `./repos` (new import in this file &#x2014; v1's `context-docs.ts` schema file did not previously import `repos`) and `unique` from `drizzle-orm/pg-core`.
+2. Update `server/src/db/schema.ts`: add `docOverrides` to the re-exported set and the `schema` object (same barrel-update mechanic as v1 Step 2).
+3. Run `cd server && pnpm db:generate`; confirm the output is a single new file `0014_doc_overrides.sql` (rename if the auto-slug differs, keep numeric prefix `0014`) containing ONLY a `CREATE TABLE doc_overrides` + its unique constraint + its index &#x2014; no `ALTER` on any table from `0000`&#x2013;`0013`.
+4. Run `cd server && pnpm db:migrate` locally; confirm clean apply.
+5. In `server/src/vendor/shared/contracts/context-docs.ts`, extend `ContextDocument` (existing v1 object) additively:
+   ```ts
+   export const ContextDocument = z.object({
+     path: z.string(),
+     category: z.string(),
+     token_count: z.number().int().min(0),
+     used_by_agents: z.number().int().min(0),
+     coverage: z.number().int().min(0).max(100),
+     source: z.enum(['clone', 'overlay', 'overlay-only']),
+   });
+   ```
+   (Edit the existing schema object in place &#x2014; do not create a `ContextDocumentV2`; this is the same conceptual document, extended.)
+6. Add three new schemas to the same file:
+   ```ts
+   export const SaveContextDocBody = z.object({ path: z.string().min(1), body: z.string() });
+   export type SaveContextDocBody = z.infer<typeof SaveContextDocBody>;
+
+   export const DeleteContextDocBody = z.object({ path: z.string().min(1) });
+   export type DeleteContextDocBody = z.infer<typeof DeleteContextDocBody>;
+
+   export const ContextDocContent = z.object({
+     path: z.string(),
+     content: z.string(),
+     source: z.enum(['clone', 'overlay', 'overlay-only']),
+   });
+   export type ContextDocContent = z.infer<typeof ContextDocContent>;
+   ```
+   `ContextDocContent` replaces the v1 ad-hoc `{ path: string; content: string }` preview response shape with a named, source-aware contract (the v1 route's inline `z.object({ path: z.string(), content: z.string() })` response schema is superseded &#x2014; see Step 12 for the route-level change).
+7. Mirror steps 5&#x2013;6 byte-for-byte into `client/src/vendor/shared/contracts/context-docs.ts` (lockstep rule, same discipline as v1 Step 3).
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd client && pnpm typecheck`
+- [ ] `pnpm db:migrate` applies without error
+- [ ] Migration file contains ONLY `CREATE TABLE doc_overrides` + its constraint/index &#x2014; no statement touches any pre-existing table
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` &#x2014; existing `contracts.test.ts` fixtures for `ContextDocument` are updated to include `coverage`/`source` (this will fail until fixtures are updated &#x2014; update them in this step, not deferred)
+- [ ] Grep confirms no duplicate export name across `server/src/vendor/shared/contracts/*.ts`
+
+**Commit:** `feat(db,shared): add doc_overrides table and coverage/source/overlay contracts`
+
+---
+
+#### Step 12: Server &#x2014; overlay repository methods, read-path precedence, coverage, save/delete endpoints
+
+**Dependencies:** Step 11
+**Owned paths:**
+- `server/src/modules/context-docs/repository.ts` (extend)
+- `server/src/modules/context-docs/service.ts` (extend)
+- `server/src/modules/context-docs/routes.ts` (extend)
+- `server/src/modules/context-docs/helpers.ts` (extend &#x2014; `resolveEffectiveContent`, `isPathShapeValid`)
+
+**What to do:**
+1. In `helpers.ts`, add two new pure functions:
+   - `resolveEffectiveContent(cloneContent: string | undefined, overlayBody: string | undefined): { content: string; source: 'clone' | 'overlay' | 'overlay-only' } | undefined` &#x2014; returns `undefined` when BOTH are `undefined` (neither clone nor overlay &#x2014; AC-31's "nothing to inject" case); returns `{ content: overlayBody, source: 'overlay' }` when both exist; returns `{ content: overlayBody, source: 'overlay-only' }` when only `overlayBody` exists; returns `{ content: cloneContent, source: 'clone' }` when only `cloneContent` exists. This is the ONE place the precedence rule (AC-25) is decided &#x2014; `service.ts` and `run-executor.ts` both call it, never reimplement the if/else.
+   - `isPathShapeValid(folders: string[], candidatePath: string): boolean` &#x2014; a clone-root-free variant of `resolveConfinedPath`'s shape check, for validating an overlay-only save/upload path that may have no corresponding clone directory yet: normalize the path (reject if it contains a `..` segment anywhere, reject if it's absolute), then check the first segment is in `folders`. Does NOT call `path.resolve` against a real clone root (there may be none). Add a doc-comment explaining explicitly why this differs from `resolveConfinedPath` (no filesystem, path-shape-only) and that it is used for ALL overlay path validation (clone-backed or not) going forward, since its rules are a strict subset of what `resolveConfinedPath` accepts for any path that WOULD resolve inside a real clone root &#x2014; document this simplification explicitly.
+2. In `repository.ts`, add:
+   - `getOverlay(repoId: string, path: string): Promise<{ body: string; version: number } | undefined>` &#x2014; plain select on `doc_overrides` filtered by `repoId`/`path` (workspace scoping happens one level up &#x2014; see below).
+   - `listOverlays(repoId: string): Promise<{ path: string; body: string }[]>` &#x2014; all overlay rows for a repo.
+   - `upsertOverlay(repoId: string, path: string, body: string): Promise<{ version: number }>` &#x2014; `.insert(docOverrides).values({ repoId, path, body }).onConflictDoUpdate({ target: [docOverrides.repoId, docOverrides.path], set: { body, version: sql\`${docOverrides.version} + 1\` } }).returning({ version: docOverrides.version })`.
+   - `deleteOverlay(repoId: string, path: string): Promise<boolean>` &#x2014; `.delete(docOverrides).where(and(eq(docOverrides.repoId, repoId), eq(docOverrides.path, path))).returning(...)`, `true` if a row was deleted.
+   - `countWorkspaceAgents(workspaceId: string): Promise<number>` &#x2014; `select count(*) from agents where workspace_id = ...` (no `enabled` filter, per the adopted Recommendation 3).
+   - **Workspace scoping for the four overlay methods above:** since `doc_overrides` has no `workspace_id`, each of `getOverlay`/`listOverlays`/`upsertOverlay`/`deleteOverlay` is called from `service.ts` ONLY after the repo has already been workspace-validated via the EXISTING `getRepoForDiscovery(workspaceId, repoId)` call (which already 404s on cross-workspace) &#x2014; document this ownership boundary explicitly in a comment on each method, mirroring the documented boundary already present for `agentAttachments`/`skillAttachments` in this same file. Do NOT add a redundant join to `repos` inside these four methods; the guard already happened one call up, exactly like the existing agent/skill attachment methods.
+3. In `service.ts`:
+   - Modify `listDocuments`: after computing `discovered` (clone-only, cached, UNCHANGED per the adopted Recommendation 1) and `usedBy` (UNCHANGED), ALSO fetch `overlays = await this.repo.listOverlays(repoId)` (uncached, every call). Build the union: for every clone-discovered path, look up a matching overlay; for every overlay path with NO matching clone-discovered entry, it's a new overlay-only entry. For each unioned path, call `resolveEffectiveContent(cloneContentIfNeeded, overlayBody)` &#x2014; but note discovery's cached `DiscoveredDoc` only stores `tokenCount`, not raw content (v1 never kept clone content around after tokenizing) &#x2014; so for a path WITH an overlay, recompute `token_count` via `container.tokenizer.count(overlayBody)` (the overlay body, not the stale clone-cached count); for a path with NO overlay, reuse the cached `tokenCount` unchanged (this is the "acceptable cost" tradeoff documented in �4 Caching). Compute `coverage = total === 0 ? 0 : Math.round((usedBy.get(path) ?? 0) / total * 100)` where `total = await this.repo.countWorkspaceAgents(workspaceId)` (call once per `listDocuments`, not per document).
+   - Add `getDocumentContent(workspaceId, repoId, path): Promise<ContextDocContent | undefined>` &#x2014; replaces/supersedes v1's `previewDocument` as the method backing the (renamed, see routes below) content-fetch endpoint: validate confinement via `isPathShapeValid` against the repo's configured folders (reject &#x2192; `undefined`), fetch the overlay (`getOverlay`) and, if a clone exists, the clone content (best-effort &#x2014; `container.git.readFile`, swallow failure to `undefined`, same as v1), call `resolveEffectiveContent`, return `undefined` if it returns `undefined` (neither side has the doc). NOTE: `previewDocument` (v1) is RENAMED to `getDocumentContent` and its return shape changes from `{ path, content }` to the new `ContextDocContent` (`{ path, content, source }`) &#x2014; this is a breaking rename of an existing v1 method+route in the SAME step that introduces the overlay logic, not a parallel v2-only method, because v1's preview was already the "read one document's content" operation and v2 replaces what "content" means (overlay-aware) rather than adding a second, competing read path. Update the route (below) accordingly; there is exactly one content-fetch endpoint, before and after this step.
+   - Add `saveDocument(workspaceId, repoId, path, body): Promise<ContextDocument>` &#x2014; validate the repo exists in the workspace (`getRepoForDiscovery`, 404 if not), validate `path` ends in `.md` (`ValidationError` otherwise), validate `body.length` &#x2264; the configured cap (e.g. 2_000_000 chars &#x2014; `ValidationError` otherwise), validate `isPathShapeValid(folders, path)` (`ValidationError` &#x2014; "path must be under a configured root folder" &#x2014; otherwise), call `this.repo.upsertOverlay(repoId, path, body)`, invalidate the discovery cache entry is NOT needed (overlay merge is uncached &#x2014; Recommendation 1), then return the single updated `ContextDocument` DTO (recompute its token count from `body`, compute its `used_by_agents`/`coverage` same as any list entry, `source` is `'overlay'` or `'overlay-only'` depending on whether a clone file exists at that path &#x2014; check via membership in the CACHED clone-discovered path set from `discoverDocuments`, reusing it rather than a fresh filesystem check).
+   - Add `deleteDocument(workspaceId, repoId, path): Promise<{ reverted: boolean }>` &#x2014; validate repo/workspace, call `this.repo.deleteOverlay(repoId, path)` (`NotFoundError` if it returned `false` &#x2014; nothing to delete), then determine `reverted` by checking whether the path is in the clone-discovered set (same cached-set reuse as above): `true` if a clone file exists (AC-34 "revert" branch &#x2014; informational for the client's toast/message, no different server behavior), `false` if not (AC-34 "remove" branch). Never calls `container.git` for the deletion itself &#x2014; only (optionally) for the informational "did it revert" classification, and even that classification should prefer the CACHED discovery set over a fresh filesystem read, to avoid the delete endpoint accidentally becoming a live clone-read path.
+4. In `routes.ts`:
+   - RENAME the existing `GET /repos/:id/context-docs/preview` route to `GET /repos/:id/context-docs/content` (query param `path`, unchanged mechanics otherwise) &#x2014; update its response schema to `ContextDocContent`, delegate to the renamed `service.getDocumentContent`. (Renaming, not adding a parallel route, per the "one content-fetch endpoint" decision above. Update the ONE known v1 client caller in Step 14 &#x2014; do not leave the old path referenced anywhere.)
+   - Add `PUT /repos/:id/context-docs` &#x2014; body `SaveContextDocBody`, response `ContextDocument` &#x2014; delegates to `service.saveDocument`. This single endpoint serves BOTH "edit an existing document" (AC-24) and "create/upload a new one" (AC-27/AC-32) &#x2014; both are an upsert against `(repo_id, path)`; the client only differs in whether it pre-fills the editor with existing content or starts blank/from an uploaded file's text.
+   - Add `DELETE /repos/:id/context-docs` &#x2014; body `DeleteContextDocBody`, response `z.object({ reverted: z.boolean() })` &#x2014; delegates to `service.deleteDocument`.
+   - `GET /repos/:id/context-docs` (list) &#x2014; unchanged route, response schema is already `z.array(ContextDocument)` from Step 3/11 (the schema itself grew fields; the route wiring doesn't change).
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` (Step 17 tests not yet written &#x2014; this checkpoint confirms no regression against Step 9's existing hermetic suite, updated for the renamed route/method)
+- [ ] Manual smoke: `PUT /repos/:id/context-docs` with `{"path":"docs/new.md","body":"# hi"}` creates an overlay-only doc; a subsequent `GET /repos/:id/context-docs` lists it with `source: "overlay-only"`
+- [ ] Manual smoke: edit an existing clone-backed doc via `PUT`, confirm `GET .../content?path=...` now returns the overlay body with `source: "overlay"`, and `token_count` in the list reflects the NEW body's token count, not the old clone file's
+- [ ] Manual smoke: `DELETE` the overlay from the previous step, confirm `GET .../content` reverts to the original clone text and `source: "clone"`
+- [ ] Manual smoke: `DELETE` the overlay-only doc from the first smoke test, confirm it no longer appears in `GET /repos/:id/context-docs`
+- [ ] Manual smoke (AC-36): against a repo row with `clone_path = null` (or pointed at a nonexistent directory), `PUT /repos/:id/context-docs` an overlay-only doc, then confirm `GET /repos/:id/context-docs` lists it (`source: "overlay-only"`, correct `token_count`/`coverage`) — i.e. the list is NOT empty just because the repo has no clone
+- [ ] Grep confirms zero `container.git.writeFile`/commit/push calls introduced anywhere in `context-docs/service.ts`
+
+**Commit:** `feat(server): overlay-preferring reads, coverage, save/delete endpoints, and no-clone discovery fix for context documents`
+
+---
+
+#### Step 13: Server &#x2014; run-executor prefers overlay content at injection time
+
+**Dependencies:** Step 12
+**Owned paths:**
+- `server/src/modules/reviews/run-executor.ts` (extend `buildContextDocs` only &#x2014; no other method touched)
+
+**What to do:**
+1. In `buildContextDocs`, right after the existing `resolveConfinedPath(cloneRoot, effectiveFolders, docPath)` confinement check (KEEP this check exactly as-is &#x2014; the path must still be shape-valid and inside a configured folder, overlay or not) and BEFORE the existing `container.git.readFile` call, add an overlay lookup: `const overlay = await this.container.contextDocs.getOverlayForInjection(repoId, docPath);` &#x2014; this requires ONE new thin passthrough method on `ContextDocsService` (`getOverlayForInjection(repoId, path): Promise<{ body: string } | undefined>` &#x2014; a direct, no-workspace-guard-needed passthrough to `this.repo.getOverlay(repoId, path)`, safe here because `run-executor.ts` already resolved `repo` from a workspace-scoped lookup earlier in `runOneAgent`, mirroring the existing documented boundary for `agentAttachments`/`skillAttachments` reuse in this same method).
+2. Branch: if `overlay` is present, use `overlay.body` as the content directly (skip `container.git.readFile` entirely for this path) and set `trace` status `'injected'` with `token_size = container.tokenizer.count(overlay.body)`. If `overlay` is absent, fall through to the EXISTING clone-read logic unchanged (try `readFile`, catch &#x2192; `skipped`/`'file not found in clone'`, else `injected`).
+3. If overlay is present but reading it somehow fails (it won't &#x2014; it's a DB read via a method that returns `undefined` on absence, not a throw) there is no new failure mode to handle; the existing outer `try/catch` in `buildContextDocs` still guards the whole method against unexpected errors (unchanged).
+4. Update the method's doc-comment (already present, describing merge order/confinement/AC-13/AC-12) to add one clause: "overlay content, when present for a path, is preferred over the clone read (AC-25) &#x2014; the CONFINEMENT check still applies to the path itself; only the content SOURCE changes."
+5. Confirm (read the full diff before committing) that the `specs.push(content)` line still appends RAW text (overlay body or clone content, whichever was used) &#x2014; `wrapUntrusted` still happens later, inside reviewer-core, unchanged (AC-30's "identical treatment" requirement &#x2014; there is no separate code path for overlay-sourced text once it reaches the `specs` array).
+
+**Verify:**
+- [ ] `cd server && pnpm typecheck`
+- [ ] `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+- [ ] Manual smoke: attach an overlay-only document (no clone file) to a seeded agent, trigger a review run, confirm the trace shows it `injected` (not skipped) with the overlay's token count, and `container.git.readFile` was never called for that path (verify via a temporary log line or the Step 17 mock call-count assertion)
+- [ ] Manual smoke: attach a clone-backed document, save an overlay edit for it, trigger a run, confirm the INJECTED text is the overlay body, not the original clone text
+- [ ] Manual smoke (AC-36): against a repo with `clone_path = null`, attach one overlay-only document and one never-existed path to an agent, trigger a run, confirm the trace shows one `injected` (overlay content) and one `skipped` (`'file not found in clone'`) — the run completes normally either way
+- [ ] Grep confirms zero `container.git.writeFile`/commit/push calls introduced anywhere in this file
+
+**Commit:** `feat(server): prefer overlay content over clone reads at review-run injection time (AC-25, AC-36 no-clone case)`
+
+---
+
+#### Step 14: Client &#x2014; two-panel master-detail rewrite, inline preview/edit, upload, coverage ring, delete
+
+**Dependencies:** Step 11 (contracts), Step 12 (API)
+**Owned paths:**
+- `client/src/lib/hooks/context-docs.ts` (extend &#x2014; content/save/delete/upload hooks; rename the preview hook)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/ContextDocsView.tsx` (REWRITE &#x2014; two-panel layout)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/styles.ts` (REWRITE &#x2014; two-panel grid, detail panel, toolbar, coverage ring layout)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/DocList/` (new: `DocList.tsx`, `styles.ts`, `index.ts` &#x2014; left panel, replaces the v1 table body)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/DocDetail/` (new: `DocDetail.tsx`, `styles.ts`, `index.ts` &#x2014; right panel: Preview/Edit toggle, Save, Delete, coverage ring, used-by count)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/DocPreviewPane/` (new: extracted read-only render, consumed by BOTH `DocDetail`'s Preview mode AND the redesigned `ContextDocsList` picker's preview control, Step 16)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` (DELETE &#x2014; retired, replaced by `DocPreviewPane` + inline panel)
+- `client/messages/en/context.json` (extend &#x2014; toolbar/detail/mode keys; v1's Step 7 structure stays, new keys added under it)
+
+**What to do:**
+1. In `hooks/context-docs.ts`:
+   - Rename `useContextDocPreview` &#x2192; `useContextDocContent(repoId, path)`, pointed at the renamed `GET /repos/:id/context-docs/content?path=...` endpoint (Step 12), query key renamed `["context-docs", repoId, "content", path]` (was `"preview"`). Update its return type to `ContextDocContent` (adds `source`).
+   - Add `useSaveContextDoc(repoId)` mutation &#x2192; `PUT /repos/:id/context-docs`, body `{ path, body }`, `onSuccess` invalidates `["context-docs", repoId]` (list) AND `["context-docs", repoId, "content", path]` (the specific doc's content query) &#x2014; satisfies AC-33's auto-refresh.
+   - Add `useDeleteContextDoc(repoId)` mutation &#x2192; `DELETE /repos/:id/context-docs`, body `{ path }`, same invalidation as save.
+   - No separate "upload" hook is needed at the network layer &#x2014; upload (AC-32) reads the selected `.md` file's text client-side (`FileReader`/`file.text()`) and calls the SAME `useSaveContextDoc` mutation with the file's name (or a user-edited path) as `path` and its text as `body` &#x2014; reuse, not a new endpoint, per the "same upsert" decision in Step 12.
+2. `ContextDocsView.tsx` REWRITE: two-column CSS grid (`s.twoPanel`: `grid-template-columns: 360px 1fr` or similar, defined in the rewritten `styles.ts`). Left column renders `DocList` (path/category/token/used-by/coverage-badge-per-row summary, filter input, toolbar: add (`+`) / upload / refresh &#x2014; AC-32). Right column renders `DocDetail` for the currently-selected path (local `useState<string | null>` for `selectedPath`, defaulting to the first document once loaded, matching common master-detail UX &#x2014; not literally specified by the spec, but implied by "two-panel" with an always-visible detail pane; if the list is empty, `DocDetail` shows an empty/placeholder state instead of erroring). `FoldersConfig` stays where v1 put it (above the two-panel area) &#x2014; UNCHANGED, still its own component.
+3. `DocList.tsx`: row click sets `selectedPath`, highlights the active row. Toolbar's `+` opens a small inline "new document" affordance (path input + empty body, or immediately switches the right panel to Edit mode for a not-yet-saved path) &#x2014; simplest correct implementation: clicking `+` sets `selectedPath` to a new empty-string sentinel state that `DocDetail` recognizes as "unsaved new document, Edit mode, path field editable", and the first Save call creates it via the same `saveDocument` upsert. Toolbar's "upload" opens a native file picker (`<input type="file" accept=".md" />`), reads the file client-side, and pre-fills the same "new document" Edit-mode flow with the file's name as the initial path (editable before save) and its text as the initial body. Toolbar's "refresh" simply calls `refetch()` on `useContextDocs` (or `queryClient.invalidateQueries`) &#x2014; an explicit user-triggered version of the same auto-refresh AC-33 already gives for free on mutations.
+4. `DocDetail.tsx`: header shows the selected document's path, category badge, "used by N agents" text (AC-29, existing v1 display, now alongside coverage), a `CircularScore` coverage ring (AC-28/AC-29 &#x2014; reuse the vendored component directly, `score={doc.coverage}`), a Preview/Edit toggle (`Toggle` or two `Chip`-style buttons &#x2014; check the vendored `Toggle.tsx` component's API before choosing), a Delete button (rendered ONLY when `doc.source !== 'clone'`, per the adopted UI gating rule), and a Save button (visible in Edit mode only, disabled while the mutation is pending). Preview mode renders `<DocPreviewPane content={content} />` (uses `Markdown`). Edit mode renders `<Textarea value={draft} onChange={setDraft} />` seeded from the fetched effective content on selection change (reset the local `draft` state via a key change, NOT a raw `useEffect` that silently re-syncs on every content refetch &#x2014; use React's "key resets state" pattern: keying `DocDetail` itself on `selectedPath` is the simplest correct approach, avoiding a manual sync effect entirely).
+5. `DocPreviewPane.tsx`: a small component wrapping `Markdown` &#x2014; pure presentational, takes `content: string`, no data fetching of its own (the caller fetches and passes content down). This is the extraction that lets the redesigned `ContextDocsList` picker (Step 16) keep a lightweight preview without pulling in Save/Edit/Delete UI it doesn't need.
+6. Delete `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` entirely (all files) &#x2014; but ONLY after Step 16 has re-pointed its other consumer (`ContextDocsList`'s preview control) at `DocPreviewPane`, since that consumer still exists at the start of this step. **Sequencing note:** because Step 16 (picker redesign) has not run yet when this step executes, `PreviewModal` still has a live consumer in `ContextDocsList` at this point &#x2014; DO NOT delete the folder in this step. Instead: stop using it in `ContextDocsView` (the rewrite naturally does this), leave the file in place, and defer the actual deletion to Step 16 once its last consumer is re-pointed. Update this step's owned-paths note accordingly: `PreviewModal` is deleted in **Step 16**, not here &#x2014; the folder is listed above only because this step is where it BECOMES unused by `ContextDocsView`; the physical deletion happens in Step 16 to avoid a moment where a still-referenced file has been removed.
+7. Extend `client/messages/en/context.json` with new keys: `toolbar.add`, `toolbar.upload`, `toolbar.refresh`, `detail.preview`, `detail.edit`, `detail.save`, `detail.delete`, `detail.deleteConfirmRevert` (message shown when deleting an overlay-of-a-clone-file: "this will revert to the repository's version"), `detail.deleteConfirmRemove` (message shown when deleting an overlay-only doc: "this will remove the document"), `detail.coverageLabel`, `detail.usedByLabel` (if not already present from v1), `detail.newDocumentPathPlaceholder`, `detail.unsavedPathRequired` (validation message when saving a new doc with an empty path). Do not touch v1's existing keys in this file beyond additive new ones.
+
+**Verify:**
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm test` (Step 17 tests not yet written &#x2014; this checkpoint confirms no regression against Step 10's existing RTL suite, updated for the rewritten component tree)
+- [ ] Manual: `/repos/:repoId/context` renders two panels; selecting a list row updates the right panel without a full page navigation
+- [ ] Manual: Edit mode &#x2192; change text &#x2192; Save &#x2192; list's token count updates, right panel shows the new content in Preview mode, all without a manual reload (AC-33)
+- [ ] Manual: toolbar `+` creates a new overlay-only document; it appears in the list immediately after save
+- [ ] Manual: toolbar upload with a local `.md` file creates a new overlay-only document with the file's content
+- [ ] Manual: Delete button is absent for a pure clone-sourced document, present for `overlay`/`overlay-only` ones
+- [ ] Manual: deleting an `overlay` doc reverts the right panel to clone content; deleting an `overlay-only` doc removes it from the list entirely
+- [ ] Manual: coverage ring renders `0` (not blank/NaN) for a document used by zero agents, and for any document when the workspace has zero agents
+- [ ] Grep confirms `ContextDocsView` no longer imports `PreviewModal` (the file itself is deleted in Step 16, once its other consumer is re-pointed)
+
+**Commit:** `feat(client): two-panel master-detail Project Context page with inline view/edit/upload/delete and coverage ring`
+
+---
+
+#### Step 15: Client &#x2014; dedicated skill-editor Context tab (AC-35)
+
+**Dependencies:** Step 8 (v1's `ContextDocsList`/`ConfigTab` embedding exists)
+**Owned paths:**
+- `client/src/app/skills/_components/SkillDetail/SkillDetail.tsx` (extend &#x2014; `TABS` array + render switch)
+- `client/src/app/skills/_components/SkillDetail/ConfigTab.tsx` (extend &#x2014; REMOVE the embedded "Project context to use" section)
+- `client/src/app/skills/_components/SkillDetail/ContextTab.tsx` (new &#x2014; hosts the shared `ContextDocsList`)
+- `client/src/app/skills/_components/SkillDetail/ContextTab.test.tsx` (new)
+
+**What to do:**
+1. In `SkillDetail.tsx`, insert a new entry into the `TABS` array BETWEEN `config` and `preview` (matching the mock's tab row order: Config / Context / Preview / Evals / Stats / Versions): `{ key: "context", label: "Context", icon: "FileText" as const }` &#x2014; match the EXISTING four entries' convention exactly (this file currently hardcodes English `label` strings, not i18n keys, per the v2 Project Constraints note on i18n consistency &#x2014; do NOT introduce a `labelKey`/next-intl lookup for only this one entry while its siblings stay hardcoded; if a later, separate effort i18n-izes `SkillDetail`'s tabs, it should do all five together, not this step alone).
+2. In the same file's render body, add `{tab === "context" && <ContextTab skill={skill} />}` in the same position as the `TABS` array entry (between the `config` and `preview` render lines) &#x2014; the two lists (`TABS` array and the render switch) are edited together, in the SAME commit, since `SkillDetail.tsx` has no derived `VALID_TABS`-style guard to keep them in sync automatically (unlike the agent editor page &#x2014; see the v2 Skills & Patterns note above for why that specific derivation doesn't carry over verbatim here). Read the full render body before editing to confirm there is no OTHER place tabs are enumerated (e.g. a mobile nav or breadcrumb) that would also need the new entry &#x2014; if one exists, update it too in this same step.
+3. Create `SkillDetail/ContextTab.tsx`: a thin wrapper mirroring the agent editor's `ContextTab.tsx` structure (v1 Step 8) &#x2014; resolves the browsed repo the same way (`useActiveRepo()` or whatever mechanism the agent-side `ContextTab` uses; read that file to match its exact pattern, since skills, like agents, are workspace-level with no owning repo &#x2014; same "explicit, deterministic, user-visible selected repository" requirement from v1 �4 applies here unchanged), fetches `useContextDocs(repoId)` + `useSkillContextDocs(skill.id)` (already exist from v1 Step 8's hook additions) + `useSetSkillContextDocs(skill.id)`, and renders `<ContextDocsList t={...} repoId={...} repoLabel={...} docs={...} isLoadingDocs={...} linkedPaths={...} isLoadingLinked={...} onSetLinked={...} isSaving={...} />` &#x2014; this is a MOVE of the props/wiring already present in `ConfigTab.tsx` (the block being removed in step 4 below), not new data-fetching logic; copy the wiring, don't reinvent it.
+4. In `ConfigTab.tsx`, REMOVE the embedded "Project context to use" section (the block wired to `ContextDocsList`, `contextDocs`/`linkedContextLinks`/`setSkillContextDocs` and the surrounding `<div style={{ marginTop: 28, ... }}>` wrapper) &#x2014; this logic now lives ONLY in the new `ContextTab.tsx`. Also remove any now-unused hook calls/imports in `ConfigTab.tsx` that existed solely to feed the removed section (e.g. if `useContextDocs`/`useSkillContextDocs`/`useSetSkillContextDocs` have no other consumer left in this file after the removal &#x2014; verify with a final read before deleting the imports, the same discipline v1 Step 1 applied to its own cleanup).
+5. Add a test `ContextTab.test.tsx` (fetch-mocked, RTL): renders `SkillDetail` (or `ContextTab` directly with a minimal skill fixture), clicks/selects the `context` tab, asserts the attachment list (`ContextDocsList`) renders &#x2014; this is the regression lock the coordinator asked for, closing the same class of "tab added to one list but not the other" drift the agent editor's `VALID_TABS` fix closed on its own page. Also assert `ConfigTab`'s render output no longer contains the "Project context to use" heading/section (a negative assertion proving the move, not a duplication).
+
+**Verify:**
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm test`
+- [ ] Manual: skill editor shows tabs in order Config / Context / Preview / Evals / Stats / Versions; clicking Context renders the attachment picker; Config no longer shows it
+- [ ] Grep confirms `ContextDocsList`/`contextDocs`-related imports appear in `ConfigTab.tsx` ONLY if still used by something else in that file (none expected) &#x2014; otherwise zero references remain there
+
+**Commit:** `feat(client): dedicated Context tab for the skill editor, matching the agent editor and design mock (AC-35)`
+
+---
+
+#### Step 16: Client &#x2014; redesign `ContextDocsList` into a unified checkbox list; fix the "all linked" empty-state bug
+
+**Dependencies:** Step 14 (`DocPreviewPane` extracted), Step 15 (both consumers &#x2014; agent `ContextTab` and skill `ContextTab` &#x2014; now exist and both use `ContextDocsList`, so the redesign lands once for both)
+**Owned paths:**
+- `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/_components/ContextDocsList/ContextDocsList.tsx` (REWRITE)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` (DELETE &#x2014; last consumer re-pointed in this step, see below)
+- `client/messages/en/agents.json` (extend `context.*` keys &#x2014; new unified-list labels; remove any keys the old two-section design uniquely needed, if no longer referenced)
+
+**What to do:**
+1. Read `client/src/vendor/ui/kit/Checkbox.tsx` to confirm its controlled API (`checked: boolean`, `onChange: (v: boolean) => void`, optional `label`) before wiring &#x2014; it is already vendored and reusable as-is (no new component).
+2. Rewrite `ContextDocsList.tsx`'s row rendering from the current `LinkedRow`/`AvailableRow` split into a SINGLE `DocRow` component: drag handle (only rendered/active when the row is attached &#x2014; see point 4) + `Checkbox` (checked = path is in `linkedPaths`) + path (mono, ellipsis-truncated) + category badge (`categoryBadgeColor`, unchanged) + a Preview `IconBtn` (opens `DocPreviewPane` inside the vendored `Modal`, replacing the old direct `PreviewModal` usage &#x2014; this IS the re-pointing referenced in Step 14's sequencing note). Remove `AvailableRow` and the "Attach" `Button` entirely &#x2014; the checkbox toggle IS the attach/detach control now.
+3. Replace the two-heading layout (`t("linkedHeading")` / `t("availableHeading")`) with ONE list, sourced from ALL of `docs` (not split into linked/unlinked subsets for rendering purposes &#x2014; though the underlying `linkedSet`/ordering logic for drag-reorder still needs to know which paths are linked and in what order, same as before). Order the rendered rows as: attached docs first, in their persisted `order` (draggable among themselves), followed by unattached docs in whatever order `docs` naturally returns them (typically alphabetical/discovery order) &#x2014; this matches the mock's "checked items are the orderable ones" behavior without inventing a new sort rule beyond what already exists.
+4. Toggling a checkbox calls the EXISTING `attach`/`detach` functions already defined in this file (`onSetLinked([...linkedPaths, path])` / `onSetLinked(linkedPaths.filter(p => p !== path))`) &#x2014; these do not change; only the UI element that triggers them changes from a separate "Attach" button + implicit-detach-via-X-icon to a single checkbox's `onChange`. The existing `moveUp`/`moveDown`/drag-and-drop handlers (`handleDragEnd`, `onDragStart`/`onDragOver`) are UNCHANGED &#x2014; reattach them only to rows where `linkedSet.has(doc.path)` is true; unattached rows get `draggable={false}` and omit the up/down arrow buttons entirely (there is nothing to reorder for a document that isn't in the ordered list).
+5. Header redesign: replace the current `<h2>{t("title")}</h2>` + separate `Badge` count with the mock's "X of Y attached" pill (e.g. `t("attachedOfTotal", { attached: linkedPaths.length, total: (docs ?? []).length })` &#x2014; a new i18n key, add it to `agents.json`'s `context.*` group) + the existing repo badge (`Badge color="var(--text-secondary)" icon="GitBranch" mono>{repoLabel}`, UNCHANGED) + a new order-matters hint line replacing/extending the existing `t("hint")` text (update the STRING content of the existing `hint` key rather than adding a new key, since it already occupies the equivalent position in the layout &#x2014; verify the existing copy against the mock's exact wording "Order matters &#x2014; earlier docs appear earlier in the assembled `## Project context` block. Toggle to attach." and update it to match).
+6. Empty-state fix: replace the current `unlinkedDocs.length === 0 && (... t("allLinked") ...)` block. In the new unified-list design there is no separate "unlinked" sub-list to be empty &#x2014; the relevant empty condition is now `(docs ?? []).length === 0` (zero documents exist in the repo at all, filter or no filter) vs. `filteredDocs.length === 0 && filter` (the filter matched nothing). Render: filter-matched-nothing &#x2192; keep the existing `t("noMatchingAvailable")` behavior (still correct, a filter can legitimately match zero of N documents); zero documents in the repo at all &#x2192; a NEW `t("noDocuments")` empty state ("No documents in this repository") &#x2014; this is the bug fix the coordinator flagged: v1's `allLinked` message is WRONG for a zero-document repo and must never render in that case. Remove the `t("allLinked")` key/branch entirely &#x2014; it has no equivalent condition in the redesigned single-list layout (a fully-attached repo just renders every row checked; there's no separate "nothing left in the available section" state to name).
+7. The `SerializationPreview` sub-component (AC-9) is UNCHANGED &#x2014; it already operates on `linkedDocs`/`totalTokens`, independent of how the picker rows are rendered above it.
+8. Delete `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/PreviewModal/` (all files) now that this step re-pointed its last remaining consumer at `DocPreviewPane` (Step 14 already removed `ContextDocsView`'s usage). Grep confirms zero remaining imports of `PreviewModal` anywhere before deleting.
+9. Update `agents.json`'s `context.*` group: add `attachedOfTotal`, `noDocuments`; update `hint`'s copy to the mock's exact wording; remove `allLinked`, `linkedHeading`, `availableHeading`, `attach` (the old per-row Attach button label) if grep confirms no other consumer references them (the skill editor's `ContextTab.tsx`, Step 15, passes its OWN pre-scoped translator into the SAME `ContextDocsList` component, so it uses these same keys &#x2014; confirm no divergence was introduced there).
+
+**Verify:**
+- [ ] `cd client && pnpm typecheck`
+- [ ] `cd client && pnpm test` (Step 17 adds the dedicated redesign tests; this checkpoint confirms Step 8/10's existing `ContextTab.test.tsx` either still passes or is updated in Step 17 to match the new DOM shape &#x2014; expect it needs updating, since the two-section DOM structure it asserted against no longer exists)
+- [ ] Manual: agent editor Context tab renders ONE list; checking a row attaches it (order appended at the end); unchecking detaches it; only checked rows are draggable
+- [ ] Manual: skill editor Context tab (Step 15) renders the SAME redesigned list via the shared component &#x2014; no divergent behavior between the two consumers
+- [ ] Manual: a repo with zero context documents shows "No documents in this repository", NOT "All available documents are already linked"
+- [ ] Manual: a repo where every document is already attached shows all rows checked &#x2014; no leftover "all linked" message anywhere
+- [ ] Grep confirms `PreviewModal` folder no longer exists and nothing imports it
+- [ ] Grep confirms `t("allLinked")` (and the corresponding i18n key) no longer appears anywhere in `client/src` or `agents.json`
+
+**Commit:** `refactor(client): redesign ContextDocsList into a unified checkbox list matching the design mock; fix zero-documents empty state`
+
+---
+
+#### Step 17: Tests &#x2014; server + client coverage for overlay precedence, coverage computation, save/delete, two-panel UI, skill Context tab, unified picker
+
+**Dependencies:** Step 12, Step 13, Step 14, Step 15, Step 16
+**Owned paths:**
+- `server/test/context-docs-helpers.test.ts` (extend &#x2014; `resolveEffectiveContent`, `isPathShapeValid`)
+- `server/test/context-docs-service.test.ts` (extend &#x2014; overlay-preferring list/content, coverage, save/delete branches)
+- `server/test/context-docs-routes.test.ts` (extend &#x2014; `PUT`/`DELETE` routes, renamed content route)
+- `server/test/run-executor-context-docs.test.ts` (extend &#x2014; overlay-preferred injection)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/ContextDocsView.test.tsx` (extend/rewrite for the two-panel tree)
+- `client/src/app/repos/[repoId]/context/_components/ContextDocsView/_components/DocDetail/DocDetail.test.tsx` (new)
+- `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/ContextTab.test.tsx` (UPDATE &#x2014; v1's test asserted the old two-section DOM shape; update assertions for the unified checkbox-list rows, plus the new zero-documents empty state)
+- `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/_components/ContextDocsList/ContextDocsList.test.tsx` (new &#x2014; dedicated redesign coverage, since v1 never had a component-level test file for this sub-component specifically)
+- `client/src/app/skills/_components/SkillDetail/ContextTab.test.tsx` (already added in Step 15 &#x2014; no further change expected here, listed for completeness of the full v2 test sweep)
+
+**What to do:**
+1. `context-docs-helpers.test.ts`: `resolveEffectiveContent` &#x2014; all four branches (`clone`, `overlay`, `overlay-only`, `undefined`/neither). `isPathShapeValid` &#x2014; accepts a valid path under a configured folder with no clone-root check involved, rejects `..` traversal, rejects an absolute path, rejects an unconfigured folder, matches `resolveConfinedPath`'s acceptance set for any path that a real clone root WOULD also accept (a small property-style cross-check, not exhaustive).
+2. `context-docs-service.test.ts`: `listDocuments` with a mix of clone-only/overlay/overlay-only paths returns the correct `source` and recomputed `token_count` for overlaid paths (assert the tokenizer mock was called with the OVERLAY body, not the stale clone content, for an overlaid path); `coverage` computation with 0 workspace agents returns `0` for every document (no `NaN`); `saveDocument` upserts and returns updated DTO with correct `source`; `saveDocument` rejects a non-`.md` path and an oversized body with `ValidationError`; `saveDocument` rejects a path outside configured folders with `ValidationError`; `deleteDocument` returns `reverted: true` when a clone file exists at that path, `reverted: false` when overlay-only, and throws `NotFoundError` when no overlay exists for that path. **AC-36 dedicated cases:** (a) mock `container.git.clonePathFor`/`currentHead` such that `repoRow.clonePath` is `null` — `listDocuments` still returns the repo's overlay documents (not `[]`); (b) mock `clonePath` present but `container.git.currentHead` THROWS (unreachable/corrupt clone) — same assertion, overlays still surface; (c) a second `listDocuments` call for the same no-clone repo does not re-invoke `currentHead`/the walk (sentinel cache hit), confirmed via mock call-count, while a NEW overlay saved between the two calls still appears in the second call's result (proving the overlay merge is uncached even when the clone-walk portion IS cached).
+3. `context-docs-routes.test.ts`: `PUT /repos/:id/context-docs` create + edit (hermetic, mocked db), `DELETE /repos/:id/context-docs` both branches, renamed `GET /repos/:id/context-docs/content` returns `source`, workspace-scoping (cross-workspace repo id &#x2192; 404) on all three.
+4. `run-executor-context-docs.test.ts`: an attached path with an overlay is injected using the overlay body WITHOUT `container.git.readFile` being called for that path (assert mock call count); an attached path with BOTH an overlay and a (different) clone file uses the overlay body, not the clone's (AC-25 exercised end-to-end); an attached path with neither overlay nor clone file is `skipped` (AC-31). **AC-36 dedicated case:** a repo with no clone (`clonePathFor`/`readFile` mocked to always fail/throw for this repo) has one agent-attached path WITH an overlay (asserts `injected`, overlay body used, `readFile` never called for that path) and one agent-attached path WITHOUT an overlay (asserts `skipped`, `skip_reason: 'file not found in clone'`) in the SAME run — the run completes successfully with a mixed injected/skipped trace despite having zero clone-backed content available.
+5. `ContextDocsView.test.tsx`: rewritten for the two-panel tree &#x2014; assert selecting a list item renders its content in the detail panel; assert the empty state still renders when the list is empty (AC-18, carried over from v1); assert the coverage ring is present per row/detail (whichever the final layout uses &#x2014; assert against the actual rendered structure, do not assume).
+6. `DocDetail.test.tsx` (new): fetch-mocked; Preview/Edit toggle switches rendering; Save calls the mutation with the edited text and the correct path; Delete button is absent when `source === 'clone'` and present otherwise; clicking Delete calls the delete mutation with the correct path; a new/unsaved 

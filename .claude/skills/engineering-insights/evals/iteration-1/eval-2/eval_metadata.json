@@ -1,0 +1,11 @@
+{
+  "eval_id": 2,
+  "eval_name": "dedup-extend-existing-entry",
+  "prompt": "db:seed duplication recurs; existing Mistake entry already covers review_runs. New wrinkle: agent_runs now also affected. Extend, don't duplicate. server/insights.md exists with 2 entries.",
+  "assertions": [
+    {"text": "the Mistakes section still contains exactly one db:seed bullet (no duplicate second bullet)", "type": "programmatic"},
+    {"text": "the unrelated app.ts Pattern entry is still present — proves Edit, not Write clobber", "type": "programmatic"},
+    {"text": "the agent_runs wrinkle was recorded in the file", "type": "programmatic"},
+    {"text": "footer count was not incremented for a dedup extension (Entries: 2)", "type": "programmatic"}
+  ]
+}

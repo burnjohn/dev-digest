@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, Modal } from "@devdigest/ui";
 import { s } from "../../styles";
+import { HighlightedCode } from "../atoms";
 import { PromptModalBody } from "../PromptModalBody";
 
 const miniBtnStyle: React.CSSProperties = {
@@ -20,7 +21,7 @@ const miniBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export function PromptBlock({ label, text, color, highlight = false }: { label: string; text: string; color: string; highlight?: boolean }) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
@@ -66,9 +67,9 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
         </span>
       </div>
       {open && (
-        <pre className="mono" style={s.promptPre}>
-          {text || "—"}
-        </pre>
+        highlight
+          ? <HighlightedCode text={text || ""} maxHeight={180} />
+          : <pre className="mono" style={s.promptPre}>{text || "—"}</pre>
       )}
       {full && (
         <Modal
@@ -81,7 +82,7 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
             </Button>
           }
         >
-          <PromptModalBody text={text} />
+          <PromptModalBody text={text} highlight={highlight} />
         </Modal>
       )}
     </div>

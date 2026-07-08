@@ -1,0 +1,12 @@
+{
+  "_readme": "Copy this file to .mcp.json at the repo root. Replace <repo> with the absolute path to the repo on your machine (e.g. /home/user/dev-digest). tsx must be resolvable — the local binary is at <repo>/mcp/node_modules/.bin/tsx. Do NOT commit .mcp.json; add it to .gitignore.",
+  "mcpServers": {
+    "devdigest": {
+      "command": "tsx",
+      "args": ["<repo>/mcp/src/index.ts"],
+      "env": {
+        "DEVDIGEST_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../icons";
 import { type DropdownItemDef } from "./types";
 
@@ -59,6 +60,12 @@ function DropdownItem({ it, onClose }: { it: DropdownItemDef; onClose: () => voi
   );
 }
 
+interface PanelPos {
+  triggerTop: number;
+  triggerBottom: number;
+  left: number;
+}
+
 export function Dropdown({
   trigger,
   items,
@@ -71,30 +78,57 @@ export function Dropdown({
   width?: number;
 }) {
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState<PanelPos | null>(null);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+
   React.useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        panelRef.current && !panelRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
-      <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
-      {open && (
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const left = align === "right" ? rect.right - width : rect.left;
+      setPos({ triggerTop: rect.top, triggerBottom: rect.bottom, left });
+    }
+    setOpen((o) => !o);
+  };
+
+  const panel = open && pos ? createPortal(
+    (() => {
+      const spaceBelow = window.innerHeight - pos.triggerBottom - 8;
+      const spaceAbove = pos.triggerTop - 8;
+      const openDown = spaceBelow >= spaceAbove || spaceBelow >= 160;
+      const maxH = Math.max(80, openDown ? spaceBelow : spaceAbove);
+      const placement = openDown
+        ? { top: pos.triggerBottom + 6 }
+        : { bottom: window.innerHeight - pos.triggerTop + 6 };
+      return (
         <div
+          ref={panelRef}
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            [align]: 0,
+            position: "fixed",
+            ...placement,
+            left: pos.left,
             width,
+            maxHeight: maxH,
+            overflowY: "auto",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-strong)",
             borderRadius: 9,
             boxShadow: "var(--shadow-modal)",
             padding: 6,
-            zIndex: 40,
+            zIndex: 1100,
             animation: "ddpop .12s ease",
           }}
         >
@@ -106,7 +140,15 @@ export function Dropdown({
             )
           )}
         </div>
-      )}
+      );
+    })(),
+    document.body,
+  ) : null;
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative", display: "inline-block" }}>
+      <div onClick={toggle}>{trigger}</div>
+      {panel}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useAgents, useUpdateAgent } from "../../../../lib/hooks/agents";
+import { useAgents, useAgentStats, useUpdateAgent } from "../../../../lib/hooks/agents";
 import { AgentCard } from "../AgentCard";
 import { CreateAgentModal } from "./_components/CreateAgentModal";
 import { TEMPLATES } from "./constants";
@@ -18,11 +18,16 @@ export function AgentsListView() {
   const t = useTranslations("agents");
   const router = useRouter();
   const { data: agents, isLoading, isError, refetch } = useAgents();
+  const { data: stats } = useAgentStats();
   const update = useUpdateAgent();
   const [creating, setCreating] = React.useState(false);
   const [search, setSearch] = React.useState("");
 
   const list = filterAgents(agents ?? [], search);
+  const statsById = React.useMemo(
+    () => new Map((stats ?? []).map((s) => [s.agent_id, s])),
+    [stats],
+  );
 
   return (
     <AppShell crumb={[{ label: t("list.breadcrumbLab") }, { label: t("list.breadcrumb") }]}>
@@ -82,14 +87,19 @@ export function AgentsListView() {
         )}
         {list.length > 0 && (
           <div style={s.grid}>
-            {list.map((a) => (
-              <AgentCard
-                key={a.id}
-                ag={a}
-                onClick={() => router.push(`/agents/${a.id}?tab=config`)}
-                onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
-              />
-            ))}
+            {list.map((a) => {
+              const st = statsById.get(a.id);
+              return (
+                <AgentCard
+                  key={a.id}
+                  ag={a}
+                  stats={st}
+                  skillCount={st?.skill_count}
+                  onClick={() => router.push(`/agents/${a.id}?tab=config`)}
+                  onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
+                />
+              );
+            })}
           </div>
         )}
       </div>

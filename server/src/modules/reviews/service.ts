@@ -1,5 +1,6 @@
 import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { SmartDiff } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -7,6 +8,11 @@ import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
+import * as pullRepo from './repository/pull.repo.js';
+import * as reviewRepo from './repository/review.repo.js';
+import { classifyFile } from './smart-diff-rules.js';
+import { eq, and, desc } from 'drizzle-orm';
+import * as t from '../../db/schema.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -29,11 +35,13 @@ export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
   private executor: ReviewRunExecutor;
+  private logger: Logger;
 
-  constructor(private container: Container) {
+  constructor(private container: Container, logger?: Logger) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
     this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
+    this.logger = logger ?? console;
   }
 
   // ===========================================================================
@@ -187,5 +195,136 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  // ===========================================================================
+  // Smart Diff — deterministic file classifier (zero LLM calls)
+  // ===========================================================================
+
+  /**
+   * Classifies all PR files into core / wiring / boilerplate groups and returns
+   * a SmartDiff payload. Zero LLM calls — deterministic, instant, free.
+   */
+  async getSmartDiff(workspaceId: string, prId: string): Promise<SmartDiff | null> {
+    // 1. Verify PR belongs to this workspace before returning any data
+    const pr = await pullRepo.getPull(this.container.db, workspaceId, prId);
+    if (!pr) return null;
+
+    // 2. Load PR files — return null if the PR has no files at all
+    const prFiles = await pullRepo.getPrFiles(this.container.db, prId);
+    if (prFiles.length === 0) return null;
+
+    // 2. Find latest review scoped to this workspace
+    const [latestReview] = await this.container.db
+      .select({ id: t.reviews.id })
+      .from(t.reviews)
+      .innerJoin(t.pullRequests, eq(t.reviews.prId, t.pullRequests.id))
+      .innerJoin(t.repos, eq(t.pullRequests.repoId, t.repos.id))
+      .where(
+        and(
+          eq(t.reviews.prId, prId),
+          eq(t.repos.workspaceId, workspaceId),
+        ),
+      )
+      .orderBy(desc(t.reviews.createdAt))
+      .limit(1);
+
+    // 3. Load findings for the latest review (or use empty array if no review yet)
+    const findings = latestReview
+      ? await reviewRepo.findingsForReview(this.container.db, latestReview.id, workspaceId)
+      : [];
+
+    // 4. Index findings by file path
+    const findingsByFile = new Map<string, typeof findings>();
+    for (const finding of findings) {
+      const list = findingsByFile.get(finding.file) ?? [];
+      list.push(finding);
+      findingsByFile.set(finding.file, list);
+    }
+
+    // 5. Classify each PR file and build SmartDiffFile objects
+    type SmartDiffFileEntry = {
+      role: 'core' | 'wiring' | 'boilerplate';
+      file: {
+        path: string;
+        pseudocode_summary: string | null;
+        additions: number;
+        deletions: number;
+        finding_lines: number[];
+        findingsCount: number;
+        findings: { id: string; startLine: number; severity: 'critical' | 'warning' | 'suggestion'; category: string; title: string }[];
+      };
+    };
+
+    const entries: SmartDiffFileEntry[] = prFiles.map((prFile) => {
+      const fileFindings = findingsByFile.get(prFile.path) ?? [];
+      let role = classifyFile(prFile.path);
+
+      // Normalise severity to lowercase — seed data uses uppercase ('CRITICAL')
+      const normFindings = fileFindings.map((f) => ({
+        ...f,
+        severity: f.severity.toLowerCase() as 'critical' | 'warning' | 'suggestion',
+      }));
+
+      // Promote wiring → core when file has critical or warning findings
+      if (
+        role === 'wiring' &&
+        normFindings.some((f) => f.severity === 'critical' || f.severity === 'warning')
+      ) {
+        role = 'core';
+      }
+
+      return {
+        role,
+        file: {
+          path: prFile.path,
+          pseudocode_summary: prFile.pseudocodeSummary ?? null,
+          additions: prFile.additions,
+          deletions: prFile.deletions,
+          finding_lines: normFindings.map((f) => f.startLine),
+          findingsCount: normFindings.length,
+          findings: normFindings.map((f) => ({
+            id: f.id,
+            startLine: f.startLine,
+            severity: f.severity,
+            category: f.category,
+            title: f.title,
+          })),
+        },
+      };
+    });
+
+    // 6. Group files into role buckets, sorted within each group
+    const roleOrder: ('core' | 'wiring' | 'boilerplate')[] = ['core', 'wiring', 'boilerplate'];
+    const buckets = new Map<'core' | 'wiring' | 'boilerplate', typeof entries[number]['file'][]>([
+      ['core', []],
+      ['wiring', []],
+      ['boilerplate', []],
+    ]);
+    for (const entry of entries) {
+      buckets.get(entry.role)!.push(entry.file);
+    }
+    for (const files of buckets.values()) {
+      files.sort((a, b) => {
+        if (b.findingsCount !== a.findingsCount) return b.findingsCount - a.findingsCount;
+        return a.path.localeCompare(b.path);
+      });
+    }
+
+    // 7. Build SmartDiff — include only non-empty groups, ordered core → wiring → boilerplate
+    const groups = roleOrder
+      .filter((role) => (buckets.get(role)?.length ?? 0) > 0)
+      .map((role) => ({ role, files: buckets.get(role)! }));
+
+    this.logger.info({ phase: 'smart-diff', prId }, 'smart-diff: no LLM call — deterministic only');
+
+    return {
+      groups,
+      split_suggestion: {
+        too_big: false,
+        total_lines: 0,
+        proposed_splits: [],
+      },
+    };
   }
 }

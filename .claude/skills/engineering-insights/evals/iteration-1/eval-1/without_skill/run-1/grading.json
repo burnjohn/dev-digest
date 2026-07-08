@@ -1,0 +1,32 @@
+{
+  "eval_id": 1,
+  "config": "without_skill",
+  "summary": {
+    "pass_rate": 1.0,
+    "passed": 4,
+    "failed": 0,
+    "total": 4
+  },
+  "expectations": [
+    {
+      "text": "no new entry added (still 2 entries)",
+      "passed": true,
+      "evidence": "client/insights.md entry bullets=2 (expected 2)"
+    },
+    {
+      "text": "original Pattern entry intact (not clobbered)",
+      "passed": true,
+      "evidence": "client/insights.md contains 'useSeverityFilter': True"
+    },
+    {
+      "text": "original Mistake entry intact (not clobbered)",
+      "passed": true,
+      "evidence": "client/insights.md contains 'useBlast': True"
+    },
+    {
+      "text": "footer still 'Entries: 2'",
+      "passed": true,
+      "evidence": "client/insights.md footer Entries=2 (expected 2)"
+    }
+  ]
+}

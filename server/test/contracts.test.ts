@@ -15,6 +15,7 @@ import {
   Settings,
   Repo,
   PrDetail,
+  BlastResponse,
 } from '@devdigest/shared';
 
 /**
@@ -109,12 +110,23 @@ describe('AI contracts parse fixtures', () => {
       groups: [
         {
           role: 'core',
-          files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
+          files: [{
+            path: 'a.ts',
+            additions: 84,
+            deletions: 0,
+            finding_lines: [28, 52],
+            findingsCount: 2,
+            findings: [
+              { id: 'f1', startLine: 28, severity: 'critical', category: 'security', title: 'Hardcoded secret' },
+              { id: 'f2', startLine: 52, severity: 'warning', category: 'correctness', title: 'Missing validation' },
+            ],
+          }],
         },
       ],
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+    expect(d.groups[0]!.files[0]!.findingsCount).toBe(2);
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
@@ -206,5 +218,71 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+describe('BlastResponse contract', () => {
+  it('parses a full BlastResponse with blast data and link', () => {
+    const result = BlastResponse.parse({
+      available: true,
+      blast: {
+        changed_symbols: [{ name: 'rateLimit', file: 'src/middleware.ts', kind: 'function' }],
+        downstream: [
+          {
+            symbol: 'rateLimit',
+            callers: [{ name: 'publicRouter', file: 'src/router.ts', line: 42 }],
+            endpoints_affected: ['GET /api/v1/health'],
+            crons_affected: [],
+          },
+        ],
+        summary: '1 symbol changed · 1 caller · 1 endpoint',
+      },
+      history: {
+        history: [
+          {
+            pr_number: 401,
+            title: 'Fix rate limit header',
+            merged_at: '2026-03-18',
+            author: 'alice',
+            files_overlap: ['src/middleware.ts'],
+            notes: 'Related change',
+          },
+        ],
+      },
+      index: {
+        status: 'full',
+        degraded: false,
+        reason: null,
+      },
+      link: {
+        owner: 'acme',
+        repo: 'payments-api',
+        head_sha: 'abc1234',
+      },
+      truncated: { rateLimit: 5 },
+    });
+    expect(result.available).toBe(true);
+    expect(result.blast?.changed_symbols).toHaveLength(1);
+    expect(result.link?.owner).toBe('acme');
+    expect(result.truncated?.['rateLimit']).toBe(5);
+  });
+
+  it('parses BlastResponse with available:false, blast:null, link:null', () => {
+    const result = BlastResponse.parse({
+      available: false,
+      blast: null,
+      history: { history: [] },
+      index: {
+        status: 'failed',
+        degraded: true,
+        reason: 'no_index',
+      },
+      link: null,
+    });
+    expect(result.available).toBe(false);
+    expect(result.blast).toBeNull();
+    expect(result.link).toBeNull();
+    expect(result.index.degraded).toBe(true);
+    expect(result.truncated).toBeUndefined();
   });
 });

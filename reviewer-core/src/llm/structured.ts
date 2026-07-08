@@ -16,9 +16,84 @@ export interface JsonSchema {
   name: string;
 }
 
-export function toJsonSchema<T>(schema: z.ZodType<T>, name: string): JsonSchema {
+/** JSON-pointer prefixes that `zod-to-json-schema` (via `zodResponseFormat`)
+ *  extracts reused sub-schemas under (`$refStrategy: 'extract-to-root'`). */
+const REF_CONTAINER_KEYS = ['$defs', 'definitions'] as const;
+
+/**
+ * Resolve a JSON-pointer `$ref` of the form `#/$defs/<name>` or
+ * `#/definitions/<name>` against the root schema. Returns `undefined` if the
+ * pointer doesn't resolve to a known container/name (left as-is by the caller).
+ */
+function resolveRef(root: Record<string, unknown>, ref: string): unknown {
+  for (const key of REF_CONTAINER_KEYS) {
+    const prefix = `#/${key}/`;
+    if (ref.startsWith(prefix)) {
+      const defs = root[key];
+      if (defs && typeof defs === 'object') {
+        const name = ref.slice(prefix.length);
+        return (defs as Record<string, unknown>)[name];
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Recursively inline every `$ref` node found anywhere in `node` by replacing it
+ * with a deep clone of its resolved target (looked up in `root`'s `$defs` /
+ * `definitions`). Gemini (via OpenRouter) requires a fully self-contained JSON
+ * Schema — it rejects `$ref`s that point at a sibling `$defs`/`definitions`
+ * container, unlike OpenAI/Anthropic/DeepSeek/Mistral which resolve them.
+ *
+ * `visiting` tracks refs currently being inlined on the current recursion path
+ * — if a genuine cycle is hit, that one `$ref` is left unresolved (returned
+ * as-is) rather than recursing forever. The Review schema is acyclic; this is
+ * purely defensive.
+ */
+function dereference(node: unknown, root: Record<string, unknown>, visiting: Set<string>): unknown {
+  if (Array.isArray(node)) {
+    return node.map((item) => dereference(item, root, visiting));
+  }
+  if (node && typeof node === 'object') {
+    const obj = node as Record<string, unknown>;
+    const ref = obj['$ref'];
+    if (typeof ref === 'string') {
+      if (visiting.has(ref)) return node; // cycle guard — leave this one $ref in place
+      const target = resolveRef(root, ref);
+      if (target === undefined) return node; // unresolvable — leave as-is
+      const nextVisiting = new Set(visiting).add(ref);
+      return dereference(target, root, nextVisiting);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      out[key] = dereference(value, root, visiting);
+    }
+    return out;
+  }
+  return node;
+}
+
+/**
+ * Fully dereference a JSON Schema produced by `zodResponseFormat`: inline every
+ * internal `$ref` (in-place deep clone of the referenced sub-schema) and drop
+ * the top-level `$defs`/`definitions` container. Result has ZERO `$ref` and
+ * ZERO `$defs`/`definitions` anywhere — required for Gemini (via OpenRouter)
+ * structured output, which rejects schemas with unresolved internal refs.
+ * OpenAI/Anthropic strict mode accepts a self-contained (ref-free) schema too,
+ * so this is safe for every provider.
+ */
+function fullyDereference(schema: Record<string, unknown>): Record<string, unknown> {
+  const inlined = dereference(schema, schema, new Set<string>()) as Record<string, unknown>;
+  const out = { ...inlined };
+  for (const key of REF_CONTAINER_KEYS) delete out[key];
+  return out;
+}
+
+export function toJsonSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, name: string): JsonSchema {
   const rf = zodResponseFormat(schema as z.ZodTypeAny, name);
-  return { schema: rf.json_schema.schema as Record<string, unknown>, name };
+  const raw = rf.json_schema.schema as Record<string, unknown>;
+  return { schema: fullyDereference(raw), name };
 }
 
 /** Best-effort extraction of a JSON object/array from a model's text output. */
@@ -51,7 +126,7 @@ export type ParseResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; repromptMessage: string };
 
-export function parseWithRepair<T>(schema: z.ZodType<T>, raw: string): ParseResult<T> {
+export function parseWithRepair<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, raw: string): ParseResult<T> {
   let parsedJson: unknown;
   try {
     // Strict json_schema mode returns pure JSON — parse it directly. Only fall

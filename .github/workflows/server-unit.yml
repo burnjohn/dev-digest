@@ -96,4 +96,11 @@ jobs:
       # Inlined rather than `pnpm test:unit`: server/package.json is
       # skip-worktree (a local variant), so the committed package.json may
       # not carry the split scripts. Run vitest directly.
-      - run: pnpm exec vitest run --exclude '**/*.it.test.ts'
+      #
+      # `--reporter=github-actions` (additive, alongside the normal `default`
+      # reporter) makes vitest emit native `::error file=,line=,title=::`
+      # annotations for failing tests — inline, clickable markers on this run
+      # instead of a human having to scroll the raw console log to find a
+      # failure. It only activates when `GITHUB_ACTIONS=true` (i.e. only in
+      # CI); running the same command locally is unaffected.
+      - run: pnpm exec vitest run --exclude '**/*.it.test.ts' --reporter=default --reporter=github-actions

@@ -1,5 +1,7 @@
 /* PR list — /repos/:repoId/pulls. Ported from screen_dashboard.jsx; fetches
-   GET /repos/:id/pulls (F1). Filters/sort live in query (?status&sort). */
+   GET /repos/:id/pulls (F1). Filters/sort live in query (?status&sort).
+   PullsPageContent is wrapped in Suspense here so useSearchParams is inside a
+   Suspense boundary — required by Next.js 15 (CSR bailout rule). */
 "use client";
 
 import React from "react";
@@ -27,7 +29,7 @@ import { FilterBar } from "./_components/FilterBar";
 /** Open PRs carry a derived review status; everything else is merged/closed. */
 const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
 
-export default function PullsPage() {
+function PullsPageContent() {
   const t = useTranslations("prReview");
   const params = useParams<{ repoId: string }>();
   const repoId = params.repoId;
@@ -161,5 +163,13 @@ export default function PullsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function PullsPage() {
+  return (
+    <React.Suspense>
+      <PullsPageContent />
+    </React.Suspense>
   );
 }

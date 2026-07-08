@@ -52,6 +52,7 @@ import {
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
 } from './constants.js';
+import { capCallersPerSymbol } from './helpers.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
 
@@ -371,6 +372,11 @@ export class RepoIntelService implements RepoIntel {
     }
     callers.sort((a, b) => b.rank - a.rank);
 
+    // Cap callers PER changed symbol (viaSymbol) — NOT globally. A global cap
+    // drops low-rank but endpoint-bearing callers (e.g. a registration file like
+    // app.ts) on large PRs, erasing endpoint/cron attribution. See helpers.
+    const cappedCallers = capCallersPerSymbol(callers, MAX_CALLERS_PER_SYMBOL);
+
     // Precomputed facts per caller file (endpoints + crons), so consumers can
     // attribute them to the changed symbol whose callers live in that file.
     const facts = await this.repo.getFileFacts(repoId, callerFiles);
@@ -383,7 +389,7 @@ export class RepoIntelService implements RepoIntel {
 
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: cappedCallers,
       impactedEndpoints: [...endpoints],
       factsByFile,
       degraded: false,
@@ -626,9 +632,79 @@ export class RepoIntelService implements RepoIntel {
     return out;
   }
 
+  /**
+   * Reverse import-graph BFS (L04 blast endpoint reachability).
+   *
+   * Returns every file that imports any of `files`, transitively up to `depth`
+   * hops through the `file_edges` reverse direction. The input files themselves
+   * are NEVER included in the result (they are the roots, not importers).
+   *
+   * BFS is level-by-level: one `getReverseEdges` query per level, so ≤2 queries
+   * at the default depth of 2 (BFS_DEPTH). The visited set starts from the input
+   * files so cycles terminate without infinite loops.
+   *
+   * Degraded contract (array-returning method):
+   *   - flag off → []
+   *   - empty `files` → []
+   *   - `depth <= 0` → []
+   *   - no edges in DB → [] (never throws)
+   */
+  async getImporters(
+    repoId: string,
+    files: string[],
+    depth: number = BFS_DEPTH,
+  ): Promise<string[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    if (files.length === 0) return [];
+    if (depth <= 0) return [];
+
+    // visited = input files + all discovered importers. Input files seed the
+    // set so they can never be returned as a result and we never revisit them.
+    const visited = new Set<string>(files);
+    // frontier = the set whose reverse edges we query next.
+    let frontier: string[] = [...files];
+    // ordered list of discovered importer files (insertion order).
+    const importers: string[] = [];
+
+    for (let level = 0; level < depth && frontier.length > 0; level += 1) {
+      const edges = await this.repo.getReverseEdges(repoId, frontier);
+      const nextFrontier: string[] = [];
+      for (const edge of edges) {
+        if (visited.has(edge.fromFile)) continue;
+        visited.add(edge.fromFile);
+        importers.push(edge.fromFile);
+        nextFrontier.push(edge.fromFile);
+      }
+      frontier = nextFrontier;
+    }
+
+    return importers;
+  }
+
   /** Top-N files by rank, minus tests/configs/migrations — conventions sample. */
   async getConventionSamples(repoId: string, n: number): Promise<string[]> {
     return this.getTopFilesByRank(repoId, n);
+  }
+
+  /**
+   * Repo-wide file_facts aggregator (routes/endpoints inventory) — every
+   * indexed file's endpoints/crons for `repoId`, no `files` filter.
+   *
+   * Deliberately does NOT apply blast/service.ts's `HUB_ENDPOINT_LIMIT`
+   * filtering: that filter exists to stop blast from attributing an entire
+   * app's routes to one changed symbol's callers. This method has a
+   * different concern — describing the COMPLETE "what routes exist in this
+   * repo" inventory (onboarding), so hub files must stay included here.
+   * LLM-input-side capping (`LLM_INPUT_MAX_ENDPOINTS`,
+   * `LLM_INPUT_MAX_ROUTES_PER_FILE`) is applied downstream in the onboarding
+   * module's `buildLlmInput` — never import that cap (or blast's hub filter)
+   * into this aggregation layer.
+   */
+  async getAllFileFacts(
+    repoId: string,
+  ): Promise<{ filePath: string; endpoints: string[]; crons: string[] }[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    return this.repo.getAllFileFacts(repoId);
   }
 
   /**

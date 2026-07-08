@@ -1,0 +1,52 @@
+{
+  "eval_id": 3,
+  "config": "with_skill",
+  "summary": {
+    "pass_rate": 1.0,
+    "passed": 8,
+    "failed": 0,
+    "total": 8
+  },
+  "expectations": [
+    {
+      "text": "new entry written to server/insights.md (most affected module)",
+      "passed": true,
+      "evidence": "server/insights.md entry bullets=2 (expected 2)"
+    },
+    {
+      "text": "new server entry categorized [Decision]",
+      "passed": true,
+      "evidence": "server/insights.md contains '[Decision]': True"
+    },
+    {
+      "text": "entry captures the reasoning (300ms / index walk / immutable)",
+      "passed": true,
+      "evidence": "server/insights.md contains any of ['300ms', 'index walk', 'immutable']: True"
+    },
+    {
+      "text": "entry cites the server/src/modules/blast/service.ts anchor",
+      "passed": true,
+      "evidence": "server/insights.md contains 'service.ts': True"
+    },
+    {
+      "text": "server footer incremented to Entries: 2",
+      "passed": true,
+      "evidence": "server/insights.md footer Entries=2 (expected 2)"
+    },
+    {
+      "text": "client/insights.md untouched (still 1 entry)",
+      "passed": true,
+      "evidence": "client/insights.md entry bullets=1 (expected 1)"
+    },
+    {
+      "text": "client BlastGraph entry intact",
+      "passed": true,
+      "evidence": "client/insights.md contains 'BlastGraph': True"
+    },
+    {
+      "text": "client footer untouched (Entries: 1)",
+      "passed": true,
+      "evidence": "client/insights.md footer Entries=1 (expected 1)"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "eval_id": 1,
+  "eval_name": "skip-trivial-session",
+  "prompt": "Trivial session: next patch bump + typo fix + reformat. Nothing surprising. Wrap up. client/insights.md exists with 2 entries.",
+  "assertions": [
+    {"text": "no new entry was added (client/insights.md still Entries: 2)", "type": "programmatic"},
+    {"text": "both original entries (useSeverityFilter, useBlast) are still present — file not clobbered", "type": "programmatic"},
+    {"text": "run communicates that a zero-entry wrap-up is a valid outcome", "type": "manual"}
+  ]
+}

@@ -1,7 +1,11 @@
 {
   "card": {
     "noDescription": "No description",
-    "skillCount": "{count} skills"
+    "skillCount": "{count} skills",
+    "runs": "{count} runs",
+    "accept": "{pct}% accept",
+    "avg": "{cost} avg",
+    "noRuns": "No runs yet"
   },
   "list": {
     "breadcrumbLab": "Skills Lab",
@@ -46,6 +50,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -93,7 +98,181 @@
     "filterPlaceholder": "Filter skills…",
     "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
   },
+  "context": {
+    "title": "Project context",
+    "hint": "Order matters — earlier docs appear earlier in the assembled `## Project context` block. Toggle to attach.",
+    "attachedOfTotal": "{attached} of {total} attached",
+    "noRepo": "No repository selected — select a repo to browse its context documents.",
+    "filterPlaceholder": "Filter by path or category…",
+    "noDocuments": "No documents in this repository",
+    "noMatchingAvailable": "No documents match your filter.",
+    "preview": "Preview",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "tokenCountValue": "{count} tokens",
+    "serializationPreview": {
+      "toggle": "Serialization preview ({tokens} tokens total)",
+      "total": "Total: {tokens} tokens"
+    }
+  },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "evals": {
+    "title": "Evals",
+    "casesTitle": "Eval cases",
+    "passing": "{passed} / {total} passing",
+    "metrics": {
+      "title": "Eval metrics",
+      "viewDashboard": "View full dashboard",
+      "viewDashboardHint": "View full dashboard",
+      "recall": "Recall",
+      "precision": "Precision",
+      "citationAccuracy": "Citation accuracy",
+      "tracesPassed": "Traces passed",
+      "pt": "pt"
+    },
+    "runAll": "Run all evals",
+    "newCase": "+ New eval case",
+    "excludedSkillOwned": "{count} skill-owned eval case(s) are not shown here — manage them from the owning skill.",
+    "empty": {
+      "title": "No eval cases yet",
+      "hint": "Accept or dismiss a finding on a PR, then use \"Add to evals\" on its card to turn it into a regression case — or author one by hand.",
+      "cta": "+ New eval case"
+    },
+    "status": {
+      "never_run": "Never run",
+      "passed": "Passed",
+      "failed": "Failed",
+      "error": "Error",
+      "flaked": "Flaked"
+    },
+    "summary": {
+      "emptyExpectedOutput": "Clean diff — no findings expected"
+    },
+    "expectation": {
+      "must_find": "must find",
+      "must_not_flag": "must not flag",
+      "countBadge": "{count} expectation(s)",
+      "assertEmpty": "assert empty"
+    },
+    "case": {
+      "run": "Run",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete eval case",
+      "deleteConfirmBody": "Delete \"{name}\"? This cannot be undone.",
+      "deleteConfirmConfirm": "Delete",
+      "deleteConfirmCancel": "Cancel"
+    },
+    "editor": {
+      "titleNew": "New eval case",
+      "titleEdit": "Edit eval case",
+      "name": "Name",
+      "namePlaceholder": "Case name",
+      "diff": "Diff fragment",
+      "diffRequired": "A diff fragment is required.",
+      "diffPlaceholder": "Paste a unified diff fragment…",
+      "diffPreview": "Preview",
+      "expectationType": "Expectation type",
+      "file": "File",
+      "filePlaceholder": "path/to/file.ts",
+      "lineStart": "Line start",
+      "lineEnd": "Line end",
+      "notes": "Notes",
+      "notesPlaceholder": "Optional notes",
+      "addExpectation": "+ Add expectation",
+      "removeExpectation": "Remove",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "titlePrefix": "Eval case",
+      "agentFallback": "This agent",
+      "subtitleManual": "{agent} · simulate a PR and assert the expected output",
+      "subtitleAccepted": "Seeded from an accepted finding · assert the expected output",
+      "subtitleDismissed": "Seeded from a dismissed finding · assert the expected output",
+      "negativeBadge": "NEGATIVE CASE",
+      "negativeBody": "MUST NOT comment on {location}",
+      "input": "Input",
+      "tabDiff": "Diff",
+      "tabFiles": "Files",
+      "tabPrMeta": "PR meta",
+      "filesEmpty": "No files detected in the diff.",
+      "prMetaSource": "Source",
+      "prMetaSourceFinding": "Promoted from a finding",
+      "prMetaSourceManual": "Hand-authored",
+      "prMetaPr": "Source PR",
+      "prMetaFinding": "Source finding",
+      "prMetaNone": "—",
+      "expectedOutput": "Expected output",
+      "validJson": "valid JSON",
+      "findingSkeleton": "+ Finding skeleton",
+      "assertEmptyComment": "// dismissed — agent must produce no finding here",
+      "runOnSave": "Run on save",
+      "runCase": "Run case",
+      "lastRun": "Last run",
+      "severity": "Severity",
+      "category": "Category"
+    },
+    "history": {
+      "title": "Batch history",
+      "empty": "No batches run yet.",
+      "timestamp": "Ran at",
+      "agentSnapshot": "Agent snapshot",
+      "model": "Model",
+      "recall": "Recall",
+      "precision": "Precision",
+      "citationAccuracy": "Citation accuracy",
+      "cost": "Cost",
+      "status": "Status",
+      "version": "Version",
+      "passing": "Pass",
+      "passedCount": "{passed}/{total} passed",
+      "statusClean": "Clean",
+      "statusDegraded": "Degraded",
+      "statusCalibration": "Calibration",
+      "statusRunning": "Running…",
+      "compare": "Compare",
+      "selectTwoToCompare": "Select two runs to compare",
+      "nSelected": "{count} selected",
+      "selectTwoHint": "Select exactly two batches to compare.",
+      "compareFullOnly": "Only full-batch runs can be compared.",
+      "clearHistory": "Clear history",
+      "clearHistoryConfirmTitle": "Clear eval history",
+      "clearHistoryConfirmBody": "This deletes all batch history and trend for this agent. Cases are kept.",
+      "clearHistoryConfirmConfirm": "Clear history",
+      "clearHistoryConfirmCancel": "Cancel",
+      "drilldown": {
+        "case": "Case",
+        "outcome": "Outcome",
+        "expected": "Expected",
+        "matched": "Matched",
+        "findings": "Findings",
+        "cost": "Cost",
+        "errorLabel": "Error:"
+      }
+    },
+    "trend": {
+      "title": "Trend",
+      "empty": "Not enough full-batch runs yet to plot a trend.",
+      "degradedLegend": "Degraded batch",
+      "linkHint": "Hover a point to highlight its run in Batch History above.",
+      "markersLabel": "Plotted batches — hover a row for its snapshot & cost",
+      "excludedNote": "{count} batch(es) not plotted — all cases errored (no metrics to chart)",
+      "singleBatchNote": "Only one batch so far — run at least one more to plot a trend line.",
+      "tooltipSnapshot": "Snapshot",
+      "tooltipCost": "Cost"
+    },
+    "kpiDelta": {
+      "label": "vs. previous batch",
+      "noBaseline": "No baseline yet — needs at least 2 full batches to show a KPI delta."
+    },
+    "compare": {
+      "title": "Batch comparison",
+      "metric": "Metric",
+      "batchA": "Batch A",
+      "batchB": "Batch B",
+      "delta": "Delta"
+    }
   }
 }

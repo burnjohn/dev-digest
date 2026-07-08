@@ -13,6 +13,7 @@ const TRACE: RunTrace = {
   raw_output: '{"verdict":"request_changes"}',
   memory_pulled: [{ pr: 471, text: "rate-limit public endpoints" }],
   specs_read: [],
+  context_documents: [],
   log: [
     { t: "00.10", kind: "info", msg: "Starting review with agent Security" },
     { t: "00.90", kind: "result", msg: "Citation grounding: 2/2 passed" },

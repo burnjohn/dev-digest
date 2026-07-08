@@ -1,0 +1,1 @@
+export { FoldersConfig } from "./FoldersConfig";

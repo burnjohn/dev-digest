@@ -71,10 +71,53 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
 
       <FindingsSection findings={findings} />
 
+      <TraceSection
+        icon="FileText"
+        title={t("trace.contextDocs.title")}
+        right={<Badge color="var(--text-muted)">{trace.context_documents.length}</Badge>}
+      >
+        {trace.context_documents.length === 0 ? (
+          <span style={s.contextDocEmpty}>{t("trace.contextDocs.empty")}</span>
+        ) : (
+          trace.context_documents.map((doc, i) => (
+            <div
+              key={`${doc.path}-${i}`}
+              style={i === trace.context_documents.length - 1 ? { ...s.contextDocRow, ...s.contextDocLastRow } : s.contextDocRow}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span className="mono" style={s.contextDocPath} title={doc.path}>
+                  {doc.path}
+                </span>
+                {doc.status === "skipped" && doc.skip_reason && (
+                  <div style={s.contextDocSkipReason}>{doc.skip_reason}</div>
+                )}
+              </div>
+              <span className="tnum" style={s.contextDocTokens}>
+                {t("trace.contextDocs.tokens", { count: doc.token_size })}
+              </span>
+              {doc.status === "injected" ? (
+                <Badge color="var(--ok)" bg="var(--ok-bg)" icon="Check">
+                  {t("trace.contextDocs.injected")}
+                </Badge>
+              ) : (
+                <Badge color="var(--text-muted)" icon="X">
+                  {t("trace.contextDocs.skipped")}
+                </Badge>
+              )}
+            </div>
+          ))
+        )}
+        {trace.context_documents.some((d) => d.status === "injected") && (
+          <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, marginBottom: 0 }}>
+            {t("trace.contextDocs.openFullTextHint")}
+          </p>
+        )}
+      </TraceSection>
+
       <TraceSection icon="FileText" title={t("trace.promptAssembly")} defaultOpen={false}>
         <PromptBlock label={t("trace.prompt.system")} text={trace.prompt_assembly.system} color={PROMPT_COLORS.system} />
         {trace.prompt_assembly.skills != null && (
-          <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} />
+          <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} highlight />
         )}
         {trace.prompt_assembly.memory != null && (
           <PromptBlock label={t("trace.prompt.memory")} text={trace.prompt_assembly.memory} color={PROMPT_COLORS.memory} />

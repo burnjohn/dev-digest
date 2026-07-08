@@ -58,6 +58,15 @@ export const MemoryPulled = z.object({
 });
 export type MemoryPulled = z.infer<typeof MemoryPulled>;
 
+/** One attached Project Context document considered for this run (injected or skipped). */
+export const RunTraceContextDoc = z.object({
+  path: z.string(),
+  token_size: z.number().int(),
+  status: z.enum(['injected', 'skipped']),
+  skip_reason: z.string().nullable(),
+});
+export type RunTraceContextDoc = z.infer<typeof RunTraceContextDoc>;
+
 export const RunStats = z.object({
   duration_ms: z.number().int(),
   tokens_in: z.number().int(),
@@ -85,6 +94,9 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  // Old persisted JSONB traces predate this field entirely — default to []
+  // rather than .nullish() so every consumer gets an array, never undefined.
+  context_documents: z.array(RunTraceContextDoc).default([]),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

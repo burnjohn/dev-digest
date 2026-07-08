@@ -47,12 +47,21 @@ export type BlastRadius = z.infer<typeof BlastRadius>;
 export const RiskSeverity = z.enum(['high', 'medium', 'low']);
 export type RiskSeverity = z.infer<typeof RiskSeverity>;
 
+export const RiskLevel = z.enum(['low', 'medium', 'high', 'critical']);
+export type RiskLevel = z.infer<typeof RiskLevel>;
+
 export const Risk = z.object({
   kind: z.string(),
   title: z.string(),
   explanation: z.string(),
   severity: RiskSeverity,
   file_refs: z.array(z.string()),
+  // --- new, additive (LLM-derived enrichment; absent for deterministic-only risks) ---
+  file: z.string().nullish(),
+  line: z.number().int().nullish(),
+  endpoint: z.string().nullish(),
+  symbol: z.string().nullish(),
+  github_link: z.string().nullish(),
 });
 export type Risk = z.infer<typeof Risk>;
 
@@ -60,6 +69,16 @@ export const Risks = z.object({
   risks: z.array(Risk),
 });
 export type Risks = z.infer<typeof Risks>;
+
+// ---- Review Focus (LLM-derived "read these first" list) ----
+export const ReviewFocusItem = z.object({
+  path: z.string(),
+  line: z.number().int().nullish(),
+  reason: z.string(),
+  priority: z.number().int(), // ascending = read first
+  github_link: z.string().nullish(),
+});
+export type ReviewFocusItem = z.infer<typeof ReviewFocusItem>;
 
 // ---- PR History ----
 export const PrHistoryItem = z.object({
@@ -87,6 +106,14 @@ export const SmartDiffFile = z.object({
   additions: z.number().int(),
   deletions: z.number().int(),
   finding_lines: z.array(z.number().int()),
+  findingsCount: z.number().int(),
+  findings: z.array(z.object({
+    id: z.string(),
+    startLine: z.number().int(),
+    severity: z.enum(['critical', 'warning', 'suggestion']),
+    category: z.string(),
+    title: z.string(),
+  })).optional(),
 });
 export type SmartDiffFile = z.infer<typeof SmartDiffFile>;
 
@@ -112,11 +139,25 @@ export const SmartDiff = z.object({
 });
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
+// ---- LLM-derived brief (narrative + risk level + review focus) ----
+export const LlmBrief = z.object({
+  what: z.string(),
+  why: z.string(),
+  risk_level: RiskLevel,
+  review_focus: z.array(ReviewFocusItem),
+  generated_at: z.string(), // ISO timestamp
+  cost_usd: z.number().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+});
+export type LlmBrief = z.infer<typeof LlmBrief>;
+
 // ---- Composed PR Brief (pr_brief.json) ----
 export const PrBrief = z.object({
   intent: Intent,
   blast: BlastRadius,
   risks: Risks,
   history: PrHistory,
+  llm: LlmBrief.nullish(), // absent/null = never generated (AC-17 backward compat)
 });
 export type PrBrief = z.infer<typeof PrBrief>;

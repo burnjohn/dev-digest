@@ -38,6 +38,8 @@ export function toAgentVersionDto(row: AgentVersionRow): AgentVersion {
     version: row.version,
     config: AgentVersionConfig.parse(row.configJson),
     created_at: row.createdAt.toISOString(),
+    source: row.source ?? 'manual',
+    source_batch_id: row.sourceBatchId ?? null,
   };
 }
 

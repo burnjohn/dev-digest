@@ -1,0 +1,32 @@
+{
+  "eval_id": 2,
+  "config": "without_skill",
+  "summary": {
+    "pass_rate": 1.0,
+    "passed": 4,
+    "failed": 0,
+    "total": 4
+  },
+  "expectations": [
+    {
+      "text": "exactly one db:seed bullet (no duplicate second bullet)",
+      "passed": true,
+      "evidence": "server/insights.md bullets containing 'db:seed': 1 (expected 1)"
+    },
+    {
+      "text": "unrelated app.ts Pattern entry preserved (Edit not Write)",
+      "passed": true,
+      "evidence": "server/insights.md contains any of ['buildServer', 'app.ts:40']: True"
+    },
+    {
+      "text": "agent_runs wrinkle recorded",
+      "passed": true,
+      "evidence": "server/insights.md contains 'agent_runs': True"
+    },
+    {
+      "text": "footer not incremented for a dedup extension (Entries: 2)",
+      "passed": true,
+      "evidence": "server/insights.md footer Entries=2 (expected 2)"
+    }
+  ]
+}

@@ -53,4 +53,53 @@ export const s = {
     fontVariantNumeric: "tabular-nums",
     letterSpacing: "0.02em",
   } satisfies CSSProperties,
+  /** Provenance line: cost + token counts, extends costLabel's visual style. */
+  provenanceLine: {
+    fontSize: 11,
+    color: "var(--text-muted)",
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "0.02em",
+  } satisfies CSSProperties,
+  regenerateBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+    borderRadius: 6,
+    background: "none",
+    border: "none",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  regenerateBtnDisabled: {
+    opacity: 0.5,
+    cursor: "default",
+  } satisfies CSSProperties,
+  clearBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+    borderRadius: 6,
+    background: "none",
+    border: "none",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  clearBtnDisabled: {
+    opacity: 0.5,
+    cursor: "default",
+  } satisfies CSSProperties,
+  scoreHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  } satisfies CSSProperties,
+  inlineError: {
+    fontSize: 12,
+    color: "var(--crit)",
+    marginTop: 6,
+  } satisfies CSSProperties,
 } as const;

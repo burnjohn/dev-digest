@@ -6,6 +6,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { TextInput } from "@devdigest/ui";
+import { hlLineColor } from "../atoms";
 
 /** Highlight every case-insensitive occurrence of `q` within a single line. */
 function highlightLine(line: string, q: string): React.ReactNode {
@@ -31,7 +32,9 @@ function highlightLine(line: string, q: string): React.ReactNode {
   return parts;
 }
 
-export function PromptModalBody({ text }: { text: string }) {
+const HL = 20;
+
+export function PromptModalBody({ text, highlight = false }: { text: string; highlight?: boolean }) {
   const t = useTranslations("runs");
   const [q, setQ] = React.useState("");
   const lines = React.useMemo(() => (text || "—").split("\n"), [text]);
@@ -57,6 +60,60 @@ export function PromptModalBody({ text }: { text: string }) {
         {ql && shown.length === 0 ? (
           <div style={{ padding: "32px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
             {t("trace.prompt.noMatches", { q: q.trim() })}
+          </div>
+        ) : highlight ? (
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "monospace",
+              fontSize: 12.5,
+              lineHeight: `${HL}px`,
+            }}
+          >
+            {!ql && (
+              <div
+                style={{
+                  flexShrink: 0,
+                  width: 44,
+                  padding: "16px 0",
+                  background: "rgba(0,0,0,0.18)",
+                  borderRight: "1px solid var(--border)",
+                  userSelect: "none",
+                }}
+              >
+                {lines.map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      height: HL,
+                      lineHeight: `${HL}px`,
+                      fontSize: 11,
+                      paddingRight: 10,
+                      color: "var(--text-muted)",
+                      textAlign: "right",
+                      opacity: 0.6,
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ flex: 1, padding: "16px 24px", minWidth: 0 }}>
+              {shown.map((line, i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: HL,
+                    lineHeight: `${HL}px`,
+                    color: hlLineColor(line),
+                    whiteSpace: "pre",
+                  }}
+                >
+                  {ql ? highlightLine(line, q) : (line || "​")}
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <pre

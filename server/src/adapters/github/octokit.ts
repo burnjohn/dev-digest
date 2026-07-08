@@ -76,12 +76,10 @@ export class OctokitGitHubClient implements GitHubClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: n,
-            per_page: 100,
-          });
+          const files = await this.octokit.paginate(
+            this.octokit.rest.pulls.listFiles,
+            { owner: repo.owner, repo: repo.name, pull_number: n, per_page: 100 },
+          );
           const { data: commits } = await this.octokit.rest.pulls.listCommits({
             owner: repo.owner,
             repo: repo.name,
@@ -368,5 +366,69 @@ export class OctokitGitHubClient implements GitHubClient {
       withTimeout(this.octokit.rest.users.getAuthenticated(), TIMEOUT),
     );
     return res.data.login;
+  }
+
+  async getRepoTree(
+    repo: RepoRef,
+    ref?: string,
+  ): Promise<{ path: string; type: 'blob' | 'tree' }[]> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const owner = repo.owner;
+          const name = repo.name;
+          let treeSha = ref;
+          if (!treeSha) {
+            const { data: repoData } = await this.octokit.rest.repos.get({
+              owner,
+              repo: name,
+            });
+            treeSha = repoData.default_branch;
+          }
+          const res = await this.octokit.rest.git.getTree({
+            owner,
+            repo: name,
+            tree_sha: treeSha,
+            recursive: '1',
+          });
+          return res.data.tree
+            .filter(
+              (entry): entry is typeof entry & { path: string; type: 'blob' | 'tree' } =>
+                entry.path != null && (entry.type === 'blob' || entry.type === 'tree'),
+            )
+            .map((entry) => ({ path: entry.path, type: entry.type }));
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async getFileContents(repo: RepoRef, path: string, ref?: string): Promise<string | null> {
+    try {
+      return await withRetry(() =>
+        withTimeout(
+          (async () => {
+            const res = await this.octokit.rest.repos.getContent({
+              owner: repo.owner,
+              repo: repo.name,
+              path,
+              ref,
+            });
+            const data = res.data;
+            if (Array.isArray(data) || data.type !== 'file' || !data.content) {
+              return null;
+            }
+            return Buffer.from(data.content, 'base64').toString('utf-8');
+          })(),
+          TIMEOUT,
+        ),
+      );
+    } catch (err) {
+      const status =
+        (err as { status?: number })?.status ??
+        (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) return null;
+      throw err;
+    }
   }
 }

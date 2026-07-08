@@ -115,7 +115,7 @@ export type MemoryItem = z.infer<typeof MemoryItem>;
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
-export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
+export const SkillSource = z.enum(['manual', 'imported_url', 'imported_file', 'extracted', 'community']);
 export type SkillSource = z.infer<typeof SkillSource>;
 
 export const Skill = z.object({
@@ -131,6 +131,34 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+export const ImportPreview = z.object({
+  name: z.string(),
+  type: SkillType,
+  body: z.string(),
+  token_estimate: z.number().int(),
+  source_file: z.string(),
+  ignored_files: z.array(z.string()),
+});
+export type ImportPreview = z.infer<typeof ImportPreview>;
+
+export const SkillStats = z.object({
+  used_by: z.number().int(),
+  pull_frequency_pct: z.number(),
+  accept_rate_pct: z.number(),
+  findings_30d: z.number().int(),
+  agents: z.array(z.object({ id: z.string(), name: z.string() })),
+  findings_by_category: z.array(z.object({ category: z.string(), count: z.number().int() })),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
 export const CommunitySkill = z.object({
   name: z.string(),
   repo: z.string(),
@@ -141,15 +169,75 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
-export const ConventionCandidate = z.object({
+export const ConventionStatus = z.enum([
+  'pending',
+  'verified',
+  'rejected_evidence',
+  'accepted',
+  'rejected_user',
+  'edited',
+]);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+export const ConventionScanStatus = z.enum(['pending', 'running', 'done', 'failed']);
+export type ConventionScanStatus = z.infer<typeof ConventionScanStatus>;
+
+export const Convention = z.object({
   id: z.string(),
+  workspace_id: z.string(),
+  repo_id: z.string().nullable(),
+  scan_id: z.string().nullish(),
+  category: z.string().nullish(),
   rule: z.string(),
-  evidence_path: z.string(),
-  evidence_snippet: z.string(),
-  confidence: z.number().min(0).max(1),
+  edited_rule: z.string().nullish(),
+  evidence_path: z.string().nullish(),
+  evidence_snippet: z.string().nullish(),
+  evidence_line: z.number().int().nullish(),
+  evidence_line_end: z.number().int().nullish(),
+  evidence_url: z.string().nullish(),
+  model_confidence: z.number().min(0).max(1).nullish(),
+  verified_confidence: z.number().min(0).max(1).nullish(),
+  confidence: z.number().min(0).max(1).nullish(),
+  status: ConventionStatus,
   accepted: z.boolean(),
+  dedup_key: z.string().nullish(),
+  created_at: z.string(),
 });
-export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+export type Convention = z.infer<typeof Convention>;
+
+export const ConventionScan = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+  repo_id: z.string(),
+  commit_sha: z.string(),
+  status: ConventionScanStatus,
+  scanned_file_count: z.number().int().nullish(),
+  candidate_count: z.number().int().nullish(),
+  verified_count: z.number().int().nullish(),
+  created_at: z.string(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+export const ConventionSkillInput = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('merge'),
+    name: z.string().min(1),
+    description: z.string(),
+    type: SkillType,
+  }),
+  z.object({
+    mode: z.literal('grouped'),
+    groups: z.array(
+      z.object({
+        category: z.string(),
+        name: z.string().min(1),
+        description: z.string(),
+        type: SkillType,
+      }),
+    ),
+  }),
+]);
+export type ConventionSkillInput = z.infer<typeof ConventionSkillInput>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
@@ -198,6 +286,20 @@ export const AgentSkillLink = z.object({
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
 
+// Compact usage rollup for the Agents LIST card footer (runs · accept% · avg
+// cost · skills). Distinct from the heavier per-agent `AgentStats` detail
+// contract (observability.ts) so the list query stays cheap. Aggregated from
+// `agent_runs` and finding actions (accept rate over accepted+dismissed
+// findings). `accept_pct` / `avg_cost_usd` are null when nothing to average.
+export const AgentCardStats = z.object({
+  agent_id: z.string(),
+  runs: z.number().int(),
+  skill_count: z.number().int(),
+  accept_pct: z.number().nullable(),
+  avg_cost_usd: z.number().nullable(),
+});
+export type AgentCardStats = z.infer<typeof AgentCardStats>;
+
 // The immutable config snapshot captured in `agent_versions` whenever an agent's
 // config changes (everything but `enabled`). Mirrors the shape written by the
 // agents repository — provider/model/prompt/output_schema/strategy/gate/repo_intel
@@ -220,5 +322,12 @@ export const AgentVersion = z.object({
   version: z.number().int(),
   config: AgentVersionConfig,
   created_at: z.string(),
+  // Metadata ABOUT this version row (not part of the frozen config snapshot):
+  // how it came to exist — a manual edit, or promoted from an eval batch's
+  // agent_snapshot (Agent Eval Dashboard). `source_batch_id` is the promoting
+  // batch's id when `source === 'eval_promote'`. Both `.nullish()` — absent on
+  // any version row written before this feature existed.
+  source: z.enum(['manual', 'eval_promote']).nullish(),
+  source_batch_id: z.string().nullish(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;

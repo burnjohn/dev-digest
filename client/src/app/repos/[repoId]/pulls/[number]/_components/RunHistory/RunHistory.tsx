@@ -2,9 +2,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
+import { Badge, Icon, CircularScore, SEV, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit, ReviewRecord, FindingRecord } from "@devdigest/shared";
 import { formatCost } from "@/lib/format";
+import { usePopupPosition } from "@/lib/hooks";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -36,11 +37,13 @@ function outcomeOf(run: RunSummary): Outcome {
   return { key: "approved", color: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle" };
 }
 
-const SEV_DISPLAY = [
-  { key: "critical" as const, label: "CRIT", color: "var(--crit)", dbKey: "CRITICAL" as const, SevIcon: Icon.AlertOctagon },
-  { key: "warning" as const, label: "WARN", color: "var(--warn)", dbKey: "WARNING" as const, SevIcon: Icon.AlertTriangle },
-  { key: "suggestion" as const, label: "SUGG", color: "var(--sugg)", dbKey: "SUGGESTION" as const, SevIcon: Icon.Lightbulb },
-];
+const SEV_DISPLAY = (["CRITICAL", "WARNING", "SUGGESTION"] as const).map((dbKey) => ({
+  key: dbKey.toLowerCase() as "critical" | "warning" | "suggestion",
+  dbKey,
+  label: SEV[dbKey].label.slice(0, 4).toUpperCase(),
+  color: SEV[dbKey].c,
+  SevIcon: Icon[SEV[dbKey].icon],
+}));
 
 type PopupState = {
   runId: string;
@@ -62,7 +65,7 @@ function FindingPopup({
   top: number;
   left: number;
 }) {
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [ref, adjustedLeft] = usePopupPosition(left);
 
   React.useEffect(() => {
     function handler(e: MouseEvent) {
@@ -70,19 +73,7 @@ function FindingPopup({
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  // Keep popup within viewport horizontally. rAF defers until after layout so
-  // offsetWidth is non-zero on the first render.
-  const [adjustedLeft, setAdjustedLeft] = React.useState(left);
-  React.useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      if (!ref.current) return;
-      const overflow = left + ref.current.offsetWidth - window.innerWidth + 12;
-      setAdjustedLeft(overflow > 0 ? left - overflow : left);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [left]);
+  }, [onClose, ref]);
 
   return (
     <div
@@ -374,15 +365,15 @@ export function RunHistory({
                 <Icon.FileText size={13} />
               </button>
               {onDelete && r.status !== "running" && (
-                <span
-                  role="button"
+                <button
+                  type="button"
                   aria-label={t("timeline.deleteRun")}
                   title={t("timeline.deleteRun")}
                   onClick={() => onDelete(r.run_id)}
-                  style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
+                  style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer", background: "none", border: "none" }}
                 >
                   <Icon.Trash size={13} />
-                </span>
+                </button>
               )}
             </div>
           );

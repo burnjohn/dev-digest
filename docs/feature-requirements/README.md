@@ -1,0 +1,24 @@
+# Feature Requirements
+
+Feature specifications — the **WHAT** of a feature, written before any plan or code exists. Produced by the **spec-creator** agent (or by hand), consumed by the **implementation-planner** agent as input for a Development Plan.
+
+## Conventions
+
+- One file per feature: `YYYY-MM-DD-<feature-slug>.md` (same naming pattern as `docs/plans/`)
+- Header carries a **Spec ID**: `SPEC-YYYY-MM-DD-<feature-slug>` (filename-derived — always includes the feature name); `Supersedes:` references it
+- Language: English — spec files and the whole spec-creator dialog
+- Acceptance criteria in EARS form with stable IDs (`AC-1`, `AC-2` …) — full template in [.claude/agents/spec-creator.md](../../.claude/agents/spec-creator.md)
+- Status lifecycle: `draft → approved → implemented`; a replaced spec gets `superseded` and its successor carries a `Supersedes:` link
+- Drafts are revisable in place (AC IDs append-only — never renumbered); once `approved`, content is frozen — a changed decision requires a new spec with a `Supersedes:` link
+- Specs describe WHAT and WHY — never HOW. Implementation plans live in `docs/plans/`; post-implementation behavioral specs of a single package live in `{package}/specs/`
+- Specs may include Mermaid workflow / module-communication diagrams and interface-level contracts (field names + semantics as tables or example payloads) — but no code, no Zod/SQL, no file paths
+- Every edge case cites the `AC-n` that covers it; non-functional criteria are measurable and carry a verification hint
+
+## Index
+
+- [2026-07-02-project-context-folder.md](2026-07-02-project-context-folder.md) — `SPEC-2026-07-02-project-context-folder` (draft — v2) — browse/edit repo markdown (DB-shadow overlay) + attach to agents/skills; inject into the reviewer's `## Project context` slot as untrusted data; two-panel UI + coverage ring
+- [2026-07-03-onboarding-generator.md](2026-07-03-onboarding-generator.md) — `SPEC-2026-07-03-onboarding-generator` (draft) — per-repo Onboarding Tour: deterministic repo-intel facts (rank/critical paths/routes/scripts) + exactly ONE structured LLM call for the 5-section narrative; full-mode (managed clone) + lite-mode (GitHub API) fallback; persisted + regenerable
+- [2026-07-03-pr-why-risk-brief.md](2026-07-03-pr-why-risk-brief.md) — `SPEC-2026-07-03-pr-why-risk-brief` (draft) — additive extension of the existing L04 `pr_brief` with `what`/`why`/`risk_level`/enriched `risks[]`/`review_focus[]`; exactly ONE structured LLM call via new `POST /pulls/:id/brief`; deterministic post-generation link validation against real files/blast/endpoints; cached, explicit regenerate only
+- [2026-07-05-eval-pipeline.md](2026-07-05-eval-pipeline.md) — `SPEC-2026-07-05-eval-pipeline` (draft) — per-agent eval case sets (from accepted/dismissed findings, one click, or manual Case Editor); batch runs reusing the existing reviewer-core pipeline against synthetic diff fragments (zero new LLM call sites); zero-LLM deterministic scoring (recall/precision/citation_accuracy) keyed to an agent-snapshot identity (prompt+skills+model+provider); new Evals tab in AgentEditor with history, trend, and batch compare
+- [2026-07-06-skill-eval-pipeline.md](2026-07-06-skill-eval-pipeline.md) — `SPEC-2026-07-06-skill-eval-pipeline` (draft) — per-skill eval case sets (manual, promoted-from-finding with explicit skill attribution, or seeded) scored with the `evals/` harness's own two-tier methodology (deterministic grounding substring gate, then a per-case-editable-threshold LLM practices judge — not zero-LLM); marginal-contribution runs against a selectable host agent (skill added to its existing linked skills); batch/run persistence keyed to skill body+version+host-agent snapshot identity; new rich Evals tab in SkillDetail with judge-score/grounding-pass-rate/cases-passing/cost metrics strip
+- [2026-07-07-agent-eval-dashboard.md](2026-07-07-agent-eval-dashboard.md) — `SPEC-2026-07-07-agent-eval-dashboard` (draft) — workspace-wide "Eval Dashboard" sidebar page (fulfills the eval-pipeline spec's deferred Non-goal): landing page aggregating every eval-configured agent's latest metrics/sparkline + a cross-agent recent-runs feed + real "Run all agents" fan-out; per-agent detail page with agent-switcher, KPI/trend/run-history, and a two-batch compare with system-prompt word-level diff + a "Promote" mutation; requires persisting each batch's full system-prompt text (currently only an opaque fingerprint), flagged as a data-model gap

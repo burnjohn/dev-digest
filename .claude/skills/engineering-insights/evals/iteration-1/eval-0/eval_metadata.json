@@ -1,0 +1,13 @@
+{
+  "eval_id": 0,
+  "eval_name": "capture-genuine-quirk-new-file",
+  "prompt": "~45 min server debugging session: Drizzle onConflictDoUpdate never dedupes rows whose indexed `file` column is NULL because Postgres NULL != NULL; findings pile up. Fix: coalesce file to ''. schema.ts:140. Wrap up and capture insights. server/insights.md does NOT yet exist.",
+  "assertions": [
+    {"text": "server/insights.md was created", "type": "programmatic"},
+    {"text": "exactly one new entry was added (Entries: 1)", "type": "programmatic"},
+    {"text": "entry has an ISO date and a bracketed category tag [Pattern|Mistake|Decision|Quirk]", "type": "programmatic"},
+    {"text": "entry cites the server/src/db/schema.ts file anchor", "type": "programmatic"},
+    {"text": "entry content reflects the actual discovery (null / conflict / dedupe), not a fabricated topic", "type": "programmatic"},
+    {"text": "footer 'Entries: 1' is present and correct", "type": "programmatic"}
+  ]
+}

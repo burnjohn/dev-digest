@@ -1,24 +1,58 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
+  "subtitle": "Markdown documents under the repository's configured root folders — attach them to an agent or skill from its editor.",
+  "filterPlaceholder": "Filter by path or category…",
+  "loadError": "Couldn’t load context documents.",
   "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "title": "No context documents yet",
+    "body": "Add markdown files under one of the configured root folders (specs/docs/insights by default), add a custom folder below, or create one with the + button."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "emptyFiltered": {
+    "title": "No documents match",
+    "body": "Try a different path or category filter."
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
+  "table": {
+    "path": "Path",
+    "category": "Category",
+    "tokenCount": "Tokens",
+    "tokenCountValue": "{count}",
+    "usedBy": "Used by",
+    "usedByValue": "{count, plural, one {# agent} other {# agents}}",
+    "preview": "Preview"
+  },
+  "toolbar": {
+    "add": "New document",
+    "upload": "Upload markdown",
+    "refresh": "Refresh"
+  },
+  "detail": {
+    "preview": "Preview",
+    "edit": "Edit",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "delete": "Delete",
+    "deleteConfirmRevert": "Delete this edit? The document reverts to the repository's version.",
+    "deleteConfirmRemove": "Delete this document? It was uploaded here and will be removed entirely.",
+    "coverageLabel": "Coverage",
+    "usedByLabel": "{count, plural, one {Used by # agent} other {Used by # agents}}",
+    "newDocumentPathPlaceholder": "docs/new-document.md",
+    "unsavedPathRequired": "Enter a path under a configured folder (e.g. docs/x.md) before saving.",
+    "newDocumentTitle": "New document",
+    "empty": "Select a document to preview or edit it.",
+    "loadError": "Couldn’t load this document.",
+    "sourceOverlay": "Edited",
+    "sourceOverlayOnly": "Uploaded",
+    "sourceClone": "Repository"
+  },
+  "preview": {
+    "subtitle": "Read-only preview",
+    "loadError": "Couldn’t load this document."
+  },
+  "folders": {
+    "title": "Root context folders",
+    "hint": "Documents are discovered under these root folders only. Defaults to specs/docs/insights.",
+    "addPlaceholder": "e.g. adr",
+    "add": "Add",
+    "remove": "Remove {folder}"
   }
 }

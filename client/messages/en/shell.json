@@ -21,11 +21,7 @@
     "skills": "Skills",
     "agents": "Agents",
     "conventions": "Conventions",
-    "eval": "Eval Dashboard",
-    "memory": "Memory",
-    "multi-agent": "Multi-Agent Review",
-    "agent-performance": "Agent Performance",
-    "ci-runs": "CI Runs"
+    "evals": "Eval Dashboard"
   },
   "featurePlaceholder": {
     "defaultBody": "This screen is owned by {owner}. The app shell, routing, theming and data layer are wired — {owner} fills in the screen here."

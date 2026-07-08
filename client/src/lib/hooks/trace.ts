@@ -12,7 +12,7 @@ import type { RunTrace } from "@devdigest/shared";
 export function useRunTrace(runId: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: ["run-trace", runId],
-    queryFn: () => api.get<RunTrace>(`/runs/${runId}/trace`),
+    queryFn: ({ signal }) => api.get<RunTrace>(`/runs/${runId}/trace`, { signal }),
     enabled: !!runId && enabled,
     retry: false,
   });

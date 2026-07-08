@@ -54,7 +54,9 @@ export interface CompletionResult {
  */
 export interface StructuredRequest<T> {
   model: string;
-  schema: z.ZodType<T>;
+  // `unknown` input: safeParse always receives unknown at runtime, and schemas
+  // with .default()/.optional() widen the _input type beyond T — still safe.
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   schemaName: string;
   messages: ChatMessage[];
   temperature?: number;
@@ -135,6 +137,16 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /**
+   * Full recursive file tree for `repo` (Git Data API `git/trees?recursive=1`).
+   * When `ref` is omitted, resolves the repo's default branch first.
+   */
+  getRepoTree(repo: RepoRef, ref?: string): Promise<{ path: string; type: 'blob' | 'tree' }[]>;
+  /**
+   * Single file's text content (base64-decoded), or `null` when the file is
+   * absent at `ref` (e.g. no README) — absence is not an error.
+   */
+  getFileContents(repo: RepoRef, path: string, ref?: string): Promise<string | null>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

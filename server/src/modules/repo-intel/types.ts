@@ -161,6 +161,15 @@ export interface RepoIntel {
   getUnresolvedReferences(repoId: string, files: string[]): Promise<RefRow[]>;
   /** Top-N file paths by rank, filtered of tests/configs. */
   getConventionSamples(repoId: string, n: number): Promise<string[]>;
+  /**
+   * Repo-wide file_facts inventory (endpoints/crons per file), no `files`
+   * filter — the complete indexed set for `repoId`. Intentionally UNCAPPED:
+   * this is a general aggregation read (e.g. onboarding's routes/endpoints
+   * section), not LLM input. Degrades to `[]` per the DEGRADED CONTRACT above.
+   */
+  getAllFileFacts(
+    repoId: string,
+  ): Promise<{ filePath: string; endpoints: string[]; crons: string[] }[]>;
 
   // --- T3: onboarding reading-path + critical paths (graph required) ------
   getTopFilesByRank(
@@ -169,4 +178,11 @@ export interface RepoIntel {
     opts?: { exclude?: string[] },
   ): Promise<string[]>;
   getCriticalPaths(repoId: string): Promise<string[][]>;
+
+  // --- L04: reverse import-graph reachability (blast radius endpoint) -----
+  /**
+   * Files that import any of `files`, transitively up to `depth` (reverse
+   * file_edges BFS). Degraded/flag-off → [].
+   */
+  getImporters(repoId: string, files: string[], depth?: number): Promise<string[]>;
 }

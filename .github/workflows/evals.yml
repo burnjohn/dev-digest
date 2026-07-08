@@ -1,0 +1,293 @@
+# Harness evals — two jobs:
+#
+#   quality      — BLOCKING and FREE: no model, no secrets. Typechecks the evals package, runs
+#                  the static SKILL.md gate (frontmatter, links, structure) and the pure stats
+#                  unit test.
+#
+#   model-evals  — OpenRouter-backed, pay-per-token. evals/scripts/ci-detect.mjs maps changed
+#                  files → the smallest suite that covers them:
+#                    .claude/skills/<n>/**  →  vitest run skills/<n>   (content tier, direct)
+#                    .claude/agents/<n>.md  →  vitest run agents/<n>   (tool tier, via proxy)
+#                    CLAUDE.md / any agent / evals engine  →  pnpm eval:workflow  (advisory)
+#                  A changed skill/agent WITHOUT evals is skipped with a visible notice.
+#                  The FULL `pnpm eval` never runs on CI — too expensive by design.
+#
+# Model knobs are repo Actions VARIABLES (Settings → Secrets and variables → Actions →
+# Variables) with cheap defaults — upgrade quality by changing a variable, no commit needed:
+#   EVAL_MODEL_CONTENT   default deepseek/deepseek-chat      skills tier + LLM judge
+#   EVAL_MODEL_AGENTS    default anthropic/claude-haiku-4.5   agents tier — the strictest tier
+#                        (threshold 1.0, exact RULE ids). haiku passes reliably; mistral-medium-3.1
+#                        flaked two ways across back-to-back runs (one 240s timeout, then two cases
+#                        giving up early on phantom /home/user/... paths → missed/fabricated
+#                        findings); gemini-2.5-flash misses violations / cites no rule ids
+#                        (evals/README.md). Override via the variable to A/B another model.
+#   EVAL_MODEL_WORKFLOW  default google/gemini-2.5-flash     workflow tier — dispatch verified;
+#                        deepseek does NOT dispatch subagents (evals/README.md)
+#   EVAL_JUDGE_MODEL     default deepseek/deepseek-chat
+#
+# Secret: OPENROUTER_API_KEY. When absent (e.g. a fork PR) model steps are skipped with a notice.
+name: evals
+
+on:
+  # Direct pushes to feature branches trigger too, so the loop is: commit → push → run,
+  # no open PR required. main is excluded — PRs into main already validated the change.
+  push:
+    branches-ignore: [main]
+    paths:
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - 'evals/**'
+      - '.github/workflows/evals.yml'
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - 'evals/**'
+      - '.github/workflows/evals.yml'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'vitest pattern to run (e.g. skills/dependency-checker, agents/architecture-reviewer, workflow)'
+        required: true
+        type: string
+      model:
+        description: 'OpenRouter model slug override (optional — defaults per tier)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: blocking, free — no model, no secrets ─────────────────────────────
+  quality:
+    name: quality gate (static, free)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck evals package
+        run: pnpm typecheck
+
+      - name: Static skill quality gate (frontmatter, links, structure)
+        run: pnpm eval:quality
+
+      - name: Stats unit tests (no model)
+        run: pnpm exec vitest run src/records/stats.test.ts
+
+  # ── Job 2: model-backed, trigger-table driven ────────────────────────────────
+  model-evals:
+    name: model evals (OpenRouter)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL_CONTENT: ${{ vars.EVAL_MODEL_CONTENT || 'deepseek/deepseek-chat' }}
+      EVAL_MODEL_AGENTS: ${{ vars.EVAL_MODEL_AGENTS || 'anthropic/claude-haiku-4.5' }}
+      EVAL_MODEL_WORKFLOW: ${{ vars.EVAL_MODEL_WORKFLOW || 'google/gemini-2.5-flash' }}
+      EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL || 'deepseek/deepseek-chat' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Trigger table: changed files → suites. Emits skills / agents / run_workflow /
+      # skipped_* step outputs and a markdown table to the run summary page.
+      # Diff base: PR → the PR base sha; push → the pre-push sha (github.event.before),
+      # falling back to origin/main for a brand-new branch or an unreachable force-push sha.
+      - name: Detect changed files → eval suites
+        id: detect
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          ZERO="0000000000000000000000000000000000000000"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="$PR_BASE_SHA"
+          else
+            BASE_SHA="$PUSH_BEFORE"
+          fi
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "$ZERO" ] || ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            git fetch --no-tags --depth=1 origin main
+            BASE_SHA="$(git rev-parse origin/main)"
+          fi
+          echo "diff base: $BASE_SHA"
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA" HEAD)"
+          echo "$CHANGED_FILES"
+          export CHANGED_FILES
+          node scripts/ci-detect.mjs
+
+      - name: Decide what to run
+        id: plan
+        env:
+          SKILLS: ${{ steps.detect.outputs.skills }}
+          AGENTS: ${{ steps.detect.outputs.agents }}
+          RUN_WORKFLOW: ${{ steps.detect.outputs.run_workflow }}
+        run: |
+          run_skills=false; run_agents=false; run_workflow=false; run_manual=false
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::notice::OPENROUTER_API_KEY is not available (fork PR or unset secret) — model evals skipped"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            run_manual=true
+          else
+            if [ -n "$SKILLS" ] && [ "$SKILLS" != "[]" ]; then run_skills=true; fi
+            if [ -n "$AGENTS" ] && [ "$AGENTS" != "[]" ]; then run_agents=true; fi
+            if [ "$RUN_WORKFLOW" = "true" ]; then run_workflow=true; fi
+          fi
+          any=false; proxy=false
+          if [ "$run_skills" = true ] || [ "$run_agents" = true ] || [ "$run_workflow" = true ] || [ "$run_manual" = true ]; then any=true; fi
+          # The LiteLLM proxy is only needed by the tool tiers (Agent SDK ⇄ non-Anthropic models).
+          if [ "$run_agents" = true ] || [ "$run_workflow" = true ] || [ "$run_manual" = true ]; then proxy=true; fi
+          {
+            echo "run_skills=$run_skills"
+            echo "run_agents=$run_agents"
+            echo "run_workflow=$run_workflow"
+            echo "run_manual=$run_manual"
+            echo "any=$any"
+            echo "proxy=$proxy"
+          } >> "$GITHUB_OUTPUT"
+          echo "plan: skills=$run_skills agents=$run_agents workflow=$run_workflow manual=$run_manual proxy=$proxy"
+
+      # Changed artifacts that have no evals are NOT failures — surface them and stay green.
+      - name: Report artifacts without evals (SKIP)
+        if: steps.detect.outputs.skipped_skills != '' || steps.detect.outputs.skipped_agents != ''
+        env:
+          SKIPPED_SKILLS: ${{ steps.detect.outputs.skipped_skills }}
+          SKIPPED_AGENTS: ${{ steps.detect.outputs.skipped_agents }}
+        run: |
+          for n in $SKIPPED_SKILLS; do echo "::notice::SKIP skill '$n' — no evals, missing SKILL.md, or marked .ci-skip (reason in the detect step log)"; done
+          for n in $SKIPPED_AGENTS; do echo "::notice::SKIP agent '$n' — no evals, missing agent .md, or marked .ci-skip (reason in the detect step log)"; done
+
+      - uses: pnpm/action-setup@v4
+        if: steps.plan.outputs.any == 'true'
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.any == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - name: Install
+        if: steps.plan.outputs.any == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Translating proxy: the Agent SDK speaks the Anthropic wire protocol; LiteLLM maps it to
+      # any OpenRouter slug. The container reads OPENROUTER_API_KEY from the job env.
+      - name: Start LiteLLM proxy (tool tiers)
+        if: steps.plan.outputs.proxy == 'true'
+        run: |
+          docker compose -f proxy/docker-compose.yml up -d
+          bash scripts/litellm-proxy.sh wait
+
+      # Content tier — direct OpenRouter call, no proxy needed. BLOCKING.
+      - name: Skill evals (changed skills only)
+        if: steps.plan.outputs.run_skills == 'true'
+        env:
+          EVAL_BACKEND: openrouter
+          EVAL_MODEL: ${{ env.EVAL_MODEL_CONTENT }}
+          SKILLS_JSON: ${{ steps.detect.outputs.skills }}
+        run: |
+          for name in $(echo "$SKILLS_JSON" | jq -r '.[]'); do
+            echo "──▶ vitest run skills/$name/  (model: $EVAL_MODEL)"
+            # trailing slash: vitest filters by SUBSTRING, so "skills/foo" would also match
+            # "skills/foo-variant/..." — the slash pins the exact directory.
+            pnpm exec vitest run "skills/$name/"
+          done
+
+      # Tool tier — via the proxy. BLOCKING.
+      - name: Agent evals (changed agents only)
+        if: steps.plan.outputs.run_agents == 'true'
+        env:
+          EVAL_BACKEND: openrouter
+          OPENROUTER_BASE_URL: http://localhost:4000
+          EVAL_MODEL: ${{ env.EVAL_MODEL_AGENTS }}
+          AGENTS_JSON: ${{ steps.detect.outputs.agents }}
+        run: |
+          for name in $(echo "$AGENTS_JSON" | jq -r '.[]'); do
+            echo "──▶ vitest run agents/$name/  (model: $EVAL_MODEL)"
+            # trailing slash: substring filtering — "agents/architecture-reviewer" would also
+            # match agents/architecture-reviewer-lite/ and crash on its missing agent .md.
+            pnpm exec vitest run "agents/$name/"
+          done
+
+      # Systemic tier — ADVISORY on cheap models: activation-kind cases are behaviour-shaped and
+      # documented as indicative-not-blocking on non-Anthropic models (evals/README.md).
+      - name: Workflow-tier evals (advisory)
+        id: workflow_tier
+        if: steps.plan.outputs.run_workflow == 'true'
+        continue-on-error: true
+        env:
+          EVAL_BACKEND: openrouter
+          OPENROUTER_BASE_URL: http://localhost:4000
+          EVAL_MODEL: ${{ env.EVAL_MODEL_WORKFLOW }}
+        run: pnpm eval:workflow
+
+      - name: Annotate advisory failure
+        if: steps.workflow_tier.outcome == 'failure'
+        run: echo "::warning::workflow-tier evals failed — advisory on non-Anthropic models (activation flakiness); inspect the 'Workflow-tier evals' step log"
+
+      # Manual run: workflow_dispatch with a vitest pattern + optional model override.
+      - name: Manual suite run (workflow_dispatch)
+        if: steps.plan.outputs.run_manual == 'true'
+        env:
+          EVAL_BACKEND: openrouter
+          OPENROUTER_BASE_URL: http://localhost:4000
+          SUITE: ${{ inputs.suite }}
+          MODEL_OVERRIDE: ${{ inputs.model }}
+        run: |
+          MODEL="$MODEL_OVERRIDE"
+          if [ -z "$MODEL" ]; then
+            case "$SUITE" in
+              skills*) MODEL="$EVAL_MODEL_CONTENT" ;;
+              agents*) MODEL="$EVAL_MODEL_AGENTS" ;;
+              *)       MODEL="$EVAL_MODEL_WORKFLOW" ;;
+            esac
+          fi
+          echo "──▶ vitest run $SUITE  (model: $MODEL)"
+          EVAL_MODEL="$MODEL" pnpm exec vitest run "$SUITE"
+
+      - name: Proxy logs (on failure)
+        if: failure() && steps.plan.outputs.proxy == 'true'
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+
+      - name: Stop proxy
+        if: always() && steps.plan.outputs.proxy == 'true'
+        run: docker compose -f proxy/docker-compose.yml down
+
+      - name: Upload eval outputs (debugging)
+        if: (failure() || steps.workflow_tier.outcome == 'failure') && steps.plan.outputs.any == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: |
+            evals/results/records.jsonl
+            evals/results/history.jsonl
+            evals/results/outputs/
+          if-no-files-found: ignore
+# ci-trigger: exercise Job 2 change-detection (skill + agent + workflow edit); no behavior change

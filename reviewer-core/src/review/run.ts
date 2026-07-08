@@ -1,5 +1,6 @@
 import type {
   Finding,
+  Intent,
   LLMProvider,
   PromptAssembly,
   Review,
@@ -71,6 +72,9 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /** PR intent derived by the cheap-model pre-pass. When present, injected into
+      the system prompt to scope the reviewer. Omitting has zero effect. */
+  intent?: Intent;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -136,6 +140,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     repoMap: input.repoMap,
     prDescription: input.prDescription,
     task: input.task,
+    ...(input.intent ? { intent: input.intent } : {}),
   };
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.

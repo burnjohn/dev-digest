@@ -25,8 +25,12 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
+import { EvalRepository } from '../modules/eval/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { BlastService } from '../modules/blast/service.js';
+import { ContextDocsService } from '../modules/context-docs/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -48,6 +52,10 @@ export interface ContainerOverrides {
   llm?: Partial<Record<'openai' | 'anthropic' | 'openrouter', LLMProvider>>;
   /** repo-intel facade (T1.1+) — tests inject mock RepoIntel implementations. */
   repoIntel?: RepoIntel;
+  /** blast assembly service (L04) — tests inject a stub for brief composition. */
+  blast?: BlastService;
+  /** context-docs facade — tests inject a stub for discovery/attachment logic. */
+  contextDocs?: ContextDocsService;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
@@ -72,7 +80,11 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _skillsRepo?: SkillsRepository;
+  private _evalRepo?: EvalRepository;
   private _repoIntel?: RepoIntel;
+  private _blast?: BlastService;
+  private _contextDocs?: ContextDocsService;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
@@ -100,6 +112,20 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  get skillsRepo(): SkillsRepository {
+    return (this._skillsRepo ??= new SkillsRepository(this.db));
+  }
+
+  /**
+   * Eval batches/cases (L06). Exposed on the container — like `agentsRepo`/
+   * `reviewRepo` — so the `agents` module's promote flow can read a batch's
+   * frozen prompt snapshot (`getBatchPromptSnapshot`) without importing
+   * `eval/repository.js` directly (module isolation, R6).
+   */
+  get evalRepo(): EvalRepository {
+    return (this._evalRepo ??= new EvalRepository(this.db));
+  }
+
   get codeIndex(): CodeIndex {
     if (this.overrides.codeIndex) return this.overrides.codeIndex;
     this._codeIndex ??= new RipgrepCodeIndex(this.git);
@@ -115,6 +141,30 @@ export class Container {
     if (this.overrides.repoIntel) return this.overrides.repoIntel;
     this._repoIntel ??= new RepoIntelService(this);
     return this._repoIntel;
+  }
+
+  /**
+   * Blast-radius assembly (L04). Exposed on the container — like `repoIntel` —
+   * so cross-cutting consumers (the reviews run-executor composing the live
+   * PR Brief) never import another module's folder directly.
+   */
+  get blast(): BlastService {
+    if (this.overrides.blast) return this.overrides.blast;
+    this._blast ??= new BlastService(this);
+    return this._blast;
+  }
+
+  /**
+   * Context-docs facade (discovery, root-folder config, agent/skill
+   * attachment orchestration). Exposed on the container — like `repoIntel`
+   * and `blast` — so cross-cutting consumers (agents/skills services, the
+   * reviews run-executor) never import the context-docs module's folder
+   * directly.
+   */
+  get contextDocs(): ContextDocsService {
+    if (this.overrides.contextDocs) return this.overrides.contextDocs;
+    this._contextDocs ??= new ContextDocsService(this);
+    return this._contextDocs;
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

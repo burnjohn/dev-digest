@@ -1,17 +1,58 @@
 {
   "title": "Onboarding Tour",
-  "sections": "Sections",
-  "sectionCount": "{count} sections",
+  "heading": "Onboarding for",
   "regenerate": "Regenerate",
   "regenerating": "Regenerating…",
   "unknownError": "Unknown error",
   "generate": {
     "title": "Generate onboarding tour",
-    "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
+    "body": "DevDigest indexes the repo, then writes a 5-section guided tour: architecture overview, critical paths, how to run locally, guided reading path, and first tasks.",
     "cta": "Generate onboarding tour",
     "generating": "Generating…"
   },
   "loadError": {
     "title": "Couldn’t load the onboarding tour"
-  }
+  },
+  "toc": "On this page",
+  "shareLink": "Share link",
+  "shareLinkCopied": "Link copied",
+  "subtitle": {
+    "withCount": "Generated from index of {count} files · last refreshed {time} ago",
+    "withoutCount": "Generated from repository index · last refreshed {time} ago",
+    "neverGenerated": "Not yet generated"
+  },
+  "sections_": {
+    "architecture": "Architecture overview",
+    "criticalPaths": "Critical paths",
+    "howToRun": "How to run locally",
+    "readingPath": "Guided reading path",
+    "firstTasks": "First tasks"
+  },
+  "cloneCta": "Clone & index for full tour",
+  "cloningInProgress": "Cloning & indexing…",
+  "openAction": "Open",
+  "copyCommand": "Copy command",
+  "commandCopied": "Copied",
+  "degraded": {
+    "badge": "Degraded",
+    "partial": "Index partial — results may be incomplete",
+    "noIndex": "Index unavailable — results may be missing",
+    "lite": "Generated from limited data (no repository index)"
+  },
+  "complexity": {
+    "low": "Low complexity",
+    "medium": "Medium complexity",
+    "high": "High complexity"
+  },
+  "rateLimited": "You're generating tours too quickly — please wait a minute and try again.",
+  "generateError": {
+    "title": "Couldn’t regenerate the onboarding tour",
+    "retry": "Retry"
+  },
+  "empty": {
+    "title": "No onboarding tour yet",
+    "body": "Clone and index this repository to generate a full onboarding tour."
+  },
+  "collapse": "Collapse section",
+  "expand": "Expand section"
 }

@@ -1,0 +1,51 @@
+# LiteLLM translating proxy for the eval tool tiers (agentTask / workflowTask).
+#
+# WHY THIS EXISTS
+# The Claude Agent SDK only speaks the Anthropic Messages wire protocol (POST /v1/messages).
+# OpenRouter's native "Anthropic Skin" serves that shape ONLY for anthropic/* slugs, so cheap
+# non-Anthropic models (DeepSeek, Gemini Flash, Llama, …) can't back the tool tiers directly.
+#
+# LiteLLM's proxy accepts BOTH shapes on one port:
+#   - POST /v1/messages          (Anthropic format)  ← the Agent SDK, via ANTHROPIC_BASE_URL
+#   - POST /chat/completions      (OpenAI format)     ← the content tier's direct OpenAI client
+# and translates each to the target model on OpenRouter. Point OPENROUTER_BASE_URL at this proxy
+# (http://localhost:4000) and every eval tier can run on any OpenRouter model, cheaply, on CI.
+#
+# The wildcard route forwards whatever EVAL_MODEL / EVAL_JUDGE_MODEL you pass straight through to
+# OpenRouter, so you never edit this file to try a new model — e.g. EVAL_MODEL=deepseek/deepseek-chat
+# arrives here as "deepseek/deepseek-chat" and is dispatched as "openrouter/deepseek/deepseek-chat".
+
+model_list:
+  # Subagent model override. Every project agent def (architecture-reviewer, …)
+  # pins `model: sonnet` for PRODUCTION; when spawned as a subagent inside a tool
+  # tier, the SDK resolves that to a BARE `claude-sonnet-5`, which the wildcard
+  # below would dispatch as `openrouter/claude-sonnet-5` — an invalid slug (no
+  # vendor prefix) that 400s and kills the subagent (killing the workflow eval).
+  # Pin those Claude aliases to a valid, cheap, agent-tier OpenRouter slug so the
+  # production defs keep `model: sonnet` while the harness substitutes a real
+  # model. These exact-name rows take precedence over the `"*"` wildcard.
+  # NOTE: the main/judge tiers never hit these rows on CI — EVAL_MODEL and
+  # EVAL_JUDGE_MODEL are overridden to explicit vendor-prefixed slugs there; only
+  # a subagent's frontmatter pin arrives here as a bare `sonnet`/`claude-sonnet-5`.
+  - model_name: "claude-sonnet-5"
+    litellm_params:
+      model: "openrouter/anthropic/claude-haiku-4.5"
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: "sonnet"
+    litellm_params:
+      model: "openrouter/anthropic/claude-haiku-4.5"
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: "*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+
+litellm_settings:
+  # Deterministic evals: never retry-with-jitter behind our back; the runners own retries.
+  drop_params: true
+
+general_settings:
+  # No master_key on purpose: this is an ephemeral local/CI gateway. It runs in "no-auth" mode,
+  # so the bearer token the SDK forwards (ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY) is ignored and
+  # the proxy authenticates to OpenRouter with OPENROUTER_API_KEY from its own environment.
+  # Do NOT expose this port publicly.

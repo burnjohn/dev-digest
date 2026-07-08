@@ -1,0 +1,33 @@
+{
+  "skill_name": "engineering-insights",
+  "evals": [
+    {
+      "id": 0,
+      "name": "capture-genuine-quirk-new-file",
+      "prompt": "We just wrapped a ~45 minute debugging session on the server. Symptom: findings with a null `file` were piling up as duplicates in the `findings` table even though there is a unique index and we use Drizzle's `.onConflictDoUpdate()`. Root cause: in Postgres NULL != NULL, so rows where the indexed `file` column is NULL never conflict and the upsert always inserts a new row. Fix applied: coalesce `file` to '' before insert (a partial unique index would also work). Relevant code is `server/src/db/schema.ts` around line 140. Wrap up this session and capture any engineering insights worth preserving. The repo root is REPO_PATH.",
+      "expected_output": "Creates server/insights.md from the template (file did not exist), appends exactly one Quirk/Mistake entry with ISO date, category tag, and the server/src/db/schema.ts anchor; footer shows Entries: 1.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "skip-trivial-session",
+      "prompt": "Wrapping up a short session. All I did: bumped `next` from 15.1.2 to 15.1.3, fixed a typo in a button label ('Recieve' -> 'Receive') in client/src/components/Button.tsx, and reran the formatter across three client files. Nothing surprised me; no bugs, no non-obvious behavior. Wrap up the session and capture any engineering insights worth preserving. Repo root: REPO_PATH.",
+      "expected_output": "Writes zero new entries. client/insights.md is left unchanged (still Entries: 2, both original entries intact). Explains that a zero-entry wrap-up is valid for a clean session.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "dedup-extend-existing-entry",
+      "prompt": "Wrapping up. I hit the db:seed duplication problem again — re-running `pnpm db:seed` created duplicate `review_runs` rows and broke the agent detail page, exactly like the note already in the server insights file. New wrinkle I confirmed this session: it now also duplicates `agent_runs` rows, not just `review_runs`. Wrap up and capture any engineering insights worth preserving. Repo root: REPO_PATH.",
+      "expected_output": "Recognizes the existing db:seed Mistake entry as a duplicate and extends it via Edit (adds a dated note that agent_runs is now also affected) rather than adding a second bullet or rewriting the file. The unrelated app.ts Pattern entry stays intact; footer count is not incremented for a dedup extension.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "module-targeting-and-decision",
+      "prompt": "Wrapping up a session that touched both client and server. The substantive decision: we chose to store the blast-radius summary as a denormalized string column `pull_requests.blast_summary` (written once when the review completes) instead of recomputing it per request from the symbol index. Reason: the index walk was 300ms+ on large PRs and the summary is immutable after the run finishes. On the client I only wired `BlastCard.tsx` to render the stored string. Server code lives at `server/src/modules/blast/service.ts` around line 88. Wrap up and capture any engineering insights worth preserving. Repo root: REPO_PATH.",
+      "expected_output": "Writes the entry to server/insights.md (the most directly affected module) as a [Decision] with the why (300ms index walk / immutable summary) and the server/src/modules/blast/service.ts anchor; increments server footer to Entries: 2. client/insights.md is left untouched.",
+      "files": []
+    }
+  ]
+}

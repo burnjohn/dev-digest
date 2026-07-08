@@ -1,0 +1,52 @@
+{
+  "skill": "engineering-insights",
+  "description": "Ground truth for each eval scenario in evals.json. Unlike a code-detector skill (e.g. onion-architecture), engineering-insights makes a judgment call about a narrative session, not a fixed file+line scan — so the oracle here describes the expected *outcome* of that judgment (module targeted, category, dedup behavior, entry count, anchor) rather than a list of findings to recall. See eval.md for methodology.",
+  "outcomes": [
+    {
+      "eval_id": 0,
+      "name": "capture-genuine-quirk-new-file",
+      "checks": [
+        { "type": "file_exists", "path": "server/insights.md", "expected": true, "text": "server/insights.md was created" },
+        { "type": "entry_count", "path": "server/insights.md", "expected": 1, "text": "exactly one new entry was added" },
+        { "type": "has_category_tag", "path": "server/insights.md", "text": "entry has ISO date + bracketed category tag" },
+        { "type": "contains", "path": "server/insights.md", "value": "server/src/db/schema.ts", "text": "entry cites the server/src/db/schema.ts anchor" },
+        { "type": "contains_any", "path": "server/insights.md", "values": ["null", "onconflict", "conflict", "dedup", "coalesce"], "case_insensitive": true, "text": "entry reflects the actual discovery (null/conflict/dedupe), not a fabricated topic" },
+        { "type": "footer_count", "path": "server/insights.md", "expected": 1, "text": "footer 'Entries: 1' is present and correct" }
+      ]
+    },
+    {
+      "eval_id": 1,
+      "name": "skip-trivial-session",
+      "checks": [
+        { "type": "entry_count", "path": "client/insights.md", "expected": 2, "text": "no new entry added (still 2 entries)" },
+        { "type": "contains", "path": "client/insights.md", "value": "useSeverityFilter", "text": "original Pattern entry intact (not clobbered)" },
+        { "type": "contains", "path": "client/insights.md", "value": "useBlast", "text": "original Mistake entry intact (not clobbered)" },
+        { "type": "footer_count", "path": "client/insights.md", "expected": 2, "text": "footer still 'Entries: 2'" }
+      ]
+    },
+    {
+      "eval_id": 2,
+      "name": "dedup-extend-existing-entry",
+      "checks": [
+        { "type": "bullet_count_containing", "path": "server/insights.md", "value": "db:seed", "expected": 1, "text": "exactly one db:seed bullet (no duplicate second bullet)" },
+        { "type": "contains_any", "path": "server/insights.md", "values": ["buildServer", "app.ts:40"], "text": "unrelated app.ts Pattern entry preserved (Edit not Write)" },
+        { "type": "contains", "path": "server/insights.md", "value": "agent_runs", "text": "agent_runs wrinkle recorded" },
+        { "type": "footer_count", "path": "server/insights.md", "expected": 2, "text": "footer not incremented for a dedup extension (Entries: 2)" }
+      ]
+    },
+    {
+      "eval_id": 3,
+      "name": "module-targeting-and-decision",
+      "checks": [
+        { "type": "entry_count", "path": "server/insights.md", "expected": 2, "text": "new entry written to server/insights.md (most affected module)" },
+        { "type": "contains", "path": "server/insights.md", "value": "[Decision]", "text": "new server entry categorized [Decision]" },
+        { "type": "contains_any", "path": "server/insights.md", "values": ["300ms", "index walk", "immutable"], "case_insensitive": true, "text": "entry captures the reasoning (300ms / index walk / immutable)" },
+        { "type": "contains", "path": "server/insights.md", "value": "service.ts", "text": "entry cites the server/src/modules/blast/service.ts anchor" },
+        { "type": "footer_count", "path": "server/insights.md", "expected": 2, "text": "server footer incremented to Entries: 2" },
+        { "type": "entry_count", "path": "client/insights.md", "expected": 1, "text": "client/insights.md untouched (still 1 entry)" },
+        { "type": "contains", "path": "client/insights.md", "value": "BlastGraph", "text": "client BlastGraph entry intact" },
+        { "type": "footer_count", "path": "client/insights.md", "expected": 1, "text": "client footer untouched (Entries: 1)" }
+      ]
+    }
+  ]
+}

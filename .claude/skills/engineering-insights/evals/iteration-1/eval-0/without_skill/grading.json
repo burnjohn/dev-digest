@@ -1,0 +1,42 @@
+{
+  "eval_id": 0,
+  "config": "without_skill",
+  "summary": {
+    "pass_rate": 1.0,
+    "passed": 6,
+    "failed": 0,
+    "total": 6
+  },
+  "expectations": [
+    {
+      "text": "server/insights.md was created",
+      "passed": true,
+      "evidence": "server/insights.md exists=True"
+    },
+    {
+      "text": "exactly one new entry was added",
+      "passed": true,
+      "evidence": "server/insights.md entry bullets=1 (expected 1)"
+    },
+    {
+      "text": "entry has ISO date + bracketed category tag",
+      "passed": true,
+      "evidence": "server/insights.md has a dated [Category] entry header: True"
+    },
+    {
+      "text": "entry cites the server/src/db/schema.ts anchor",
+      "passed": true,
+      "evidence": "server/insights.md contains 'server/src/db/schema.ts': True"
+    },
+    {
+      "text": "entry reflects the actual discovery (null/conflict/dedupe), not a fabricated topic",
+      "passed": true,
+      "evidence": "server/insights.md contains any of ['null', 'onconflict', 'conflict', 'dedup', 'coalesce']: True"
+    },
+    {
+      "text": "footer 'Entries: 1' is present and correct",
+      "passed": true,
+      "evidence": "server/insights.md footer Entries=1 (expected 1)"
+    }
+  ]
+}

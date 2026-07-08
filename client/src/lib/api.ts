@@ -18,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit & { signal?: AbortSignal }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
@@ -63,7 +63,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 export const api = {
-  get: <T>(path: string) => apiFetch<T>(path),
+  get: <T>(path: string, opts?: { signal?: AbortSignal }) => apiFetch<T>(path, opts),
   post: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>

@@ -4,12 +4,17 @@ import { z } from 'zod';
 import { eq, and, inArray } from 'drizzle-orm';
 import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
+import { classifyIntent } from '@devdigest/reviewer-core';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
+import { routeModel } from '../../platform/model-router.js';
 import { ReviewService } from './service.js';
 import * as pullRepo from './repository/pull.repo.js';
 import * as t from '../../db/schema.js';
+import { loadDiff } from './diff-loader.js';
+import { BriefGeneratorService } from './brief-generator.js';
+import { BRIEF_GENERATE_RATE_LIMIT } from './constants.js';
 
 /**
  * reviews module.
@@ -150,6 +155,107 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     if (!pull) throw new NotFoundError('PR not found');
     const brief = await pullRepo.getBrief(container.db, req.params.id, workspaceId);
     return brief ?? null;
+  });
+
+  // ---- Generate/regenerate the LLM-derived part of the PR Brief -------------
+  // Rate-limited per-workspace (not per-IP) — mirrors onboarding/routes.ts's
+  // ONBOARDING_RATE_LIMIT keyGenerator pattern exactly. A single call triggers
+  // exactly one paid structured LLM call (BriefGeneratorService.generate).
+  app.post(
+    '/pulls/:id/brief',
+    {
+      schema: { params: IdParams },
+      config: {
+        rateLimit: {
+          ...BRIEF_GENERATE_RATE_LIMIT,
+          keyGenerator: async (req: import('fastify').FastifyRequest) => {
+            const { workspaceId } = await getContext(container, req);
+            return `risk-brief-generate:${workspaceId}`;
+          },
+        },
+      },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      const generator = new BriefGeneratorService(container, req.log.child({ route: 'brief.generate', prId: req.params.id }));
+      return generator.generate(workspaceId, req.params.id);
+    },
+  );
+
+  // ---- Clear the LLM-derived part of the PR Brief (reset to "not generated") -
+  // Zero LLM calls — no rate limit needed. Workspace-scoped via getPull (same
+  // pattern as GET/POST above); returns the PR to the "Generate brief" empty
+  // state on the client (gating there is `!brief?.llm`).
+  app.delete('/pulls/:id/brief', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const pull = await pullRepo.getPull(container.db, workspaceId, req.params.id);
+    if (!pull) throw new NotFoundError('PR not found');
+    const cleared = await pullRepo.clearLlmBrief(container.db, req.params.id);
+    return cleared ?? null;
+  });
+
+  // ---- PR Intent (classifier output for a PR) --------------------------------
+  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const pull = await pullRepo.getPull(container.db, workspaceId, req.params.id);
+    if (!pull) throw new NotFoundError('PR not found');
+    const intent = await pullRepo.getIntent(container.db, req.params.id);
+    return intent ?? null;
+  });
+
+  // ---- Force re-classify intent for a PR ------------------------------------
+  // Deletes the cached intent and runs a fresh classification via the cheap model.
+  app.post('/pulls/:id/intent', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const pull = await pullRepo.getPull(container.db, workspaceId, req.params.id);
+    if (!pull) throw new NotFoundError('PR not found');
+
+    // Resolve the repo row for diff loading (needed to attempt a real git diff).
+    const repoRow = await pullRepo.getRepo(container.db, pull.repoId);
+    if (!repoRow) throw new NotFoundError('Repo not found');
+
+    // Load the diff (real git diff or synthetic from pr_files fallback).
+    const diff = await loadDiff(container, container.reviewRepo, workspaceId, pull, repoRow);
+
+    // Build filesSummary: paths + @@ hunk headers only — NO code lines.
+    const filesSummary = diff.files.map((f) =>
+      `${f.path} (+${f.additions}/-${f.deletions})\n` +
+      f.hunks.map((h) => `  @@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`).join('\n'),
+    ).join('\n\n');
+
+    // Delete any existing cached intent before re-classifying.
+    await container.db
+      .delete(t.prIntent)
+      .where(eq(t.prIntent.prId, req.params.id));
+
+    // Cheap model — 'anthropic' provider, intent task routes to haiku.
+    const DEFAULT_PROVIDER = 'anthropic' as const;
+    const model = routeModel('intent', DEFAULT_PROVIDER);
+    const llm = await container.llm(DEFAULT_PROVIDER);
+
+    const result = await classifyIntent({
+      title: pull.title,
+      body: pull.body ?? '',
+      filesSummary,
+      llm,
+      model,
+      sessionId: `intent:${pull.id}`,
+    });
+
+    req.log.info(
+      {
+        phase: 'intent',
+        model,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        costUsd: result.costUsd,
+      },
+      'intent force-refresh',
+    );
+
+    const intent = { intent: result.intent, in_scope: result.in_scope, out_of_scope: result.out_of_scope };
+    await pullRepo.upsertIntent(container.db, req.params.id, intent);
+    return intent;
   });
 
   // ---- Delete a whole review run (one agent's pass) + its findings --------

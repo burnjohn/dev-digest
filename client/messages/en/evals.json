@@ -1,0 +1,90 @@
+{
+  "landing": {
+    "breadcrumb": "Eval Dashboard",
+    "title": "Eval Dashboard",
+    "subtitle": "Regression harness across all reviewer agents · pick an agent to see its runs",
+    "agentsSection": "Agents",
+    "runAllAgents": "Run all agents",
+    "loadError": "Could not load the eval dashboard.",
+    "empty": {
+      "title": "No agents configured for evals yet",
+      "body": "Add an eval case to an agent from its Evals tab to see it here."
+    }
+  },
+  "card": {
+    "recall": "Recall",
+    "precision": "Prec",
+    "citationAccuracy": "Cite",
+    "cases": "{count} case(s)",
+    "lastRunPass": "Last run v{version} · {timestamp} · {pass}/{total} pass",
+    "lastRunCases": "Last run v{version} · {timestamp} · {count} case(s)",
+    "noRuns": "No runs yet",
+    "statusClean": "Clean",
+    "statusDegraded": "Degraded",
+    "viewDetail": "View agent detail"
+  },
+  "feed": {
+    "title": "Recent eval runs · all agents",
+    "empty": "No batches have run yet.",
+    "columns": {
+      "agent": "Agent",
+      "timestamp": "Ran",
+      "version": "Version",
+      "snapshot": "Agent snapshot",
+      "recall": "Recall",
+      "precision": "Precision",
+      "citationAccuracy": "Citation",
+      "passing": "Pass",
+      "status": "Status"
+    }
+  },
+  "detail": {
+    "breadcrumb": "Agent",
+    "backToAgents": "All agents",
+    "runEval": "Run eval",
+    "subtitle": "Regression harness · {runs} run(s) on the {cases}-case gold set",
+    "loadError": {
+      "title": "Could not load this agent",
+      "body": "The agent could not be loaded."
+    },
+    "notFound": {
+      "title": "Agent not found",
+      "body": "This agent may have been deleted."
+    },
+    "trendTitle": "Metric trend",
+    "historyTitle": "Recent runs",
+    "switcher": {
+      "placeholder": "Select an agent"
+    },
+    "banner": {
+      "message": "{metric} changed {direction}",
+      "metric": {
+        "recall": "Recall",
+        "precision": "Precision",
+        "citation_accuracy": "Citation accuracy"
+      }
+    }
+  },
+  "compare": {
+    "title": "Compare batches",
+    "titleVersions": "Compare runs · v{old} → v{new}",
+    "subtitle": "Old prompt vs new — metric deltas and system-prompt diff",
+    "close": "Close",
+    "metric": {
+      "recall": "Recall",
+      "precision": "Precision",
+      "citation": "Citation",
+      "cost": "Cost"
+    },
+    "promptDiffTitle": "System prompt diff",
+    "legendOld": "prompt v{version} (old)",
+    "legendNew": "prompt v{version} (new)",
+    "promptUnchanged": "Prompt unchanged — still prompt v{version} (the system prompt was never edited across these runs).",
+    "promptOldMissing": "Showing prompt v{version}. The older run predates prompt tracking, so there's no earlier prompt to diff against — the prompt only changes version when its text is edited, not on every run.",
+    "promptDiffUnavailable": "This run has no stored system-prompt text (it predates full-prompt tracking), so there is nothing to compare or promote.",
+    "promote": "Promote prompt v{version}",
+    "promoteDisabledNoSnapshot": "The newer run has no stored prompt text and can't be promoted.",
+    "promoteSuccess": "Promoted prompt v{version} to this agent.",
+    "promoteError": "Could not promote this batch's prompt."
+  }
+}

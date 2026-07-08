@@ -1,0 +1,1 @@
+ALTER TABLE "eval_batches" ADD COLUMN "system_prompt_snapshot" text;

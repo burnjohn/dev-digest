@@ -4,8 +4,9 @@
    timestamps. */
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import {
   Icon,
   SeverityBadge,
@@ -20,7 +21,8 @@ import {
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
 import { lineLabel } from "./helpers";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { githubBlobUrl } from "@/lib/github-urls";
+import { useCreateEvalCaseFromFinding } from "@/lib/hooks/eval";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -31,6 +33,7 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  agentId,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -39,9 +42,22 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  agentId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const params = useSearchParams();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const createEvalCase = useCreateEvalCaseFromFinding();
+
+  useEffect(() => {
+    if (params?.get('findingId') === f.id) {
+      setExpanded(true);
+      requestAnimationFrame(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [params, f.id]);
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const fileHref =
     repoFullName && headSha
@@ -52,7 +68,7 @@ export function FindingCard({
   const muted = accepted || dismissed;
 
   return (
-    <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
+    <div ref={cardRef} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as Severity} compact />
@@ -109,6 +125,20 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {muted && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="FlaskConical"
+                disabled={createEvalCase.isPending || createEvalCase.isSuccess}
+                onClick={() => createEvalCase.mutate({ findingId: f.id, agentId })}
+              >
+                {t("finding.addToEvals")}
+              </Button>
+            )}
+            {createEvalCase.isSuccess && (
+              <span style={s.acceptedTag}>{t("finding.addedToEvals")}</span>
+            )}
           </div>
         </div>
       )}

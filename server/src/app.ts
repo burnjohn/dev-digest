@@ -18,6 +18,19 @@ import { AppError } from './platform/errors.js';
 import { modules } from './modules/index.js';
 import { ReviewService } from './modules/reviews/service.js';
 
+/**
+ * Minimal cron for `*​/N * * * *` (every-N-minutes) expressions — the only
+ * cadence this app schedules. Not a full cron parser. The timer is unref'd so
+ * it never keeps the process alive (safe in tests / graceful shutdown).
+ */
+const cron = {
+  schedule(expr: string, fn: () => void): void {
+    const m = expr.match(/^\*\/(\d+) \* \* \* \*$/);
+    const everyMs = (m ? Number(m[1]) : 15) * 60_000;
+    setInterval(fn, everyMs).unref();
+  },
+};
+
 // Attach the DI container to every request/instance.
 declare module 'fastify' {
   interface FastifyInstance {
@@ -82,6 +95,21 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
   } catch (err) {
     app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+  }
+
+  // Periodic safety-net reap beyond the boot pass: a run whose runner dies
+  // mid-flight would otherwise stay 'running' until the next restart. Reaping is
+  // idempotent and cheap. Disabled under test (integration suites manage their
+  // own lifecycle); the timer is unref'd so it never holds the event loop open.
+  if (config.nodeEnv !== 'test') {
+    cron.schedule('*/15 * * * *', () => {
+      new ReviewService(container)
+        .reapStaleRuns()
+        .then((n) => {
+          if (n > 0) app.log.info({ reaped: n }, 'periodic stale-run reap');
+        })
+        .catch((err) => app.log.warn({ err: (err as Error).message }, 'periodic reap failed'));
+    });
   }
 
   // Security headers (X-Content-Type-Options, X-Frame-Options, …). The API

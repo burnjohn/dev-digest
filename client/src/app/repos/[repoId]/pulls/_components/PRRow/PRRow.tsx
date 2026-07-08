@@ -13,7 +13,8 @@ import { relativeTime, sizeOf } from "../../helpers";
 import { formatCost } from "@/lib/format";
 import { s } from "../../styles";
 import { usePrReviews } from "@/lib/hooks/reviews";
-import { RunReviewDropdown } from "@/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown";
+import { usePopupPosition } from "@/lib/hooks";
+import { RunReviewDropdown } from "@/components/run-review-dropdown";
 
 // ---- Severity display config ------------------------------------------------
 
@@ -39,7 +40,7 @@ function FindingsPopup({
   onClose: () => void;
 }) {
   const { data: reviews, isLoading } = usePrReviews(prId);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [ref, adjustedLeft] = usePopupPosition(left);
 
   React.useEffect(() => {
     function handler(e: MouseEvent) {
@@ -47,19 +48,7 @@ function FindingsPopup({
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  // Viewport overflow correction (horizontal). Deferred to rAF so the browser
-  // has performed layout and offsetWidth is non-zero on the first read.
-  const [adjustedLeft, setAdjustedLeft] = React.useState(left);
-  React.useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      if (!ref.current) return;
-      const overflow = left + ref.current.offsetWidth - window.innerWidth + 12;
-      setAdjustedLeft(overflow > 0 ? left - overflow : left);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [left]);
+  }, [onClose, ref]);
 
   // Show findings from the LATEST review only — matches the FINDINGS column badge counts.
   // Flattening all reviews would inflate the count vs what the badge displays.
@@ -280,7 +269,14 @@ export function PRRow({ pr, repoId }: { pr: PrMetaType; repoId: string }) {
 
       {/* Actions — always-visible Run Review button in its own column */}
       <div onClick={(e) => e.stopPropagation()}>
-        {pr.id && <RunReviewDropdown prId={pr.id} size="sm" kind="secondary" />}
+        {pr.id && (
+          <RunReviewDropdown
+            prId={pr.id}
+            size="sm"
+            kind="secondary"
+            onRunsStarted={() => router.push(`/repos/${repoId}/pulls/${pr.number}?tab=findings`)}
+          />
+        )}
       </div>
 
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>

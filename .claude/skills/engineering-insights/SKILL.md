@@ -1,6 +1,6 @@
 ---
 name: engineering-insights
-description: Captures and preserves non-obvious engineering discoveries in the affected module's insights.md file. Use when: (1) discovering a non-obvious solution, failure pattern, architectural decision, or dependency quirk mid-session ("capture as you go"); or (2) wrapping up a session longer than 30 minutes where a real problem was solved or discovered. Writes append-only to the insights.md of the most directly affected module (client, server, reviewer-core, or e2e). Does not record observations obvious from reading the code or already in CLAUDE.md.
+description: Captures and preserves non-obvious engineering discoveries in the affected module's insights.md file. Use when — (1) discovering a non-obvious solution, failure pattern, architectural decision, or dependency quirk mid-session ("capture as you go"); or (2) wrapping up a session longer than 30 minutes where a real problem was solved or discovered. Writes append-only to the insights.md of the most directly affected module (client, server, reviewer-core, or e2e). Does not record observations obvious from reading the code or already in CLAUDE.md.
 allowed-tools: Read, Edit, Write, Grep, Glob
 ---
 
@@ -15,6 +15,22 @@ Preserves non-obvious engineering knowledge so future agents inherit institution
 - Failure mode that is invisible from reading the code
 - Architectural constraint whose reasoning would otherwise be lost
 - Workaround for a non-obvious tool or env quirk
+
+**The trigger is a discovery made *in this session*, not a request to explain a concept.**
+Before invoking, ask: "Did something just happen — a bug diagnosed, a behavior observed, a
+decision made — or is the user only asking me to describe how something works?" Only the former
+qualifies.
+
+| Signal | Invoke? | Why |
+|---|---|---|
+| "Щойно з'ясував, чому X повертав нуль рядків — розмірність не збіглася" | Yes | Reports a concrete failure just diagnosed in this session |
+| "Поясни, як у pgvector працюють розмірності і чому невідповідність повертає нуль рядків" | **No** | Pure explanation request — no bug was hit, nothing was diagnosed, there is no session-specific discovery to preserve |
+| "I just figured out `X` — the migration was silently skipped because Y" | Yes | Past-tense discovery, tied to something that happened |
+| "How does `X` work / what would happen if Y?" | **No** | Hypothetical or conceptual question, not a report of what occurred |
+
+A prompt phrased as pure Q&A — even about the exact same technical topic as a real past
+discovery — is not a trigger. Explaining pgvector dimensionality in the abstract is not the same
+event as diagnosing why *this session's* query returned zero rows.
 
 **Mode B — Wrap-up** (invoke at session end, or via `/engineering-insights`):
 - Session was > 30 minutes AND involved a real problem, decision, or discovery

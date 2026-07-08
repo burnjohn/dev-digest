@@ -44,8 +44,12 @@ export function reduceReviews(partials: Review[]): Review {
   if (partials.length === 1) return partials[0]!;
   const findings = partials.flatMap((p) => p.findings);
   let verdict: Review['verdict'] = 'approve';
+  // `verdict` is nullable — a null-key lookup on VERDICT_RANK would be a type
+  // error (Record<string, number>) and a runtime no-op either way, so treat
+  // null the same as an unranked verdict (rank 0).
+  const rankOf = (v: Review['verdict']): number => (v == null ? 0 : (VERDICT_RANK[v] ?? 0));
   for (const p of partials) {
-    if ((VERDICT_RANK[p.verdict] ?? 0) > (VERDICT_RANK[verdict] ?? 0)) verdict = p.verdict;
+    if (rankOf(p.verdict) > rankOf(verdict)) verdict = p.verdict;
   }
   const score = partials.length
     ? Math.round(partials.reduce((s, p) => s + p.score, 0) / partials.length)
