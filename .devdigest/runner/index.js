@@ -20095,6 +20095,9 @@ const CiExportInput = objectType({
     post_as: enumType(['github_review', 'pr_comment', 'none']).default('github_review'),
     triggers: arrayType(stringType()).default(['opened', 'synchronize', 'reopened']),
     base: stringType().default('main'),
+    /** User-edited workflow YAML from the wizard's Preview step; when present and
+     *  non-empty, ships in place of freshly-generated YAML for GHA exports. */
+    workflow_override: stringType().nullish(),
 });
 /** Lifecycle state of a CI installation — surfaced on the CI Runs dashboard. */
 const CiInstallationStatus = enumType(['active', 'pr_open', 'error']);
@@ -34725,6 +34728,48 @@ function resolvePrContext(env, readFile = external_node_fs_namespaceObject.readF
 
 ;// CONCATENATED MODULE: ./src/diff.ts
 /**
+ * Repo-relative path prefixes whose diff sections are dropped BEFORE review.
+ * These are DevDigest's own exported artifacts, not the target repo's code:
+ *
+ *  - `.devdigest/` — the checked-in agent config AND the ncc runner bundle
+ *    (`.devdigest/runner/index.js`), a single minified megafile. GitHub rejects
+ *    an inline comment on such a file with 422 "diff too large" and — because a
+ *    review is all-or-nothing — fails the ENTIRE review. This prefix is the fix
+ *    for that 422; it only ever appears in the diff of the export/update PR
+ *    itself, but that PR would otherwise never post a passing review.
+ *  - `.github/workflows/` — the generated GHA workflow; reviewing our own
+ *    generated CI YAML is pure noise.
+ *
+ * Stripping them from the RAW diff (not just the parsed file list) matters:
+ * single-pass review feeds `diff.raw` straight to the model
+ * (`reviewer-core/review/run.ts`), so filtering only `files` would still spend
+ * tokens on — and let the model cite — the ignored paths.
+ */
+const IGNORED_DIFF_PREFIXES = ['.devdigest/', '.github/workflows/'];
+function isIgnoredDiffPath(path) {
+    return IGNORED_DIFF_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+/**
+ * Remove whole `diff --git` sections for ignored paths from a raw unified diff,
+ * keeping the raw text and the later-parsed file list consistent. GitHub's diff
+ * media type emits exactly one `diff --git a/<path> b/<path>` header per file,
+ * so splitting on that header and reading the new-side (`b/`) path is enough to
+ * decide which sections to drop.
+ */
+function stripIgnoredFiles(raw) {
+    const kept = [];
+    let skipping = false;
+    for (const line of raw.split('\n')) {
+        if (line.startsWith('diff --git')) {
+            const match = line.match(/ b\/(.*)$/);
+            skipping = isIgnoredDiffPath(match?.[1]?.trim() ?? '');
+        }
+        if (!skipping)
+            kept.push(line);
+    }
+    return kept.join('\n');
+}
+/**
  * Minimal unified-diff parser — a self-contained agent-runner copy of the
  * server's `git/diff-parser.ts` (not importable here: it lives outside this
  * package's owned paths and the bundle must stay self-contained, importing
@@ -34845,20 +34890,29 @@ async function fetchPrDiff(ctx, token, fetchImpl = fetch) {
 /** Post a full review (body + event + optional inline comments) — `post_as: 'github_review'`. */
 async function postGithubReview(ctx, token, payload, fetchImpl = fetch) {
     const url = `${GITHUB_API_BASE}/repos/${ctx.owner}/${ctx.repo}/pulls/${ctx.prNumber}/reviews`;
-    const res = await fetchImpl(url, {
+    const post = (body) => fetchImpl(url, {
         method: 'POST',
         headers: {
             ...authHeaders(token, 'application/vnd.github+json'),
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            body: payload.body,
-            event: payload.event,
-            ...(payload.comments && payload.comments.length > 0
-                ? { comments: payload.comments.map((c) => ({ path: c.path, line: c.line, body: c.body })) }
-                : {}),
-        }),
+        body: JSON.stringify(body),
     });
+    const base = { body: payload.body, event: payload.event };
+    const hasComments = !!payload.comments && payload.comments.length > 0;
+    const withComments = hasComments
+        ? { ...base, comments: payload.comments.map((c) => ({ path: c.path, line: c.line, body: c.body })) }
+        : base;
+    let res = await post(withComments);
+    // GitHub rejects the WHOLE review with a 422 if ANY inline comment targets a
+    // file whose diff it can't resolve (e.g. "diff too large" for a huge file).
+    // `stripIgnoredFiles` removes our own bundle, but a genuinely large file in a
+    // normal PR could still trip this — so degrade gracefully to a body-only
+    // review. Every finding is already in `payload.body`; only the inline anchors
+    // are lost, which beats posting nothing.
+    if (res.status === 422 && hasComments) {
+        res = await post(base);
+    }
     if (!res.ok) {
         throw new RunnerError(`GitHub API error posting review (${url}): ${res.status} ${await res.text().catch(() => '')}`);
     }
@@ -34951,9 +35005,12 @@ async function runCi(deps) {
         if (deps.postAs !== 'none' && !githubToken) {
             throw new RunnerError(`GITHUB_TOKEN is required to post as '${deps.postAs}'`);
         }
-        // 3. Assemble the diff from the CI context.
+        // 3. Assemble the diff from the CI context. Strip DevDigest's own exported
+        //    artifacts (`.devdigest/**`, the generated workflow) BEFORE parse: the
+        //    minified runner bundle would otherwise fail the whole review with a
+        //    GitHub 422 "diff too large", and reviewing our own config is noise.
         const rawDiff = await fetchDiffImpl(ctx, githubToken ?? '', fetchImpl);
-        const diff = parseUnifiedDiff(rawDiff);
+        const diff = parseUnifiedDiff(stripIgnoredFiles(rawDiff));
         // 4. Run the SAME engine the studio uses. `reviewPullRequest` internally
         //    calls `assemblePrompt`/`wrapUntrusted` (diff → `<untrusted
         //    source="diff">`, prDescription → `<untrusted source="pr-description">`,
