@@ -22,10 +22,10 @@ You analyze how a multi-agent run *actually* went. Deterministic counting is don
 A run may span several chats (spec chat, planning chat, implement chat). If the invocation names session ids, use them. Otherwise:
 
 ```sh
-node .claude/skills/workflow-retro/scripts/analyze.mjs --list 10
+node .claude/skills/workflow-retro/scripts/analyze.mjs --list 10 --table
 ```
 
-Show the list (id · time · size · subagent count · title) and ask the user which session(s) make up the run. `latest` is a valid answer.
+`--table` prints a markdown table (ID · Дата/час · Розмір · Subagents · Опис) instead of plain lines — show this table verbatim rather than reformatting it by hand. IDs are 8-char prefixes; `--session` accepts prefixes directly (resolves to the one match, or errors listing candidates if ambiguous). Ask the user which session(s) make up the run. `latest` is a valid answer.
 
 ### 2 — Compute metrics
 

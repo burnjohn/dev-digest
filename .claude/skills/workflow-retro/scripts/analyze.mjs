@@ -6,13 +6,18 @@
  *
  * Usage:
  *   node analyze.mjs --list [N]                 # recent sessions, newest first
- *   node analyze.mjs --session <uuid>[,<uuid>…] # analyze one run (may span sessions)
+ *   node analyze.mjs --session <uuid-or-prefix>[,<uuid-or-prefix>…] # analyze one run (may span sessions)
  *   node analyze.mjs --session latest
  *   [--project <transcripts-dir>] [--json]
+ *
+ * --project defaults to the git common dir's slug, so it resolves correctly even
+ * when run from inside a linked worktree (whose own cwd-derived slug would be an
+ * isolated, near-empty project folder). Falls back to cwd if git is unavailable.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 
 // ---------- pricing ($ per MTok; cache read = 0.1×in, write 5m = 1.25×in, 1h = 2×in) ----------
 const PRICES = [
@@ -31,9 +36,16 @@ const flag = (name) => {
 };
 const has = (name) => args.includes(name);
 
+const slugify = (p) => p.replace(/[^a-zA-Z0-9]/g, '-');
+
 function defaultProjectDir() {
-  const slug = process.cwd().replace(/[^a-zA-Z0-9]/g, '-');
-  return path.join(os.homedir(), '.claude', 'projects', slug);
+  try {
+    const gitCommonDir = execSync('git rev-parse --git-common-dir', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const repoRoot = path.dirname(path.resolve(gitCommonDir)); // strip trailing .git
+    return path.join(os.homedir(), '.claude', 'projects', slugify(repoRoot));
+  } catch {
+    return path.join(os.homedir(), '.claude', 'projects', slugify(process.cwd()));
+  }
 }
 const projectDir = flag('--project') || defaultProjectDir();
 if (!fs.existsSync(projectDir)) {
@@ -118,6 +130,18 @@ function analyzeContext(entries, label) {
     tools, readFiles: [...readFiles],
     start: first, end: last, wallSec: first !== null ? Math.round((last - first) / 1000) : 0,
   };
+}
+
+function resolveSessionId(idOrPrefix) {
+  if (fs.existsSync(path.join(projectDir, `${idOrPrefix}.jsonl`))) return idOrPrefix;
+  const matches = sessionFiles().filter((s) => s.id.startsWith(idOrPrefix));
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    console.error(`Ambiguous session prefix "${idOrPrefix}" matches: ${matches.map((m) => m.id).join(', ')}`);
+    process.exit(1);
+  }
+  console.error(`No such session: ${idOrPrefix}`);
+  process.exit(1);
 }
 
 function analyzeSession(id) {
@@ -207,18 +231,25 @@ function report(sessions) {
 // ---------- entry ----------
 if (has('--list')) {
   const n = parseInt(flag('--list'), 10) || 10;
-  for (const s of sessionFiles().slice(0, n)) {
+  const rows = sessionFiles().slice(0, n).map((s) => {
     const entries = readJsonl(s.file);
     const subDir = path.join(projectDir, s.id, 'subagents');
     const nSubs = fs.existsSync(subDir) ? fs.readdirSync(subDir).filter((f) => f.endsWith('.jsonl')).length : 0;
     const kb = Math.round(fs.statSync(s.file).size / 1024);
-    console.log(`${s.id}  ${new Date(s.mtime).toISOString().slice(0, 16)}  ${String(kb).padStart(6)}KB  subagents:${String(nSubs).padStart(2)}  "${sessionTitle(entries)}"`);
+    return { id: s.id, time: new Date(s.mtime).toISOString().slice(0, 16), kb, nSubs, title: sessionTitle(entries) };
+  });
+  if (has('--table')) {
+    console.log('| ID | Дата/час | Розмір | Subagents | Опис |');
+    console.log('|---|---|---|---|---|');
+    for (const r of rows) console.log(`| ${r.id.slice(0, 8)} | ${r.time} | ${r.kb}KB | ${r.nSubs} | ${r.title.replace(/\|/g, '\\|')} |`);
+  } else {
+    for (const r of rows) console.log(`${r.id}  ${r.time}  ${String(r.kb).padStart(6)}KB  subagents:${String(r.nSubs).padStart(2)}  "${r.title}"`);
   }
   process.exit(0);
 }
 
 let ids = (flag('--session') || 'latest').split(',').map((x) => x.trim()).filter(Boolean);
-if (ids.includes('latest')) ids = [sessionFiles()[0].id];
+ids = ids.includes('latest') ? [sessionFiles()[0].id] : ids.map(resolveSessionId);
 const sessions = ids.map(analyzeSession);
 if (has('--json')) console.log(JSON.stringify(sessions, null, 2));
 else console.log(report(sessions));
