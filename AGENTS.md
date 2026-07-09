@@ -15,11 +15,14 @@ Node ≥22 · pnpm ≥10 · TypeScript 5.7 · Fastify 5 · Next.js 15 · React 1
 | `reviewer-core/` | `@devdigest/reviewer-core` | — |
 | `e2e/` | `@devdigest/e2e` | — |
 | `mcp/` | `@devdigest/mcp` | — |
+| `agent-runner/` | `@devdigest/agent-runner` | — |
 | `server/src/vendor/shared/` | `@devdigest/shared` | — |
 
 No monorepo workspace. Cross-package code shared via **tsconfig path aliases** — not published npm modules.
 
 `mcp/` (L04) is a standalone **stdio MCP server** that wraps the API (5 tools: `list_agents`, `run_agent_on_pr`, `get_findings`, `get_conventions`, `get_blast_radius`). It is an HTTP consumer of `:3001` only — no DB, no `reviewer-core` import. Plan: [docs/plans/2026-06-30-mcp-server.md](docs/plans/2026-06-30-mcp-server.md).
+
+`agent-runner/` (L07 lab, pulled from `upstream/lesson-7-lab/agent-runner`) is a standalone **CI runner CLI** — `ncc`-bundled into `dist/index.js`, embedded as `.devdigest/runner/index.js` in an exported `devdigest/ci` PR, and executed by a *target repo's own* GitHub Actions. It consumes `reviewer-core` and `server/src/vendor/shared` as raw TypeScript source via tsconfig path aliases (same pattern as the server) and reads secrets directly from CI env vars, not `SecretsProvider` (see [agent-runner/AGENTS.md](agent-runner/AGENTS.md)). Typechecks and tests clean (23/23) against this repo's `reviewer-core`/`shared` as-is. **Not yet wired to anything**: the server-side half that would generate `.devdigest/agents/<slug>.yaml` + the GitHub Actions workflow (`server/src/modules/ci/`) has no code — only the DB schema (`server/src/db/schema/ci.ts`) and shared contracts (`server/src/vendor/shared/contracts/eval-ci.ts`) exist.
 
 ## Commands
 

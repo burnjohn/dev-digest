@@ -10,6 +10,7 @@
 
 ## Mistakes
 <!-- Failure modes, antipatterns, wrong assumptions. Prioritize this section. -->
+- **2026-07-09 [Mistake]** — Assuming `reviewer-core`'s only consumer is `server/` is no longer safe: `agent-runner/` (checked out from `upstream/lesson-7-lab/agent-runner`) imports `reviewPullRequest`, `toReviewPayload`, `gateTriggered`, `countBlockers`, and `OpenRouterProvider` from this package's public API exactly like `server/` does (raw TS via the `@devdigest/reviewer-core` tsconfig alias) — but `agent-runner/` is NOT part of the local dev stack (`scripts/dev.sh` never touches it) and has no CI workflow of its own yet, so a green `server` typecheck/test run does NOT prove `agent-runner` still compiles. Run `cd agent-runner && pnpm typecheck && pnpm test` too before changing any exported signature in `src/index.ts`.
 
 ## Decisions
 <!-- Architectural or design choices with the reasoning behind them. -->
@@ -30,4 +31,4 @@
 <!-- Unresolved. Convert to an entry in the appropriate section when answered. -->
 
 ---
-Last updated: 2026-07-06 · Entries: 9
+Last updated: 2026-07-09 · Entries: 10

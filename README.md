@@ -16,6 +16,7 @@ aliases, not published modules):
 | `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
 | `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
 | `mcp/`           | `@devdigest/mcp`            | Local stdio MCP server — 5 tools over the API (L04)   | —    |
+| `agent-runner/`  | `@devdigest/agent-runner`   | CI runner CLI — ncc-bundled, runs reviewer-core inside a target repo's CI (L07) | — |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
 `repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
