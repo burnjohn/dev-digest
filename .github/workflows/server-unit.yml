@@ -15,12 +15,6 @@ name: server unit
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - 'reviewer-core/**'
-      - '.github/workflows/server-unit.yml'
-  pull_request:
     paths:
       - 'server/**'
       - 'reviewer-core/**'

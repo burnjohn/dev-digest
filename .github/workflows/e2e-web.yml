@@ -10,13 +10,6 @@ name: e2e web
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - 'server/**'
-      - 'e2e/**'
-      - '.github/workflows/e2e-web.yml'
-  pull_request:
     paths:
       - 'client/**'
       - 'server/**'

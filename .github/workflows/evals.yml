@@ -25,20 +25,13 @@
 #                        deepseek does NOT dispatch subagents (evals/README.md)
 #   EVAL_JUDGE_MODEL     default deepseek/deepseek-chat
 #
-# Secret: OPENROUTER_API_KEY. When absent (e.g. a fork PR) model steps are skipped with a notice.
+# Secret: OPENROUTER_API_KEY. When absent, model steps are skipped with a notice.
 name: evals
 
 on:
-  # Direct pushes to feature branches trigger too, so the loop is: commit → push → run,
-  # no open PR required. main is excluded — PRs into main already validated the change.
+  # push-only (no pull_request trigger): every push runs this, including main —
+  # avoids the same commit double-firing via both push and pull_request events.
   push:
-    branches-ignore: [main]
-    paths:
-      - '.claude/**'
-      - 'CLAUDE.md'
-      - 'evals/**'
-      - '.github/workflows/evals.yml'
-  pull_request:
     paths:
       - '.claude/**'
       - 'CLAUDE.md'

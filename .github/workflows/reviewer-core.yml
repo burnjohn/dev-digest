@@ -8,12 +8,6 @@ name: reviewer-core
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'reviewer-core/**'
-      - 'server/src/vendor/shared/**'
-      - '.github/workflows/reviewer-core.yml'
-  pull_request:
     paths:
       - 'reviewer-core/**'
       - 'server/src/vendor/shared/**'
