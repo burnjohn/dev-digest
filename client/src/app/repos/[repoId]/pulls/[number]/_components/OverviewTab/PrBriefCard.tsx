@@ -14,7 +14,7 @@
 
 import React from "react";
 import { Icon, SectionLabel } from "@devdigest/ui";
-import type { BriefResponse, BriefRisk, ReviewFocus } from "@devdigest/shared";
+import type { BriefRisk, ReviewFocus } from "@devdigest/shared";
 import { MonoLink } from "@/vendor/ui/primitives/MonoLink";
 import { githubBlobUrl } from "@/lib/github-urls";
 import { useBrief, useRegenerateBrief } from "@/lib/hooks/brief";

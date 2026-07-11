@@ -1,6 +1,7 @@
 ---
 name: backend-testing
-description: Backend testing craft for DevDigest's Vitest suites — server/ (Fastify + Drizzle/
+description: >-
+  Backend testing craft for DevDigest's Vitest suites — server/ (Fastify + Drizzle/
   Postgres) and reviewer-core/ (pure engine). Use when writing or reviewing backend tests:
   hermetic unit tests with the repo mocks, Fastify route tests via app.inject(), Postgres
   integration tests with the .it.test.ts suffix + testcontainers, and the test-quality rules.

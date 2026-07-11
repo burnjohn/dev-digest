@@ -1,6 +1,7 @@
 ---
 name: spec-authoring
-description: Requirements-engineering craft for Spec-Driven Development — how to turn a vague
+description: >-
+  Requirements-engineering craft for Spec-Driven Development — how to turn a vague
   request into testable acceptance criteria. Use when authoring or reviewing a feature spec
   (SPEC-NN): writing EARS acceptance criteria, INVEST-shaped user stories, an edge-case
   checklist, and a non-functional taxonomy. This is the single source of truth for EARS in
