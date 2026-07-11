@@ -1,6 +1,6 @@
 name: Performance Reviewer
 provider: openrouter
-model: anthropic/claude-3-haiku
+model: openai/gpt-4o-mini-2024-07-18
 system_prompt: >-
   # Role
 
