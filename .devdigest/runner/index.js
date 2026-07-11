@@ -20388,7 +20388,7 @@ const CiExportInput = objectType({
 // Declared here (before `CiInstallation`) because `CiInstallation.latest_run_status`
 // references it as a runtime value, not just a type — Zod schemas are values, so the
 // enum must be defined before anything that embeds it.
-const CiRunStatus = enumType(['succeeded', 'failed', 'no_findings', 'running', 'skipped_fork']);
+const CiRunStatus = enumType(['succeeded', 'failed', 'no_findings', 'running', 'skipped_fork', 'skipped_large']);
 /** A persisted CI installation (mirrors `ci_installations`). */
 const CiInstallation = objectType({
     id: stringType(),
@@ -20449,6 +20449,12 @@ const CiResultArtifact = objectType({
     agent: stringType(),
     version: stringType().nullish(),
     pr_number: numberType().int().nullish(),
+    /**
+     * Set when the review was SKIPPED rather than run (e.g. `'diff_too_large'` —
+     * the PR exceeded GitHub's 300-file diff cap). Absent on a normal review.
+     * Ingest maps a present value to the `skipped_large` run status.
+     */
+    skipped_reason: stringType().nullish(),
 });
 const CiExportPreviewInput = objectType({
     triggers: arrayType(stringType()).default(['opened', 'synchronize']),
@@ -35417,6 +35423,19 @@ class RunnerError extends Error {
         this.name = 'RunnerError';
     }
 }
+/**
+ * PrDiffTooLargeError — GitHub's diff media type caps a PR at 300 changed files
+ * and returns `406 { code: "too_large" }` for anything larger. Distinguished
+ * from a plain `RunnerError` so `runCi` can DEGRADE GRACEFULLY (skip + comment
+ * + exit 0) instead of hard-failing: a PR that's simply too big to fetch is not
+ * a runner crash, and a red "Failed" check would wrongly block the author.
+ */
+class PrDiffTooLargeError extends RunnerError {
+    constructor(message) {
+        super(message);
+        this.name = 'PrDiffTooLargeError';
+    }
+}
 
 ;// CONCATENATED MODULE: ./src/manifest.ts
 
@@ -35700,7 +35719,14 @@ async function fetchPrDiff(ctx, token, fetchImpl = fetch) {
         headers: authHeaders(token, 'application/vnd.github.v3.diff'),
     });
     if (!res.ok) {
-        throw new RunnerError(`GitHub API error fetching PR diff (${url}): ${res.status} ${await res.text().catch(() => '')}`);
+        const body = await res.text().catch(() => '');
+        // GitHub's diff media type caps a PR at 300 changed files and returns
+        // `406 { code: "too_large" }` for anything larger. Signal it distinctly so
+        // `runCi` degrades gracefully (skip + comment + exit 0) instead of crashing.
+        if (res.status === 406 && body.includes('too_large')) {
+            throw new PrDiffTooLargeError(`PR #${ctx.prNumber} diff exceeds GitHub's 300-file limit (${url}): ${res.status} ${body}`);
+        }
+        throw new RunnerError(`GitHub API error fetching PR diff (${url}): ${res.status} ${body}`);
     }
     return res.text();
 }
@@ -35791,6 +35817,7 @@ function buildResultArtifact(input) {
         agent: input.agent,
         version: RUNNER_VERSION,
         pr_number: input.prNumber,
+        skipped_reason: input.skippedReason,
     };
     const result = CiResultArtifact.safeParse(candidate);
     if (!result.success) {
@@ -35811,6 +35838,13 @@ function buildResultArtifact(input) {
 
 
 
+/** PR comment posted when the diff is too large to fetch (graceful skip path). */
+function tooLargeComment(agentName) {
+    return (`## ${agentName} — Skipped ⏭️\n\n` +
+        `_This pull request changes more files than GitHub's diff API will return ` +
+        `(over 300), so DevDigest couldn't fetch a diff to review it. Split it into ` +
+        `smaller pull requests to get an automated review._`);
+}
 async function runCi(deps) {
     const readFile = deps.readFile ?? external_node_fs_namespaceObject.readFileSync;
     const readDir = deps.readDir ?? external_node_fs_namespaceObject.readdirSync;
@@ -35832,7 +35866,40 @@ async function runCi(deps) {
         //    artifacts (`.devdigest/**`, the generated workflow) BEFORE parse: the
         //    minified runner bundle would otherwise fail the whole review with a
         //    GitHub 422 "diff too large", and reviewing our own config is noise.
-        const rawDiff = await fetchDiffImpl(ctx, githubToken ?? '', fetchImpl);
+        let rawDiff;
+        try {
+            rawDiff = await fetchDiffImpl(ctx, githubToken ?? '', fetchImpl);
+        }
+        catch (err) {
+            if (err instanceof PrDiffTooLargeError) {
+                // Graceful degradation (NOT a hard crash): the PR changes more files
+                // than GitHub's diff API returns (>300 → 406 too_large). We can't fetch
+                // a diff to review, but a failed run is the wrong signal — write a
+                // SKIPPED artifact, tell the author to split the PR, and exit 0 so the
+                // check doesn't block them. Distinct from the Q5 hard-fail path below,
+                // which still fires for every OTHER error.
+                const artifact = buildResultArtifact({
+                    findings: [],
+                    costUsd: 0,
+                    durationMs: 0,
+                    agent: manifest.name,
+                    prNumber: ctx.prNumber,
+                    skippedReason: 'diff_too_large',
+                });
+                writeFile(deps.resultPath, `${JSON.stringify(artifact, null, 2)}\n`);
+                if (deps.postAs !== 'none' && githubToken) {
+                    await postPrComment(ctx, githubToken, tooLargeComment(manifest.name), fetchImpl);
+                }
+                return {
+                    exitCode: 0,
+                    artifact,
+                    posted: { kind: deps.postAs },
+                    blockers: 0,
+                    gateTriggered: false,
+                };
+            }
+            throw err;
+        }
         const diff = parseUnifiedDiff(stripIgnoredFiles(rawDiff));
         // 4. Run the SAME engine the studio uses. `reviewPullRequest` internally
         //    calls `assemblePrompt`/`wrapUntrusted` (diff → `<untrusted
