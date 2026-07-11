@@ -14,7 +14,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Run DevDigest review
         run: node .devdigest/runner/index.js
         env:
@@ -23,7 +23,7 @@ jobs:
           DEVDIGEST_POST_AS: pr_comment
       - name: Upload DevDigest result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: devdigest-result
           path: devdigest-result.json
