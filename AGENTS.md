@@ -63,6 +63,24 @@ Wrap-up is mandatory; the write is conditional. Re-read the target section
 to avoid duplicates. Write an entry only if something non-obvious surfaced
 that isn't already captured. Trivial work → no entry, say so explicitly.
 
+## Evals — self-check before commit
+
+The `evals/` package tests **the harness itself** (skills, subagents, `CLAUDE.md`
+composition) — behavior the app's own test suite does not cover. **When you change
+`.claude/skills/*`, `.claude/agents/*`, or this file, run the matching eval before
+you commit.**
+
+| Changed                                       | Run (in `evals/`)                                                        |
+|-----------------------------------------------|--------------------------------------------------------------------------|
+| any `SKILL.md` structure / frontmatter / links | `pnpm eval:quality` — static gate, no model, no token spend              |
+| a skill's content                              | `pnpm vitest run skills/<skill>`                                         |
+| a subagent definition                          | `pnpm vitest run agents/<agent>`                                        |
+| `CLAUDE.md` / activation / dispatch routing    | `pnpm eval:workflow`                                                     |
+| a `SKILL.md`/agent edit worth **measuring**    | `pnpm eval:repeat … --label baseline` (before) → `--label candidate` (after) → `pnpm eval:delta baseline candidate` |
+
+`pnpm eval:quality` is the cheap gate — always safe to run first. Full command and
+records/stats reference: `evals/README.md`.
+
 ## Sub-maps (lazy — load when you enter the package)
 
 - `server/AGENTS.md`

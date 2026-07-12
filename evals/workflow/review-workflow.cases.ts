@@ -23,7 +23,7 @@ export const cases: WorkflowCase[] = [
       "Я планую додати НОВИЙ, ще не реалізований ендпоінт GET /reviews/:id/export (віддає ревʼю як " +
       "markdown). Спершу звірся з конвенціями API цього репо. Потім ОБОВʼЯЗКОВО запусти сабагента " +
       "architecture-reviewer, щоб він оцінив мій план на відповідність onion-шарам — не рецензуй сам.",
-    expectFilesRead: ["server/docs/api-contracts.md"],
+    expectFilesRead: ["server/docs/adding-a-module.md"],
     expectSubagents: ["architecture-reviewer"],
     maxTurns: 8,
   },
@@ -43,28 +43,29 @@ export const cases: WorkflowCase[] = [
     maxTurns: 8,
   },
 
-  // --- trace (1 session): CLAUDE.md "Hit unexpected behavior" routing -> gotchas ----------------
-  // Was a contrast case, but the control run (empty tmpdir) could still reach the real repo by
-  // absolute path and read gotchas.md, making the negative flaky. As a single-session trace it
-  // reliably checks the same routing rule: in the real repo, the discovery prompt reads gotchas.md.
+  // --- trace (1 session): AGENTS.md "read its INSIGHTS.md" routing on unexpected behavior --------
+  // This repo has no "gotchas.md"; its non-obvious-findings ledger is the per-package INSIGHTS.md
+  // (root AGENTS.md: "Before touching code in a package, read its INSIGHTS.md"; reviewer-core/
+  // AGENTS.md lists `INSIGHTS.md` as the accumulated findings file). A single-session trace checks
+  // that routing rule: in the real repo, a "where's this already documented?" prompt reads it.
   {
     kind: "trace",
-    name: "CLAUDE.md routes a gotchas lookup to reviewer-core/insights",
+    name: "AGENTS.md routes an unexpected-behavior lookup to reviewer-core/INSIGHTS.md",
     prompt:
       "У reviewer-core я стикнувся з несподіваною поведінкою — щось працює не так, як я очікував. " +
       "За настановами цього репо, де це вже могло бути задокументовано? Прочитай той файл.",
-    expectFilesRead: ["reviewer-core/insights/gotchas.md"],
+    expectFilesRead: ["reviewer-core/INSIGHTS.md"],
     maxTurns: 5,
   },
 
   // --- activation pair (2 sessions): positive + near-miss negative ------------------------------
   {
     kind: "activation",
-    name: "engineering-insights activates on a genuine discovery",
+    name: "capturing-insights activates on a genuine discovery",
     prompt:
       "Щойно з'ясував, чому pgvector-запит повертав нуль рядків — розмірність колонки не збіглася " +
       "після зміни моделі ембедингів. Хочу це зафіксувати, щоб більше не наступати.",
-    skill: "engineering-insights",
+    skill: "capturing-insights",
     shouldActivate: true,
     maxTurns: 4,
   },
@@ -73,7 +74,7 @@ export const cases: WorkflowCase[] = [
     name: "near-miss negative — explaining the same topic must NOT record an insight",
     prompt:
       "Поясни, як у pgvector працюють розмірності колонок і чому невідповідність повертає нуль рядків.",
-    skill: "engineering-insights",
+    skill: "capturing-insights",
     shouldActivate: false,
     maxTurns: 4,
   },
