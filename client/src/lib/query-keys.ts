@@ -73,4 +73,24 @@ export const qk = {
   // ---- skill context-docs attachment (Task 8) ----
   /** Attached context-doc paths for one skill (ordered list). */
   skillContextDocs: (skillId: string | null | undefined) => ["skill-context-docs", skillId] as const,
+
+  // ---- eval cases (T8 — FindingCard "Turn into eval case"; T9 extends) ----
+  /** Eval cases for one agent (prefix for list + invalidation). */
+  evalCases: (agentId: string | null | undefined) => ["eval-cases", agentId] as const,
+
+  // ---- eval run groups (T9 — AgentEditor Evals tab run-all; T10 extends) ----
+  /** Run groups (history) for one agent — newest-first. Prefix for invalidation. */
+  evalRunGroups: (agentId: string | null | undefined) => ["eval-run-groups", agentId] as const,
+
+  // ---- eval dashboard (T10 — cross-agent Eval Dashboard page) ----
+  /** Cross-agent eval dashboard — all agents' current metrics + recent runs (AC-20). */
+  evalDashboard: () => ["eval-dashboard"] as const,
+
+  // ---- eval compare (T10 — Compare modal) ----
+  /** Per-metric deltas + system_prompt diff for two run groups (AC-16). */
+  evalCompare: (
+    agentId: string | null | undefined,
+    runGroupIdA: string | null | undefined,
+    runGroupIdB: string | null | undefined,
+  ) => ["eval-compare", agentId, runGroupIdA, runGroupIdB] as const,
 };

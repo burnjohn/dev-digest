@@ -86,6 +86,12 @@ it. See `.claude/skills/capturing-insights/examples.md` for bad/good pairs.
 - 2026-07-10 · Next.js 15 `app/` dynamic-segment pages CANNOT receive `params` as a prop in client components — must use `useParams()` · evidence: `client/src/app/repos/[repoId]/context-docs/page.tsx:9` vs build failure at `.next/types/app/repos/[repoId]/context-docs/page.ts:34`
   `tsc --noEmit` passes silently with the wrong prop shape, but `next build` fails with "Type '{ params: { repoId: string; } }' does not satisfy the constraint 'PageProps'" because it generates its own stricter type-check in `.next/types/**`. Use `useParams<{ repoId: string }>()` from `next/navigation` instead of declaring `{ params: { repoId: string } }` as props. All existing dynamic pages follow this pattern (`pulls/page.tsx`, `agents/[id]/page.tsx`) — copy it rather than inventing.
 
+- 2026-07-12 · Adding a `useMutation` hook to a leaf component (FindingCard) breaks existing tests of *parent* components that render it without `QueryClientProvider` · evidence: `client/src/app/repos/[repoId]/pulls/[number]/_components/findings/FindingsPanel/FindingsPanel.test.tsx` (updated to add `QueryClientProvider` when `FindingCard` gained `useCreateEvalCase`)
+  `FindingsPanel.test.tsx` had no `QueryClientProvider` wrapper because `FindingCard` was previously hook-free. When `FindingCard` gained `useCreateEvalCase` (which calls `useQueryClient()`), every parent test rendering `FindingCard` indirectly now requires `QueryClientProvider` or the test fails with "No QueryClient set". Pattern: when adding a TanStack Query hook to a shared leaf component, search for tests of parent components that render it without the provider wrapper.
+
+- 2026-07-12 · Manually invoking a mocked mutation's `onSuccess` callback in RTL tests requires `act()` to flush React state updates · evidence: `client/src/app/agents/[id]/_components/AgentEditor/_components/EvalsTab/EvalsTab.test.tsx` (the "shows textual 'passed' label" test)
+  When a component calls `setLastRunResults(data.results)` inside a mutation's `onSuccess`, that state update is fired from outside RTL's event-dispatch pipeline. Without `act(() => { capturedOnSuccess?.(data); })`, React defers the state flush and assertions immediately after the callback see stale DOM ("never run" instead of "passed"). Wrap any manually-triggered state-setting callback in `act()`.
+
 ## Session Notes
 
 ## Open Questions

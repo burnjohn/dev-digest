@@ -42,6 +42,8 @@ export const EvalRunRecord = z.object({
   citation_accuracy: z.number().nullable(),
   duration_ms: z.number().int().nullable(),
   cost_usd: z.number().nullable(),
+  /** Nullable FK — rows created outside a run-group have this unset (D1). */
+  run_group_id: z.string().nullish(),
 });
 export type EvalRunRecord = z.infer<typeof EvalRunRecord>;
 
@@ -52,6 +54,96 @@ export const EvalRunResult = z.object({
   result: EvalRun,
 });
 export type EvalRunResult = z.infer<typeof EvalRunResult>;
+
+// ===========================================================================
+// Eval — expectedOutput discriminated union (D3) + run-group shapes (D1)
+// ===========================================================================
+
+/**
+ * EvalExpectedOutput — discriminated union on `type` (D3, AC-3).
+ *
+ * `must_find`     → the agent MUST emit at least one finding matching the
+ *                   expected file+range (recall stressor). `findings` is
+ *                   non-empty.
+ * `must_not_flag` → the agent MUST NOT emit a finding intersecting the
+ *                   forbidden file+range (precision stressor). `findings` is
+ *                   explicitly empty; `forbidden` names the target(s).
+ *
+ * Both variants carry `findings` so the scorer's match loop is uniform:
+ * `must_find` matches against `findings`; `must_not_flag` checks `forbidden`.
+ * Stored in the `expected_output` jsonb column of `eval_cases` — no schema
+ * change required (D3 decision, SPEC-03).
+ */
+export const EvalExpectedOutputMustFind = z.object({
+  type: z.literal('must_find'),
+  /** Non-empty set of findings the agent must emit (file + line-range). */
+  findings: z.array(Finding).min(1),
+});
+export type EvalExpectedOutputMustFind = z.infer<typeof EvalExpectedOutputMustFind>;
+
+export const EvalExpectedOutputMustNotFlag = z.object({
+  type: z.literal('must_not_flag'),
+  /** Explicitly empty — the agent must NOT emit anything intersecting `forbidden`. */
+  findings: z.array(Finding).length(0),
+  /** One or more file+range targets that must not be flagged (AC-2). */
+  forbidden: z
+    .array(
+      z.object({
+        file: z.string(),
+        start_line: z.number().int(),
+        end_line: z.number().int(),
+      }),
+    )
+    .min(1),
+});
+export type EvalExpectedOutputMustNotFlag = z.infer<typeof EvalExpectedOutputMustNotFlag>;
+
+export const EvalExpectedOutput = z.discriminatedUnion('type', [
+  EvalExpectedOutputMustFind,
+  EvalExpectedOutputMustNotFlag,
+]);
+export type EvalExpectedOutput = z.infer<typeof EvalExpectedOutput>;
+
+/**
+ * EvalRunGroup — one execution of an agent over its whole case set (D1, AC-13).
+ *
+ * Mirrors the `eval_run_groups` DB table. The per-case `eval_runs` rows point
+ * here via the nullable `run_group_id` FK. Aggregate metrics are stored
+ * first-class so dashboard reads avoid re-aggregating per request.
+ */
+export const EvalRunGroup = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+  owner_kind: EvalOwnerKind,
+  owner_id: z.string(),
+  /** The agent's `agents.version` at the time of the run (AC-7). */
+  agent_version: z.number().int(),
+  /** Optional human label (e.g. "v7 — tightened rationale"). */
+  label: z.string().nullish(),
+  ran_at: z.string(),
+  /** Aggregate recall across all cases in the group (AC-9). */
+  recall: z.number(),
+  /** Aggregate precision across all cases in the group (AC-10). */
+  precision: z.number(),
+  /** Aggregate citation_accuracy across all cases in the group (AC-12). */
+  citation_accuracy: z.number(),
+  /** Sum of per-case costUsd; null when no cost data was captured. */
+  total_cost_usd: z.number().nullable(),
+});
+export type EvalRunGroup = z.infer<typeof EvalRunGroup>;
+
+/**
+ * EvalRunGroupResult — response for `POST /agents/:id/eval-runs` (T6).
+ *
+ * Wraps the run-group aggregate together with the per-case results so the
+ * caller gets both the group summary and the individual case outcomes in one
+ * response (AC-13/AC-15).
+ */
+export const EvalRunGroupResult = z.object({
+  group: EvalRunGroup,
+  results: z.array(EvalRunResult),
+});
+export type EvalRunGroupResult = z.infer<typeof EvalRunGroupResult>;
 
 /** One point on the dashboard trend (per run, chronological). */
 export const EvalTrendPoint = z.object({

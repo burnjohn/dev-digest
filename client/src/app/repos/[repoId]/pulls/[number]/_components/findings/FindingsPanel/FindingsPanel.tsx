@@ -19,6 +19,7 @@ export function FindingsPanel({
   headSha,
   severityFilter,
   focusedFindingId,
+  agentId,
 }: {
   findings: FindingRecord[];
   prId: string;
@@ -27,6 +28,9 @@ export function FindingsPanel({
   severityFilter?: string | null;
   /** Finding ID to auto-expand and scroll to (from badge click in the diff tab). */
   focusedFindingId?: string | null;
+  /** Agent id that produced these findings — passed to FindingCard for the
+   *  "Turn into eval case" action (T8, AC-4). */
+  agentId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
@@ -83,6 +87,7 @@ export function FindingsPanel({
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
+              agentId={agentId}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))

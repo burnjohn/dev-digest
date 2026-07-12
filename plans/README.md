@@ -31,3 +31,4 @@ the full spec → plan → implement → review → verify pipeline.
 
 - [PLAN-01 Project Context](PLAN-01-project-context.md) — SPEC-01 — done
 - [PLAN-02 Why + Risk Brief](PLAN-02-why-risk-brief.md) — SPEC-02 — draft
+- [PLAN-03 Eval Pipeline](PLAN-03-eval-pipeline.md) — SPEC-03 — draft

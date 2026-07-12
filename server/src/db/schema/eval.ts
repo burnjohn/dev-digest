@@ -19,11 +19,32 @@ export const evalCases = pgTable('eval_cases', {
   notes: text('notes'),
 });
 
+export const evalRunGroups = pgTable('eval_run_groups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  ownerKind: text('owner_kind', { enum: ['skill', 'agent'] }).notNull(),
+  ownerId: uuid('owner_id').notNull(),
+  agentVersion: integer('agent_version').notNull(),
+  label: text('label'),
+  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+  recall: doublePrecision('recall'),
+  precision: doublePrecision('precision'),
+  citationAccuracy: doublePrecision('citation_accuracy'),
+  totalCostUsd: doublePrecision('total_cost_usd'),
+});
+
 export const evalRuns = pgTable('eval_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
   caseId: uuid('case_id')
     .notNull()
     .references(() => evalCases.id, { onDelete: 'cascade' }),
+  // Nullable FK to the run group this per-case row belongs to.
+  // Nullable so existing/old-path rows (written before D1) are unaffected.
+  runGroupId: uuid('run_group_id').references(() => evalRunGroups.id, {
+    onDelete: 'set null',
+  }),
   ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
   actualOutput: jsonb('actual_output'),
   pass: boolean('pass'),

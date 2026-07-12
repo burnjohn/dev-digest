@@ -1,7 +1,7 @@
 /* FindingCard — ported from findings.jsx (createElement → TSX).
    Severity icon+label, category, file:line, confidence, markdown rationale +
    suggestion, accept/dismiss actions. Accept/dismiss reflect persisted
-   timestamps. */
+   timestamps. T8: "Turn into eval case" one-click action (AC-1/2/4). */
 "use client";
 
 import React from "react";
@@ -21,6 +21,7 @@ import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { SEVERITY_COLOR, SEVERITY_COLOR_FALLBACK } from "../../findings.constants";
 import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "@/lib/github-urls";
+import { useCreateEvalCase } from "@/lib/hooks/evals";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -31,6 +32,7 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  agentId,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -39,6 +41,10 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Agent id that produced this finding's review run. When provided and the
+   *  finding has been accepted or dismissed, shows the "Turn into eval case"
+   *  one-click action (T8, AC-1/2/4). */
+  agentId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -50,6 +56,19 @@ export function FindingCard({
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
+
+  // "Turn into eval case" — one-click, no extra prompt (AC-4).
+  // Derive action from the finding's accept/dismiss state (AC-1/2).
+  const createEvalCase = useCreateEvalCase();
+  const evalAction = accepted ? "accept" : dismissed ? "dismiss" : null;
+  const canCreateEvalCase = !!agentId && evalAction !== null;
+
+  const handleCreateEvalCase = () => {
+    if (!agentId || !evalAction) return;
+    // Extract the base Finding fields (strip FindingRecord-specific fields).
+    const { review_id: _r, accepted_at: _a, dismissed_at: _d, ...finding } = f;
+    createEvalCase.mutate({ agentId, finding, action: evalAction });
+  };
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
@@ -109,6 +128,20 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {canCreateEvalCase && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="Target"
+                disabled={createEvalCase.isPending}
+                onClick={handleCreateEvalCase}
+                aria-label={t("finding.turnIntoEvalCase")}
+              >
+                {createEvalCase.isPending
+                  ? t("finding.evalCasePending")
+                  : t("finding.turnIntoEvalCase")}
+              </Button>
+            )}
           </div>
         </div>
       )}

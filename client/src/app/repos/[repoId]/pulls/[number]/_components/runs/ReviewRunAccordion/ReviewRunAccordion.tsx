@@ -144,6 +144,7 @@ export function ReviewRunAccordion({
             headSha={headSha}
             severityFilter={severityFilter}
             focusedFindingId={focusedFindingId}
+            agentId={review.agent_id}
           />
         </div>
       )}

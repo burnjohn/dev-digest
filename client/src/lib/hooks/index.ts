@@ -43,3 +43,7 @@ export { useAgentContextDocs, useSetAgentContextDocs } from "./agents";
 
 // skill context-docs attachment (Task 8)
 export { useSkillContextDocs, useSetSkillContextDocs } from "./skills";
+
+// eval pipeline (T8 — "Turn into eval case"; T9/T10 extend additively)
+export type { CreateEvalCaseOneClickInput } from "./evals";
+export { useCreateEvalCase } from "./evals";

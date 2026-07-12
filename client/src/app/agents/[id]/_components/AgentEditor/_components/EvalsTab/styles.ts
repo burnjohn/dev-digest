@@ -1,0 +1,47 @@
+import type React from "react";
+
+/** Co-located styles for EvalsTab — mirrors the sibling SkillsTab/ContextTab styles. */
+export const s = {
+  wrap: { maxWidth: 900 } satisfies React.CSSProperties,
+  header: { display: "flex", alignItems: "center", gap: 14, marginBottom: 8 } satisfies React.CSSProperties,
+  h2: { margin: 0, fontSize: 16 } satisfies React.CSSProperties,
+  count: { color: "var(--text-muted)", fontSize: 12 } satisfies React.CSSProperties,
+  runBtn: { marginLeft: "auto" } satisfies React.CSSProperties,
+  hint: { color: "var(--text-muted)", fontSize: 12, margin: "0 0 18px" } satisfies React.CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 7 } satisfies React.CSSProperties,
+  row: { display: "flex", alignItems: "center", gap: 11, minHeight: 46, padding: "8px 11px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-elevated)" } satisfies React.CSSProperties,
+  text: { flex: 1, minWidth: 0 } satisfies React.CSSProperties,
+  name: { fontSize: 13, fontWeight: 650 } satisfies React.CSSProperties,
+  meta: { color: "var(--text-muted)", fontSize: 12, marginTop: 2, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" } satisfies React.CSSProperties,
+  passBadge: (pass: boolean) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    color: pass ? "var(--ok)" : "var(--crit)",
+    background: pass ? "var(--ok-bg, #e8f7ee)" : "var(--crit-bg, #fde8e8)",
+    borderRadius: 4,
+    padding: "2px 7px",
+  } satisfies React.CSSProperties),
+  neverRun: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" } satisfies React.CSSProperties,
+  controls: { display: "flex", gap: 6, flexShrink: 0 } satisfies React.CSSProperties,
+  deleteBtn: { border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", padding: 4, display: "flex" } satisfies React.CSSProperties,
+  // Modal styles
+  modalBody: { padding: "20px 24px", display: "flex", flexDirection: "column" as const, gap: 16 } satisfies React.CSSProperties,
+  modalLabel: { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" as const, letterSpacing: "0.05em" } satisfies React.CSSProperties,
+  modalInput: { width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 13, outline: "none" } satisfies React.CSSProperties,
+  modalTextarea: { width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 13, fontFamily: "monospace", resize: "vertical" as const, outline: "none" } satisfies React.CSSProperties,
+  modalFooter: { display: "flex", gap: 10, justifyContent: "flex-end" } satisfies React.CSSProperties,
+  inputTabBar: { display: "flex", gap: 0, borderBottom: "1px solid var(--border)", marginBottom: 10 } satisfies React.CSSProperties,
+  inputTab: (active: boolean) => ({
+    padding: "5px 12px",
+    fontSize: 12,
+    fontWeight: active ? 700 : 400,
+    color: active ? "var(--text-primary)" : "var(--text-muted)",
+    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+  } satisfies React.CSSProperties),
+};

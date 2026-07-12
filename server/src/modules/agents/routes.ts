@@ -12,6 +12,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { AgentsService } from './service.js';
+import evalRoutes from './eval-routes.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
 const ProviderParams = z.object({ id: Provider });
@@ -218,4 +219,11 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
   });
+
+  // ---- Register eval sub-routes (T7 — single-owner edit to routes.ts) -----
+  // All eval endpoints (case CRUD, run orchestrator, history, compare, promote,
+  // dashboard) are implemented in eval-routes.ts and registered here as a nested
+  // Fastify plugin so they inherit the parent's plugins (helmet, cors, rate-limit)
+  // and share the `container` decoration.
+  await app.register(evalRoutes);
 }
