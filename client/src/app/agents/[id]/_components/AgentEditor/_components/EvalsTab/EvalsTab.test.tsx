@@ -61,15 +61,18 @@ const CASE_2 = {
 
 const mockRunMutate = vi.fn();
 const mockDeleteMutate = vi.fn();
+const mockCreateManualMutate = vi.fn();
 
 const useEvalCasesMock = vi.fn();
 const useRunAgentEvalsMock = vi.fn();
 const useDeleteEvalCaseMock = vi.fn();
+const useCreateEvalCaseManualMock = vi.fn();
 
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalCases: (id: unknown) => useEvalCasesMock(id),
   useRunAgentEvals: () => useRunAgentEvalsMock(),
   useDeleteEvalCase: () => useDeleteEvalCaseMock(),
+  useCreateEvalCaseManual: () => useCreateEvalCaseManualMock(),
 }));
 
 import { EvalsTab } from "./EvalsTab";
@@ -112,6 +115,11 @@ function setupDefaultMocks(overrides?: {
 
   useDeleteEvalCaseMock.mockReturnValue({
     mutate: mockDeleteMutate,
+    isPending: false,
+  });
+
+  useCreateEvalCaseManualMock.mockReturnValue({
+    mutate: mockCreateManualMutate,
     isPending: false,
   });
 }
@@ -285,6 +293,7 @@ describe("EvalsTab", () => {
     useEvalCasesMock.mockReturnValue({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() });
     useRunAgentEvalsMock.mockReturnValue({ mutate: mockRunMutate, isPending: false });
     useDeleteEvalCaseMock.mockReturnValue({ mutate: mockDeleteMutate, isPending: false });
+    useCreateEvalCaseManualMock.mockReturnValue({ mutate: mockCreateManualMutate, isPending: false });
 
     const { container } = renderWithIntl(<EvalsTab agent={AGENT} />);
 

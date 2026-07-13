@@ -82,6 +82,10 @@ export const qk = {
   /** Run groups (history) for one agent — newest-first. Prefix for invalidation. */
   evalRunGroups: (agentId: string | null | undefined) => ["eval-run-groups", agentId] as const,
 
+  /** First-class run-group list (real ids + versions) for the Compare selector (AC-16). */
+  evalRunGroupList: (agentId: string | null | undefined) =>
+    ["eval-run-group-list", agentId] as const,
+
   // ---- eval dashboard (T10 — cross-agent Eval Dashboard page) ----
   /** Cross-agent eval dashboard — all agents' current metrics + recent runs (AC-20). */
   evalDashboard: () => ["eval-dashboard"] as const,

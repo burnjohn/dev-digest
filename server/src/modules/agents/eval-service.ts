@@ -20,6 +20,7 @@ import type {
   EvalTrendPoint,
   EvalRunRecord,
   EvalRunGroup,
+  EvalCompareResult,
   AgentVersion,
 } from '@devdigest/shared';
 import type { EvalCaseRow } from './eval-repository.js';
@@ -27,6 +28,7 @@ import { EvalRepository } from './eval-repository.js';
 import { AgentsRepository } from './repository.js';
 import { toAgentVersionDto } from './helpers.js';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
+import { ReviewRepository } from '../reviews/repository.js';
 import { reviewPullRequest } from '@devdigest/reviewer-core';
 import { scoreCase, scoreRun } from './eval-scorer.js';
 import type { Container } from '../../platform/container.js';
@@ -49,6 +51,7 @@ export type EvalCaseAction = 'accept' | 'dismiss';
 export class EvalService {
   private repo: EvalRepository;
   private agentsRepo: AgentsRepository;
+  private reviewsRepo: ReviewRepository;
   private container: Container | null;
 
   /**
@@ -61,6 +64,12 @@ export class EvalService {
   constructor(db: import('../../db/client.js').Db, container?: Container) {
     this.repo = new EvalRepository(db);
     this.agentsRepo = new AgentsRepository(db);
+    // Cross-module dependency: consume the composition root's SHARED reviews
+    // repository (the Container's DI seam for cross-cutting entities) rather than
+    // the agents module instantiating a sibling module's concrete repo itself.
+    // The `new ReviewRepository(db)` fallback covers only the container-less
+    // construction path used by hermetic case-CRUD tests.
+    this.reviewsRepo = container?.reviewRepo ?? new ReviewRepository(db);
     this.container = container ?? null;
   }
 
@@ -73,23 +82,32 @@ export class EvalService {
    *   - `accept`  → `must_find`     (AC-1): agent MUST emit this finding
    *   - `dismiss` → `must_not_flag` (AC-2): agent must NOT flag this file/range
    *
-   * `inputDiff` is the finding's diff fragment (frozen snapshot, AC-6).
+   * **Diff sourcing (A gap fix — AC-6):**
+   * If `inputDiff` is provided it is used verbatim (frozen snapshot).
+   * If `inputDiff` is absent or empty and `pullRequestId` is given, the server
+   * loads the stored PR diff from `pr_files` patches (AC-6 — stored verbatim,
+   * no live GitHub re-fetch).
+   * The full PR diff is used when per-file slicing is complex; the finding's
+   * `file` is always present in the stored patches.
+   *
    * `ownerKind` = 'agent', `ownerId` = agentId (tenant-scoped).
    *
-   * @param workspaceId  Workspace scoping — never mixed across tenants (INSIGHTS 2026-06-29).
-   * @param agentId      The reviewing agent that produced the finding (AC-1/2).
-   * @param finding      The Finding the user acted on.
-   * @param action       'accept' → must_find; 'dismiss' → must_not_flag.
-   * @param inputDiff    The diff fragment associated with the finding (frozen, AC-6).
-   * @param name         Optional case name; defaults to finding title.
+   * @param workspaceId    Workspace scoping — never mixed across tenants (INSIGHTS 2026-06-29).
+   * @param agentId        The reviewing agent that produced the finding (AC-1/2).
+   * @param finding        The Finding the user acted on.
+   * @param action         'accept' → must_find; 'dismiss' → must_not_flag.
+   * @param inputDiff      Explicit diff fragment (frozen snapshot, AC-6). Takes precedence.
+   * @param name           Optional case name; defaults to finding title.
+   * @param pullRequestId  PR id to load the stored diff from when inputDiff is absent (A gap fix).
    */
   async createCaseFromFinding(
     workspaceId: string,
     agentId: string,
     finding: Finding,
     action: EvalCaseAction,
-    inputDiff = '',
+    inputDiff?: string,
     name?: string,
+    pullRequestId?: string,
   ): Promise<EvalCaseRow> {
     const expectedOutput =
       action === 'accept'
@@ -111,11 +129,45 @@ export class EvalService {
             ],
           };
 
+    // Resolve inputDiff: caller-supplied takes precedence; server-side load
+    // from pr_files when absent and a pullRequestId was threaded (A gap fix).
+    let resolvedDiff = inputDiff ?? '';
+    if (!resolvedDiff && pullRequestId) {
+      try {
+        // Tenant safety (REPO-001): `pullRequestId` is attacker-controllable from
+        // the request body, and `getPrFiles` is NOT workspace-scoped — so verify
+        // the PR belongs to this workspace via the workspace-scoped `getPull`
+        // BEFORE loading its files. A cross-workspace id resolves to no pull and
+        // falls through to the empty-diff path below.
+        const pull = await this.reviewsRepo.getPull(workspaceId, pullRequestId);
+        if (pull) {
+          // Assemble the unified diff text from the stored pr_files patches
+          // (AC-6 — stored data, no live re-fetch). We need `input_diff` as text,
+          // so we join the raw patches rather than going through diffFromPrFiles
+          // (which returns a parsed UnifiedDiff object).
+          const prFiles = await this.reviewsRepo.getPrFiles(pullRequestId);
+          const parts: string[] = [];
+          for (const f of prFiles) {
+            if (!f.patch) continue;
+            parts.push(`diff --git a/${f.path} b/${f.path}`);
+            parts.push(`--- a/${f.path}`);
+            parts.push(`+++ b/${f.path}`);
+            parts.push(f.patch);
+          }
+          resolvedDiff = parts.join('\n');
+        }
+      } catch {
+        // Best-effort: if the PR files can't be loaded, fall back to empty diff.
+        // The case is still created — the diff field will be empty.
+        resolvedDiff = '';
+      }
+    }
+
     return this.repo.createCase(workspaceId, {
       ownerKind: 'agent',
       ownerId: agentId,
       name: name ?? finding.title,
-      inputDiff,
+      inputDiff: resolvedDiff,
       expectedOutput,
     });
   }
@@ -358,8 +410,8 @@ export class EvalService {
       totalCostUsd: finalCostUsd,
     });
 
-    // 7. Fetch the final group record for the response.
-    const group = await this.repo.getRunGroup(groupId);
+    // 7. Fetch the final group record for the response (workspace-scoped, REPO-001).
+    const group = await this.repo.getRunGroup(groupId, workspaceId);
     if (!group) {
       throw new Error(`Run group not found after creation: ${groupId}`);
     }
@@ -419,34 +471,29 @@ export class EvalService {
     const cases = await this.repo.listCases(workspaceId, 'agent', agentId);
     const casesTotal = cases.length;
 
-    // Build trend + enrich traces_passed / traces_total / pass_rate (avoid N+1:
-    // only fetch run rows for the groups we need — trend is capped at 20 groups
-    // by the repository; recent_runs uses the latest group's rows).
-    const trend: EvalTrendPoint[] = [];
-    let recentRuns: EvalRunRecord[] = [];
+    // Batch-load per-case rows for ALL groups in ONE query (avoid N+1) and
+    // bucket by run_group_id, so both the trend's pass_rate (per group) and the
+    // latest group's recent_runs come from a single round-trip (AC-15).
+    const rowsByGroup = await this.repo.runRowsForGroups(groups.map((g) => g.id));
 
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i]!;
-      const rows = await this.repo.runRowsForGroup(g.id);
-
-      const tracesPassed = rows.filter((r) => r.pass === true).length;
+    const trend: EvalTrendPoint[] = groups.map((g) => {
+      const rows = rowsByGroup.get(g.id) ?? [];
       const tracesTotal = rows.length;
+      const tracesPassed = rows.filter((r) => r.pass === true).length;
       const passRate = tracesTotal > 0 ? tracesPassed / tracesTotal : 1;
 
-      trend.push({
+      return {
         ran_at: g.ran_at,
         recall: g.recall,
         precision: g.precision,
         citation_accuracy: g.citation_accuracy,
         pass_rate: passRate,
         cost_usd: g.total_cost_usd,
-      });
+      };
+    });
 
-      if (i === 0) {
-        // Enrich the recent run rows with traces_passed / traces_total data.
-        recentRuns = rows;
-      }
-    }
+    // recent_runs = the latest group's per-case rows (newest-first, groups[0]).
+    const recentRuns: EvalRunRecord[] = groups[0] ? (rowsByGroup.get(groups[0].id) ?? []) : [];
 
     const latest = groups[0];
     const previous = groups[1];
@@ -493,6 +540,21 @@ export class EvalService {
   }
 
   /**
+   * List an agent's run groups newest-first as first-class `EvalRunGroup`
+   * records (AC-15/16). Backs the Compare selector so the client uses REAL run
+   * group ids + recorded agent versions, instead of reconstructing stubs from
+   * trend points (which lack ids and carry a placeholder version).
+   *
+   * @param workspaceId  Workspace scoping (tenant safety).
+   * @param agentId      The agent whose run groups to list.
+   */
+  async runGroups(workspaceId: string, agentId: string): Promise<EvalRunGroup[]> {
+    const agent = await this.agentsRepo.getById(workspaceId, agentId);
+    if (!agent) throw new Error(`Agent not found: ${agentId}`);
+    return this.repo.listRunGroups(workspaceId, agentId);
+  }
+
+  /**
    * Compare two run groups for an agent: per-metric deltas + system_prompt diff
    * between the two recorded agent versions (AC-16).
    *
@@ -515,9 +577,10 @@ export class EvalService {
     const agent = await this.agentsRepo.getById(workspaceId, agentId);
     if (!agent) throw new Error(`Agent not found: ${agentId}`);
 
+    // Workspace-scoped fetch (defence-in-depth, REPO-001).
     const [groupA, groupB] = await Promise.all([
-      this.repo.getRunGroup(runGroupIdA),
-      this.repo.getRunGroup(runGroupIdB),
+      this.repo.getRunGroup(runGroupIdA, workspaceId),
+      this.repo.getRunGroup(runGroupIdB, workspaceId),
     ]);
     if (!groupA) throw new Error(`Run group not found: ${runGroupIdA}`);
     if (!groupB) throw new Error(`Run group not found: ${runGroupIdB}`);
@@ -639,32 +702,6 @@ export class EvalService {
   async dashboard(workspaceId: string): Promise<EvalDashboard[]> {
     return this.repo.dashboardAggregate(workspaceId);
   }
-}
-
-// ---------------------------------------------------------------------------
-// T7 supplementary types
-// ---------------------------------------------------------------------------
-
-/** Return type of `EvalService.compare` (AC-16). */
-export interface EvalCompareResult {
-  group_a: EvalRunGroup;
-  group_b: EvalRunGroup;
-  /** Per-metric delta: B − A (candidate − baseline). */
-  delta: { recall: number; precision: number; citation_accuracy: number };
-  /**
-   * Unified-diff-style text diff of the two groups' recorded `system_prompt`s.
-   * `"version unavailable"` when either version was pruned from `agent_versions`
-   * (AC-16 graceful degrade).
-   */
-  system_prompt_diff: string;
-  /** The raw system_prompt for group A (or "version unavailable"). */
-  prompt_a: string;
-  /** The raw system_prompt for group B (or "version unavailable"). */
-  prompt_b: string;
-  /** Per-case run rows for group A. */
-  rows_a: EvalRunRecord[];
-  /** Per-case run rows for group B. */
-  rows_b: EvalRunRecord[];
 }
 
 // ---------------------------------------------------------------------------

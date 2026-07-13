@@ -88,6 +88,7 @@ export function FindingsPanel({
               repoFullName={repoFullName}
               headSha={headSha}
               agentId={agentId}
+              prId={prId}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))

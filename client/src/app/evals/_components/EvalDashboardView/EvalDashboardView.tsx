@@ -15,7 +15,7 @@ import type { EvalDashboard, EvalRunGroup } from "@devdigest/shared";
 import {
   useEvalDashboard,
   useRunAllAgents,
-  useRunHistory,
+  useEvalRunGroups,
   useCompareRuns,
   usePromoteVersion,
 } from "@/lib/hooks/evals";
@@ -120,8 +120,8 @@ function CompareModal({ agentId, agentName, runGroups, onClose }: CompareModalPr
 
   const canCompare = !!groupIdA && !!groupIdB && groupIdA !== groupIdB;
 
-  // Promote the version reported by the compare response (the one the button label shows),
-  // not the synthetic run-group stub — its agent_version is a placeholder (AC-18).
+  // Promote the version reported by the compare response — the authoritative
+  // agent_version for the compared run, matching the button label (AC-18).
   const handlePromoteA = () => {
     const v = compare.data?.group_a.agent_version;
     if (v != null) promote.mutate({ agentId, version: v });
@@ -333,33 +333,16 @@ interface AgentCardProps {
 function AgentCard({ dashboard }: AgentCardProps) {
   const [showCompare, setShowCompare] = React.useState(false);
 
-  // Fetch run history to get the list of run groups for compare selector.
-  const history = useRunHistory(dashboard.owner_id);
+  // Real run-group list (newest-first) for the Compare selector — actual group
+  // ids + recorded agent versions, so a selected run resolves to an existing
+  // group on the server (AC-16). Replaces reconstructing stubs from trend points.
+  const runGroupsQuery = useEvalRunGroups(dashboard.owner_id);
+  const runGroups: EvalRunGroup[] = runGroupsQuery.data ?? [];
 
   const agentName = dashboard.owner_id ?? "Unknown agent";
   const current = dashboard.current;
   const delta = dashboard.delta;
   const recentRuns = dashboard.recent_runs ?? [];
-
-  // Build run groups from trend points for the compare selector.
-  // The actual `EvalRunGroup` list comes from `history.data.recent_runs` — we
-  // construct lightweight group stubs from the trend for selector labels.
-  const runGroups: EvalRunGroup[] = React.useMemo(() => {
-    if (!history.data?.trend) return [];
-    return history.data.trend.map((pt, i) => ({
-      id: history.data!.recent_runs[i]?.run_group_id ?? `synthetic-${i}`,
-      workspace_id: "",
-      owner_kind: "agent" as const,
-      owner_id: dashboard.owner_id ?? "",
-      agent_version: 0,
-      label: null,
-      ran_at: pt.ran_at,
-      recall: pt.recall,
-      precision: pt.precision,
-      citation_accuracy: pt.citation_accuracy,
-      total_cost_usd: pt.cost_usd ?? null,
-    }));
-  }, [history.data, dashboard.owner_id]);
 
   const hasRuns = recentRuns.length > 0;
 

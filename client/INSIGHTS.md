@@ -94,4 +94,7 @@ it. See `.claude/skills/capturing-insights/examples.md` for bad/good pairs.
 
 ## Session Notes
 
+- 2026-07-13 · Adding a new hook export to `@/lib/hooks/evals` requires updating every `vi.mock("@/lib/hooks/evals", () => ({ … }))` that uses an explicit object (not `importOriginal`) — the new export is absent from the mock and Vitest throws "No '<name>' export defined on the mock" at the component import site, not at the hook call site · evidence: `client/src/app/agents/[id]/_components/AgentEditor/_components/EvalsTab/EvalsTab.test.tsx` (`useCreateEvalCaseManual` missing from vi.mock object after CLIENT-001/002 fix)
+  Pattern: prefer `vi.mock(import("…"), async (importOriginal) => { const actual = await importOriginal(); return { ...actual, overrideHook: vi.fn() }; })` for partial mocks — adding a new export to the module never breaks the test. Explicit-object mocks must be updated manually every time the module gains a new export the component uses.
+
 ## Open Questions

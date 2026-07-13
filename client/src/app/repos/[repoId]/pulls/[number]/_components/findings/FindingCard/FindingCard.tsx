@@ -33,6 +33,7 @@ export function FindingCard({
   repoFullName,
   headSha,
   agentId,
+  prId,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -45,6 +46,9 @@ export function FindingCard({
    *  finding has been accepted or dismissed, shows the "Turn into eval case"
    *  one-click action (T8, AC-1/2/4). */
   agentId?: string | null;
+  /** PR id (UUID) — threaded so the server can load the stored diff for the
+   *  eval case's input_diff (A gap fix, AC-6). */
+  prId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -67,7 +71,13 @@ export function FindingCard({
     if (!agentId || !evalAction) return;
     // Extract the base Finding fields (strip FindingRecord-specific fields).
     const { review_id: _r, accepted_at: _a, dismissed_at: _d, ...finding } = f;
-    createEvalCase.mutate({ agentId, finding, action: evalAction });
+    // Thread prId so the server can load the stored PR diff (A gap fix, AC-6).
+    createEvalCase.mutate({
+      agentId,
+      finding,
+      action: evalAction,
+      ...(prId ? { pull_request_id: prId } : {}),
+    });
   };
 
   return (

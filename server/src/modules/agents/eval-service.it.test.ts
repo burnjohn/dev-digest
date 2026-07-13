@@ -7,6 +7,10 @@
  *   AC-5: list returns ≥8 cases.
  *   Cross-workspace isolation: another workspace's agent cannot see the cases.
  *
+ * Also verifies the A-gap fix:
+ *   One-click cases with a pullRequestId but no inputDiff must store a
+ *   NON-EMPTY inputDiff derived from the PR's stored pr_files patches (AC-6).
+ *
  * Self-skips when Docker is not available.
  */
 
@@ -255,5 +259,90 @@ d('EvalService — integration (case CRUD via service)', () => {
       'Custom case name',
     );
     expect(row.name).toBe('Custom case name');
+  });
+
+  // ---- A gap fix: one-click case stores non-empty inputDiff from PR files ----
+
+  it('A-gap: one-click case with pullRequestId and no inputDiff stores the PR diff (AC-1/AC-6)', async () => {
+    // Set up a minimal repo + PR with a pr_files patch so the server can load it.
+    const [repo] = await pg.handle.db
+      .insert(t.repos)
+      .values({
+        workspaceId,
+        owner: 'eval-test',
+        name: 'eval-repo',
+        fullName: 'eval-test/eval-repo',
+        defaultBranch: 'main',
+        clonePath: null,
+        createdBy: null,
+      })
+      .returning();
+    const repoId = repo!.id;
+
+    const [pr] = await pg.handle.db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 9001,
+        title: 'Eval diff test PR',
+        author: 'bot',
+        branch: 'feat/eval-diff',
+        base: 'main',
+        headSha: 'deadbeef',
+        additions: 5,
+        deletions: 0,
+        filesCount: 1,
+        status: 'needs_review',
+      })
+      .returning();
+    const prId = pr!.id;
+
+    // Insert a pr_files row with a patch — this is what the server will load.
+    await pg.handle.db.insert(t.prFiles).values({
+      prId,
+      path: 'src/auth.ts',
+      additions: 5,
+      deletions: 0,
+      patch: '@@ -18,0 +19,5 @@\n+function checkToken(token: string) {\n+  if (!token) throw new Error("missing token");\n+}',
+    });
+
+    const finding = makeFinding({ file: 'src/auth.ts', start_line: 20, end_line: 22 });
+
+    // One-click with pullRequestId but no inputDiff.
+    const row = await svc.createCaseFromFinding(
+      workspaceId,
+      agentId,
+      finding,
+      'accept',
+      undefined, // no inputDiff — server should load from PR
+      undefined,
+      prId,       // pull_request_id threaded from the client
+    );
+
+    expect(row.id).toBeTruthy();
+    // The stored inputDiff must be non-empty (AC-6 + A gap fix).
+    expect(typeof row.inputDiff).toBe('string');
+    expect(row.inputDiff!.length).toBeGreaterThan(0);
+    // The diff should cover the finding's file.
+    expect(row.inputDiff).toContain('src/auth.ts');
+  });
+
+  it('A-gap: one-click case with explicit inputDiff uses it (takes precedence over pullRequestId)', async () => {
+    const finding = makeFinding({ file: 'src/config.ts', start_line: 1, end_line: 2 });
+    const explicitDiff = '--- a/src/config.ts\n+++ b/src/config.ts\n@@ -1,2 +1,2 @@\n+const x = 1;';
+
+    const row = await svc.createCaseFromFinding(
+      workspaceId,
+      agentId,
+      finding,
+      'accept',
+      explicitDiff,  // explicit takes precedence
+      undefined,
+      randomUUID(), // would load from a different PR if inputDiff were absent
+    );
+
+    // The stored diff must be the explicitly passed one.
+    expect(row.inputDiff).toBe(explicitDiff);
   });
 });

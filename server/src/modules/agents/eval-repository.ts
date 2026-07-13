@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type {
@@ -253,12 +253,23 @@ export class EvalRepository {
     return rows.map(rowToRunGroup);
   }
 
-  /** Fetch a single run group by id. */
-  async getRunGroup(id: string): Promise<EvalRunGroup | undefined> {
+  /**
+   * Fetch a single run group by id, workspace-scoped (defence-in-depth,
+   * mirrors `getCase` — REPO-001). Pass `workspaceId` to prevent cross-tenant
+   * group reads even if the caller has the raw id (e.g. from a compare request).
+   * Omitting `workspaceId` (leaving it `undefined`) skips the tenant filter and
+   * is reserved for internal-only callers that already hold a group id they
+   * created; all request-driven callers MUST pass a real `workspaceId`.
+   */
+  async getRunGroup(id: string, workspaceId?: string): Promise<EvalRunGroup | undefined> {
     const [row] = await this.db
       .select()
       .from(t.evalRunGroups)
-      .where(eq(t.evalRunGroups.id, id));
+      .where(
+        workspaceId
+          ? and(eq(t.evalRunGroups.workspaceId, workspaceId), eq(t.evalRunGroups.id, id))
+          : eq(t.evalRunGroups.id, id),
+      );
     return row ? rowToRunGroup(row) : undefined;
   }
 
@@ -277,6 +288,37 @@ export class EvalRepository {
       .where(eq(t.evalRuns.runGroupId, runGroupId));
 
     return rows.map((r) => rowToRunRecord(r.run, r.caseName ?? null));
+  }
+
+  /**
+   * Batch variant of `runRowsForGroup` (AC-15) — fetch per-case rows for MANY
+   * run groups in a SINGLE query and bucket them by `run_group_id`, avoiding the
+   * N+1 that a per-group loop would incur when building run history. Groups with
+   * no rows are simply absent from the returned map. Callers pass ids already
+   * resolved from a workspace-scoped `listRunGroups`, so the ids are tenant-safe.
+   */
+  async runRowsForGroups(runGroupIds: string[]): Promise<Map<string, EvalRunRecord[]>> {
+    const out = new Map<string, EvalRunRecord[]>();
+    if (runGroupIds.length === 0) return out;
+
+    const rows = await this.db
+      .select({
+        run: t.evalRuns,
+        caseName: t.evalCases.name,
+      })
+      .from(t.evalRuns)
+      .leftJoin(t.evalCases, eq(t.evalRuns.caseId, t.evalCases.id))
+      .where(inArray(t.evalRuns.runGroupId, runGroupIds));
+
+    for (const r of rows) {
+      const key = r.run.runGroupId;
+      if (!key) continue;
+      const rec = rowToRunRecord(r.run, r.caseName ?? null);
+      const bucket = out.get(key);
+      if (bucket) bucket.push(rec);
+      else out.set(key, [rec]);
+    }
+    return out;
   }
 
   // ---- Dashboard aggregate -------------------------------------------------

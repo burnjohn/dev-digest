@@ -19,17 +19,22 @@ import { EvalExpectedOutput } from '@devdigest/shared';
 // An expected finding is MATCHED iff some emitted finding has the SAME `file`
 // AND its [start_line..end_line] INTERSECTS the expected range (inclusive).
 //
-// This is the verbatim semantics of `rangeIntersects` in
+// This implements the SAME inclusive-overlap semantics as
 //   reviewer-core/src/grounding.ts:41-46
-// (source of truth for the grounding gate's intersection rule).
-// We keep a tiny local copy here — with this comment — rather than exporting
-// a new symbol from reviewer-core, to avoid widening that package's surface.
+// (the grounding gate's direct range check — source of truth for the
+// intersection rule used throughout the eval pipeline).
+//
+// The signature here is (aStart, aEnd, bStart, bEnd) — a range-vs-range check
+// returning a boolean. The grounding.ts implementation operates on the same
+// two-range overlap condition but is accessed via groundFindings, not exported
+// directly. We keep a tiny local copy to avoid widening reviewer-core's surface.
 // ---------------------------------------------------------------------------
 
 /**
  * Returns true iff the integer range [aLo..aHi] overlaps [bLo..bHi] (inclusive).
  *
- * Semantics copied verbatim from reviewer-core/src/grounding.ts:41-46.
+ * Implements the same inclusive-overlap semantics as the direct range check in
+ * reviewer-core/src/grounding.ts:41-46 (source of truth for the eval match rule).
  */
 function rangeIntersects(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
   const aLo = Math.min(aStart, aEnd);
@@ -107,7 +112,7 @@ export function scoreCase(
     // precision: for must_find cases there are no designated false-positive stressors.
     // A must_find case contributes no false positives to precision by itself.
     // All emitted findings count as non-false-positive for this case type.
-    const precision = emitted.length === 0 ? 1 : 1;
+    const precision = 1; // must_find carries no false-positive stressors (AC-10)
 
     return { pass, recall, precision, citation_accuracy: citationAccuracy };
   }

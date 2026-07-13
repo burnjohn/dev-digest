@@ -13,7 +13,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, EmptyState, ErrorState, Icon, Modal, Skeleton } from "@devdigest/ui";
 import type { Agent, EvalCase, EvalRunGroupResult, EvalRunResult } from "@devdigest/shared";
-import { useEvalCases, useDeleteEvalCase, useRunAgentEvals } from "@/lib/hooks/evals";
+import { useEvalCases, useDeleteEvalCase, useRunAgentEvals, useCreateEvalCaseManual } from "@/lib/hooks/evals";
 import { s } from "./styles";
 
 // ---------------------------------------------------------------------------
@@ -79,8 +79,10 @@ function NewCaseModal({ agentId, onClose, onCreated }: NewCaseModalProps) {
   const [prTitle, setPrTitle] = React.useState("");
   const [prBody, setPrBody] = React.useState("");
   const [expectedJson, setExpectedJson] = React.useState(DEFAULT_EXPECTED);
-  const [saving, setSaving] = React.useState(false);
   const [jsonError, setJsonError] = React.useState<string | null>(null);
+
+  // Use typed api.post mutation instead of raw fetch (CLIENT-001/002).
+  const createCase = useCreateEvalCaseManual();
 
   const validateJson = (value: string) => {
     try {
@@ -96,7 +98,7 @@ function NewCaseModal({ agentId, onClose, onCreated }: NewCaseModalProps) {
     validateJson(value);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (jsonError) return;
     let expectedOutput: unknown;
     try {
@@ -106,32 +108,28 @@ function NewCaseModal({ agentId, onClose, onCreated }: NewCaseModalProps) {
       return;
     }
 
-    setSaving(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001"}/agents/${agentId}/eval-cases`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            owner_kind: "agent",
-            owner_id: agentId,
-            name: name || "Unnamed case",
-            input_diff: diff,
-            input_meta: prTitle || prBody ? { title: prTitle, body: prBody } : undefined,
-            expected_output: expectedOutput,
-          }),
+    createCase.mutate(
+      {
+        agentId,
+        owner_kind: "agent",
+        owner_id: agentId,
+        name: name || "Unnamed case",
+        input_diff: diff,
+        input_meta: prTitle || prBody ? { title: prTitle, body: prBody } : undefined,
+        expected_output: expectedOutput,
+      },
+      {
+        onSuccess: () => {
+          onCreated();
+          onClose();
         },
-      );
-      if (!response.ok) throw new Error(`${response.status}`);
-      onCreated();
-      onClose();
-    } catch {
-      // error handling — keep modal open so user can retry
-    } finally {
-      setSaving(false);
-    }
+        // Errors are surfaced by the hook's onError toast — modal stays open
+        // so the user can retry (CLIENT-002: notify.error is called by hook).
+      },
+    );
   };
+
+  const saving = createCase.isPending;
 
   return (
     <Modal
@@ -146,9 +144,9 @@ function NewCaseModal({ agentId, onClose, onCreated }: NewCaseModalProps) {
           </Button>
           <Button
             kind="primary"
-            onClick={() => void handleSave()}
+            onClick={handleSave}
             loading={saving}
-            disabled={!!jsonError}
+            disabled={!!jsonError || saving}
           >
             {saving ? t("saving") : t("save")}
           </Button>

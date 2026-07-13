@@ -29,6 +29,30 @@ export const EvalCaseInput = z.object({
 });
 export type EvalCaseInput = z.infer<typeof EvalCaseInput>;
 
+/**
+ * One-click eval case body from FindingCard (T8, AC-1/2/4).
+ *
+ * The `pull_request_id` is threaded from the PR context so the server can
+ * load the stored PR diff and derive `input_diff` server-side (A gap fix).
+ * When the caller supplies `input_diff` directly it takes precedence; when
+ * omitted and `pull_request_id` is present the server loads the diff from
+ * `pr_files` (AC-6 — stored verbatim, no live re-fetch).
+ *
+ * `finding` is validated with the full `Finding` schema so the server can use
+ * the typed value directly in `createCaseFromFinding` without an unsafe cast.
+ */
+export const EvalCaseOneClickInput = z.object({
+  action: z.enum(['accept', 'dismiss']),
+  finding: Finding,
+  /** PR id (UUID) whose stored diff will be used as `input_diff` (AC-6). */
+  pull_request_id: z.string().uuid().optional(),
+  /** Explicit diff fragment; takes precedence over `pull_request_id`. */
+  input_diff: z.string().optional(),
+  /** Optional case name; server defaults to the finding title. */
+  name: z.string().optional(),
+});
+export type EvalCaseOneClickInput = z.infer<typeof EvalCaseOneClickInput>;
+
 /** A persisted eval run row (one execution of a case), returned by the API. */
 export const EvalRunRecord = z.object({
   id: z.string(),
@@ -179,6 +203,41 @@ export const EvalDashboard = z.object({
   alert: z.string().nullable(),
 });
 export type EvalDashboard = z.infer<typeof EvalDashboard>;
+
+/**
+ * EvalCompareResult — response for `POST /agents/:id/eval-compare` (T7, AC-16).
+ *
+ * Per-metric delta (B − A, candidate − baseline) plus the `system_prompt` diff
+ * between the two runs' recorded agent versions. `prompt_a` / `prompt_b` are the
+ * raw prompts, or the literal `"version unavailable"` when a version was pruned
+ * from `agent_versions` (AC-16 graceful degrade). Promoted from a plain TS
+ * interface to a shared Zod contract so the compare route can serialize against
+ * it and the client consumes one canonical shape (no server/client drift).
+ */
+export const EvalCompareResult = z.object({
+  group_a: EvalRunGroup,
+  group_b: EvalRunGroup,
+  /** Per-metric delta: B − A (candidate − baseline). */
+  delta: z.object({
+    recall: z.number(),
+    precision: z.number(),
+    citation_accuracy: z.number(),
+  }),
+  /**
+   * Line-level diff of the two groups' recorded `system_prompt`s. Empty string
+   * when identical; a note when one/both versions are unavailable.
+   */
+  system_prompt_diff: z.string(),
+  /** Raw system_prompt for group A (or `"version unavailable"`). */
+  prompt_a: z.string(),
+  /** Raw system_prompt for group B (or `"version unavailable"`). */
+  prompt_b: z.string(),
+  /** Per-case run rows for group A. */
+  rows_a: z.array(EvalRunRecord),
+  /** Per-case run rows for group B. */
+  rows_b: z.array(EvalRunRecord),
+});
+export type EvalCompareResult = z.infer<typeof EvalCompareResult>;
 
 // ===========================================================================
 // Compose Review

@@ -10,7 +10,7 @@ import { api } from "../api";
 import { qk } from "../query-keys";
 import { notify } from "../providers/toast";
 import type { Finding, FindingActionKind } from "@devdigest/shared";
-import type { EvalCase, EvalRunGroupResult, EvalDashboard, AgentVersion } from "@devdigest/shared";
+import type { EvalCase, EvalRunGroupResult, EvalRunGroup, EvalDashboard, AgentVersion, EvalCompareResult } from "@devdigest/shared";
 
 // ---------------------------------------------------------------------------
 // One-click shape for POST /agents/:id/eval-cases (AC-4, T5 backend).
@@ -28,6 +28,8 @@ export interface CreateEvalCaseOneClickInput {
   finding: Finding;
   /** Derived from the finding's accepted/dismissed state by the caller. */
   action: Extract<FindingActionKind, "accept" | "dismiss">;
+  /** PR id (UUID) — threaded so the server can load the stored diff (A gap fix, AC-6). */
+  pull_request_id?: string;
   /** Optional frozen diff fragment to store as input_diff (AC-6). */
   input_diff?: string;
   /** Optional human name; backend defaults to the finding title. */
@@ -46,16 +48,57 @@ export function useCreateEvalCase() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ agentId, finding, action, input_diff, name }: CreateEvalCaseOneClickInput) =>
+    mutationFn: ({ agentId, finding, action, pull_request_id, input_diff, name }: CreateEvalCaseOneClickInput) =>
       api.post<EvalCase>(`/agents/${agentId}/eval-cases`, {
         action,
         finding,
+        ...(pull_request_id !== undefined ? { pull_request_id } : {}),
         ...(input_diff !== undefined ? { input_diff } : {}),
         ...(name !== undefined ? { name } : {}),
       }),
     onSuccess: (_data, { agentId }) => {
       notify.success("Eval case created");
       // Invalidate so the EvalsTab (T9) refreshes without a page reload.
+      void qc.invalidateQueries({ queryKey: qk.evalCases(agentId) });
+    },
+    onError: () => {
+      notify.error("Failed to create eval case");
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Manual "New eval case" modal hook (CLIENT-001/002 — typed api.post, error surfaced)
+// ---------------------------------------------------------------------------
+
+/** Input shape for the manual "New eval case" modal path (full EvalCaseInput). */
+export interface CreateEvalCaseManualInput {
+  agentId: string;
+  owner_kind: 'agent' | 'skill';
+  owner_id: string;
+  name: string;
+  input_diff?: string;
+  input_meta?: unknown;
+  expected_output: unknown;
+}
+
+/**
+ * Manual "New eval case" mutation used by the EvalsTab NewCaseModal (T9).
+ *
+ * Replaces the raw `fetch` call (CLIENT-001): uses the typed `api.post` wrapper
+ * and surfaces failures via the `notify` utility (CLIENT-002) so the user sees
+ * an error toast on failure rather than a silently swallowed catch.
+ *
+ * On success: invalidates `qk.evalCases(agentId)` so the list refreshes.
+ */
+export function useCreateEvalCaseManual() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ agentId, ...body }: CreateEvalCaseManualInput) =>
+      api.post<EvalCase>(`/agents/${agentId}/eval-cases`, body),
+    onSuccess: (_data, { agentId }) => {
+      notify.success("Eval case created");
       void qc.invalidateQueries({ queryKey: qk.evalCases(agentId) });
     },
     onError: () => {
@@ -98,34 +141,6 @@ export function useDeleteEvalCase() {
       notify.error("Failed to delete eval case");
     },
   });
-}
-
-// ---------------------------------------------------------------------------
-// T10 — Eval Dashboard page + Compare modal types
-// ---------------------------------------------------------------------------
-
-/**
- * Client-side view of `EvalService.compare`'s return (AC-16).
- *
- * Not a shared Zod contract — the compare result is computed server-side and
- * returned as JSON; the client treats it as a plain typed object.
- */
-export interface EvalCompareResult {
-  group_a: import("@devdigest/shared").EvalRunGroup;
-  group_b: import("@devdigest/shared").EvalRunGroup;
-  /** Per-metric delta: B − A (candidate − baseline). */
-  delta: { recall: number; precision: number; citation_accuracy: number };
-  /**
-   * Unified-diff-style text of the two system prompts.
-   * "version unavailable" when either version was pruned (AC-16 graceful degrade).
-   */
-  system_prompt_diff: string;
-  /** Raw system_prompt for group A (or "version unavailable"). */
-  prompt_a: string;
-  /** Raw system_prompt for group B (or "version unavailable"). */
-  prompt_b: string;
-  rows_a: import("@devdigest/shared").EvalRunRecord[];
-  rows_b: import("@devdigest/shared").EvalRunRecord[];
 }
 
 /**
@@ -195,6 +210,20 @@ export function useRunHistory(agentId: string | null | undefined) {
   return useQuery<EvalDashboard>({
     queryKey: qk.evalRunGroups(agentId),
     queryFn: () => api.get<EvalDashboard>(`/agents/${agentId!}/eval-runs`),
+    enabled: !!agentId,
+  });
+}
+
+/**
+ * Lists an agent's run groups newest-first as `EvalRunGroup[]` (AC-16).
+ * `GET /agents/:id/eval-run-groups`. Backs the Compare selector with REAL group
+ * ids + recorded versions, so a selected run resolves to an existing group
+ * (replaces client-side stub reconstruction from trend points).
+ */
+export function useEvalRunGroups(agentId: string | null | undefined) {
+  return useQuery<EvalRunGroup[]>({
+    queryKey: qk.evalRunGroupList(agentId),
+    queryFn: () => api.get<EvalRunGroup[]>(`/agents/${agentId!}/eval-run-groups`),
     enabled: !!agentId,
   });
 }

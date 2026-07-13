@@ -33,7 +33,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EvalCaseInput, Finding } from '@devdigest/shared';
+import {
+  EvalCaseInput,
+  EvalCaseOneClickInput,
+  EvalRunGroupResult,
+  EvalRunGroup,
+  EvalDashboard,
+  EvalCompareResult,
+  AgentVersion,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -70,27 +78,22 @@ const EvalCaseParams = z.object({
 //
 // Two creation paths share this endpoint:
 //   1. Manual "New eval case" modal — caller provides full EvalCaseInput.
-//   2. One-click from a FindingCard — caller provides `finding` + `action`.
+//   2. One-click from a FindingCard — caller provides `finding` + `action`
+//      + optionally `pull_request_id` so the server can load the stored diff.
 //
 // We merge them into a single discriminated body so the route stays one path.
-// `EvalCaseInput` covers the manual path; the optional `finding`/`action` fields
-// cover the one-click path (AC-4). The route handler chooses the service method
-// based on which fields are present.
+// `EvalCaseInput` covers the manual path; `EvalCaseOneClickInput` covers the
+// one-click path (AC-4). The route handler chooses the service method based on
+// which fields are present.
 // ---------------------------------------------------------------------------
 
 const EvalCaseCreateBody = z.union([
   // Manual path: full EvalCaseInput (existing expected_output, free-form).
   EvalCaseInput,
 
-  // One-click path: a finding + an accept/dismiss action; no expected_output.
-  z.object({
-    action: z.enum(['accept', 'dismiss']),
-    finding: Finding,
-    /** Optional diff fragment to store as inputDiff (frozen snapshot, AC-6). */
-    input_diff: z.string().optional(),
-    /** Optional case name; defaults to the finding title. */
-    name: z.string().optional(),
-  }),
+  // One-click path (A gap fix): finding + action + optional pull_request_id.
+  // The server uses pull_request_id to load the stored PR diff (AC-6).
+  EvalCaseOneClickInput,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -110,11 +113,12 @@ const EvalRunBody = z.object({
 export default async function evalRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
 
-  // Hoist service construction to plugin-init (INSIGHTS 2026-07-12):
-  // - Case-CRUD paths use the db-only overload (no Container needed).
-  // - Run paths need the Container for LLM access; T6 routes construct a
-  //   separate service instance with the container.
-  const svc = new EvalService(app.container.db);
+  // Single plugin-level service instance (SVC-004 — INSIGHTS 2026-07-12).
+  // Includes the Container so both case-CRUD and run paths share one instance;
+  // the Container gives run-orchestrator paths access to container.llm() without
+  // a second construction per handler. Matches the agents/routes.ts convention
+  // (one service per plugin, not per-request).
+  const svc = new EvalService(app.container.db, app.container);
 
   // ---- POST /agents/:id/eval-cases ----------------------------------------
 
@@ -135,13 +139,15 @@ export default async function evalRoutes(appBase: FastifyInstance) {
       let row;
       if ('action' in body) {
         // One-click path: derive expectedOutput from accept/dismiss (AC-4).
+        // Thread pull_request_id so the service can load the stored diff (A gap fix).
         row = await svc.createCaseFromFinding(
           workspaceId,
           agentId,
           body.finding,
           body.action,
-          body.input_diff ?? '',
+          body.input_diff,
           body.name,
+          body.pull_request_id,
         );
       } else {
         // Manual path: body is already a full EvalCaseInput (validated by Zod).
@@ -189,13 +195,12 @@ export default async function evalRoutes(appBase: FastifyInstance) {
       schema: {
         params: IdParams,
         body: EvalRunBody,
+        response: { 200: EvalRunGroupResult },
       },
     },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      // Run orchestrator needs Container for LLM; construct with full Container.
-      const runSvc = new EvalService(app.container.db, app.container);
-      return runSvc.runAgentEvals(workspaceId, req.params.id, req.body.label);
+      return svc.runAgentEvals(workspaceId, req.params.id, req.body.label);
     },
   );
 
@@ -206,11 +211,14 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/eval-runs/all',
-    { schema: {} },
+    {
+      schema: {
+        response: { 200: z.array(EvalRunGroupResult) },
+      },
+    },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const runSvc = new EvalService(app.container.db, app.container);
-      return runSvc.runAllAgents(workspaceId);
+      return svc.runAllAgents(workspaceId);
     },
   );
 
@@ -226,10 +234,25 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.get(
     '/agents/:id/eval-runs',
-    { schema: { params: IdParams } },
+    { schema: { params: IdParams, response: { 200: EvalDashboard } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return svc.runHistory(workspaceId, req.params.id);
+    },
+  );
+
+  // ---- GET /agents/:id/eval-run-groups (T7, AC-16) ------------------------
+  //
+  // First-class run-group list (newest-first) for the Compare selector. Gives
+  // the client REAL run group ids + recorded agent versions so a selected run
+  // resolves to an existing group (no synthetic ids / 404 in compare).
+
+  app.get(
+    '/agents/:id/eval-run-groups',
+    { schema: { params: IdParams, response: { 200: z.array(EvalRunGroup) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return svc.runGroups(workspaceId, req.params.id);
     },
   );
 
@@ -245,6 +268,7 @@ export default async function evalRoutes(appBase: FastifyInstance) {
       schema: {
         params: IdParams,
         body: EvalCompareBody,
+        response: { 200: EvalCompareResult },
       },
     },
     async (req) => {
@@ -265,7 +289,7 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/agents/:id/promote/:version',
-    { schema: { params: PromoteParams } },
+    { schema: { params: PromoteParams, response: { 200: AgentVersion } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return svc.promote(workspaceId, req.params.id, req.params.version);
@@ -279,7 +303,11 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.get(
     '/evals/dashboard',
-    { schema: {} },
+    {
+      schema: {
+        response: { 200: z.array(EvalDashboard) },
+      },
+    },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return svc.dashboard(workspaceId);

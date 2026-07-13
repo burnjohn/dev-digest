@@ -11,8 +11,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { EvalDashboard, EvalRunGroup, EvalRunRecord } from "@devdigest/shared";
-import type { EvalCompareResult } from "@/lib/hooks/evals";
+import type { EvalDashboard, EvalRunGroup, EvalRunRecord, EvalCompareResult } from "@devdigest/shared";
 import evalMessages from "../../../../../messages/en/eval.json";
 
 // ---------------------------------------------------------------------------
@@ -24,14 +23,14 @@ const mockPromoteMutate = vi.fn();
 
 const useEvalDashboardMock = vi.fn();
 const useRunAllAgentsMock = vi.fn();
-const useRunHistoryMock = vi.fn();
+const useEvalRunGroupsMock = vi.fn();
 const useCompareRunsMock = vi.fn();
 const usePromoteVersionMock = vi.fn();
 
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalDashboard: () => useEvalDashboardMock(),
   useRunAllAgents: () => useRunAllAgentsMock(),
-  useRunHistory: (id: unknown) => useRunHistoryMock(id),
+  useEvalRunGroups: (id: unknown) => useEvalRunGroupsMock(id),
   useCompareRuns: (agentId: unknown, a: unknown, b: unknown) =>
     useCompareRunsMock(agentId, a, b),
   usePromoteVersion: () => usePromoteVersionMock(),
@@ -171,7 +170,8 @@ function renderWithIntl(ui: React.ReactElement) {
 interface SetupOptions {
   agents?: EvalDashboard[];
   runAllPending?: boolean;
-  historyData?: EvalDashboard | null;
+  /** Run-group list backing the Compare selector (default: [RUN_GROUP_A, RUN_GROUP_B]). */
+  runGroups?: EvalRunGroup[];
   /** When set, overrides the default "no data" compare mock. */
   compareData?: EvalCompareResult | null;
   compareImpl?: Parameters<typeof useCompareRunsMock.mockImplementation>[0];
@@ -193,8 +193,9 @@ function setupDefaultMocks(overrides?: SetupOptions) {
     isPending: runAllPending,
   });
 
-  useRunHistoryMock.mockReturnValue({
-    data: overrides?.historyData !== undefined ? overrides.historyData : DASHBOARD_AGENT_1,
+  // Real run-group list backing the Compare selector (≥2 → Compare button shows).
+  useEvalRunGroupsMock.mockReturnValue({
+    data: overrides?.runGroups !== undefined ? overrides.runGroups : [RUN_GROUP_A, RUN_GROUP_B],
     isLoading: false,
     isError: false,
   });
@@ -304,7 +305,7 @@ describe("EvalDashboardView — AC-20", () => {
       refetch: vi.fn(),
     });
     useRunAllAgentsMock.mockReturnValue({ mutate: mockRunAllMutate, isPending: false });
-    useRunHistoryMock.mockReturnValue({ data: null, isLoading: false, isError: false });
+    useEvalRunGroupsMock.mockReturnValue({ data: [], isLoading: false, isError: false });
     useCompareRunsMock.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
     usePromoteVersionMock.mockReturnValue({ mutate: mockPromoteMutate, isPending: false });
 
@@ -319,7 +320,7 @@ describe("CompareModal — AC-16/18", () => {
   it("renders a Compare button when there are ≥2 run groups", () => {
     setupDefaultMocks();
     renderWithIntl(<EvalDashboardView />);
-    // DASHBOARD_AGENT_1 has 2 trend points → 2 groups → Compare button shown.
+    // useEvalRunGroups returns 2 run groups → Compare button shown.
     expect(screen.getByRole("button", { name: /compare/i })).toBeInTheDocument();
   });
 
