@@ -21,7 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
-import { githubPrUrl } from "../../../../../lib/github-urls";
+import { githubPrUrl, githubBlobUrl } from "../../../../../lib/github-urls";
 import type { FindingRecord } from "@devdigest/shared";
 
 export default function PRDetailPage() {
@@ -171,7 +171,21 @@ export default function PRDetailPage() {
           />
         )}
 
-        {tab === "blast" && <BlastTab prId={prId} onWhy={() => setTab("diff")} />}
+        {tab === "blast" && (
+          <BlastTab
+            prId={prId}
+            onWhy={(file, line) => {
+              // Callers usually live OUTSIDE the PR diff, so open the real source
+              // at that line on GitHub (sha-pinned). No GitHub link (local repo) →
+              // fall back to the Files tab.
+              if (repoFullName) {
+                window.open(githubBlobUrl(repoFullName, pr.head_sha, file, line), "_blank", "noopener");
+              } else {
+                setTab("diff");
+              }
+            }}
+          />
+        )}
       </div>
 
       {prId && traceRunId && (

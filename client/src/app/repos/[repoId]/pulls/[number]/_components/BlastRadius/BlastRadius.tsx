@@ -14,10 +14,10 @@ import { s } from "./styles";
 function Summary({ blast }: { blast: BlastRadius }) {
   const t = useTranslations("blast");
   const counts = blastCounts(blast);
-  const Stat = ({ icon, n, label }: { icon: keyof typeof Icon; n: number; label: string }) => {
+  const Stat = ({ icon, n, label, help }: { icon: keyof typeof Icon; n: number; label: string; help: string }) => {
     const I = Icon[icon];
     return (
-      <span style={s.stat}>
+      <span style={s.stat} title={help}>
         <I size={13} style={s.statIcon} />
         <b className="tnum" style={s.statValue}>
           {n}
@@ -29,7 +29,13 @@ function Summary({ blast }: { blast: BlastRadius }) {
   return (
     <div style={s.summary}>
       {STAT_ICONS.map((stat) => (
-        <Stat key={stat.key} icon={stat.icon} n={counts[stat.key as keyof typeof counts]} label={t(`stat.${stat.key}`)} />
+        <Stat
+          key={stat.key}
+          icon={stat.icon}
+          n={counts[stat.key as keyof typeof counts]}
+          label={t(`stat.${stat.key}`)}
+          help={t(`statHelp.${stat.key}`)}
+        />
       ))}
     </div>
   );
@@ -49,7 +55,19 @@ function DownstreamNode({
   const t = useTranslations("blast");
   return (
     <div style={s.node}>
-      <div onClick={onToggle} style={s.nodeHeader(open)}>
+      <div
+        onClick={onToggle}
+        style={s.nodeHeader(open)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+      >
         <Icon.ChevronRight size={13} style={s.chevron(open)} />
         <Icon.Code size={13} style={s.nodeIcon} />
         <span className="mono" style={s.nodeSymbol}>
@@ -59,35 +77,61 @@ function DownstreamNode({
       </div>
       {open && (
         <div style={s.callerList}>
-          {d.callers.map((c, ci) => (
-            <div key={ci} style={s.callerRow}>
-              <Icon.CornerDownRight size={13} style={s.callerIcon} />
-              <span style={s.callerName}>{c.name}</span>
-              <MonoLink onClick={onWhy ? () => onWhy(c.file, c.line) : undefined}>
-                {c.file}:{c.line}
-              </MonoLink>
-            </div>
-          ))}
+          {d.callers.map((c, ci) => {
+            const loc = `${c.file}:${c.line}`;
+            return (
+              <div key={ci} style={s.callerRow}>
+                <Icon.CornerDownRight size={13} style={s.callerIcon} />
+                <span style={s.callerName}>{c.name}</span>
+                <span style={s.callerLink} title={onWhy ? t("openCode", { loc }) : undefined}>
+                  <MonoLink onClick={onWhy ? () => onWhy(c.file, c.line) : undefined}>{loc}</MonoLink>
+                  {onWhy && <Icon.ExternalLink size={12} style={s.openHint} aria-hidden />}
+                </span>
+              </div>
+            );
+          })}
           {d.endpoints_affected.length > 0 && (
             <div style={s.badgeRow}>
               {d.endpoints_affected.map((e, ei) => (
-                <Badge key={ei} mono icon="Globe" color="var(--accent-text)" bg="var(--accent-bg)">
-                  {e}
-                </Badge>
+                <span key={ei} title={t("badgeHelp.endpoint")} style={s.badgeWrap}>
+                  <Badge mono icon="Globe" color="var(--accent-text)" bg="var(--accent-bg)">
+                    {e}
+                  </Badge>
+                </span>
               ))}
             </div>
           )}
           {d.crons_affected.length > 0 && (
             <div style={s.cronBadgeRow}>
               {d.crons_affected.map((e, ei) => (
-                <Badge key={ei} mono icon="Clock" color="var(--warn)" bg="var(--warn-bg)">
-                  {e}
-                </Badge>
+                <span key={ei} title={t("badgeHelp.cron")} style={s.badgeWrap}>
+                  <Badge mono icon="Clock" color="var(--warn)" bg="var(--warn-bg)">
+                    {e}
+                  </Badge>
+                </span>
               ))}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Small color key so the graph's node colors are self-explanatory. */
+function GraphLegend() {
+  const t = useTranslations("blast");
+  const item = (color: string, label: string) => (
+    <span style={s.legendItem} key={label}>
+      <span style={{ ...s.legendSwatch, borderColor: color }} />
+      {label}
+    </span>
+  );
+  return (
+    <div style={s.legend}>
+      {item("var(--accent)", t("legend.changed"))}
+      {item("var(--border-strong)", t("legend.caller"))}
+      {item("var(--warn)", t("legend.endpoint"))}
     </div>
   );
 }
@@ -120,7 +164,9 @@ function BlastGraph({ blast }: { blast: BlastRadius }) {
   );
   const node = (n: { x: number; y: number; label: string }, color: string, w: number = GRAPH.nodeWidth) => (
     <g key={n.label} transform={`translate(${n.x - w / 2},${n.y - 13})`}>
-      <rect width={w} height={26} rx={6} fill="var(--bg-elevated)" stroke={color} strokeWidth={1.25} />
+      <rect width={w} height={26} rx={6} fill="var(--bg-elevated)" stroke={color} strokeWidth={1.25}>
+        <title>{n.label}</title>
+      </rect>
       <text x={w / 2} y={17} textAnchor="middle" fontSize={11} fill="var(--text-primary)" className="mono">
         {n.label}
       </text>
@@ -128,13 +174,16 @@ function BlastGraph({ blast }: { blast: BlastRadius }) {
   );
 
   return (
-    <svg width={GRAPH.width} height={H} style={s.graphSvg} role="img" aria-label={t("graph.ariaLabel")}>
-      {callerNodes.map((c, i) => edge(root, c, `r-${i}`, "var(--accent)"))}
-      {epNodes.map((e, i) => edge(callerNodes[Math.min(i, callerNodes.length - 1)]!, e, `e-${i}`))}
-      {node(root, "var(--accent)")}
-      {callerNodes.map((c) => node(c, "var(--border-strong)"))}
-      {epNodes.map((e) => node(e, "var(--warn)", GRAPH.endpointNodeWidth))}
-    </svg>
+    <div style={s.graphWrap}>
+      <GraphLegend />
+      <svg width={GRAPH.width} height={H} style={s.graphSvg} role="img" aria-label={t("graph.ariaLabel")}>
+        {callerNodes.map((c, i) => edge(root, c, `r-${i}`, "var(--accent)"))}
+        {epNodes.map((e, i) => edge(callerNodes[Math.min(i, callerNodes.length - 1)]!, e, `e-${i}`))}
+        {node(root, "var(--accent)")}
+        {callerNodes.map((c) => node(c, "var(--border-strong)"))}
+        {epNodes.map((e) => node(e, "var(--warn)", GRAPH.endpointNodeWidth))}
+      </svg>
+    </div>
   );
 }
 
@@ -153,6 +202,10 @@ export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
     blast.downstream[0] ? { 0: true } : {},
   );
 
+  const setAll = (value: boolean) =>
+    setOpen(Object.fromEntries(blast.downstream.map((_, i) => [i, value])));
+  const allOpen = blast.downstream.length > 0 && blast.downstream.every((_, i) => open[i]);
+
   if (isEmptyBlast(blast)) {
     return <div style={s.emptySummary}>{blast.summary}</div>;
   }
@@ -163,7 +216,7 @@ export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
         <Summary blast={blast} />
         <div style={s.viewToggle}>
           {BLAST_VIEWS.map((v) => (
-            <button key={v} onClick={() => setView(v)} style={s.toggleBtn(view === v)}>
+            <button key={v} onClick={() => setView(v)} style={s.toggleBtn(view === v)} title={t(`viewHelp.${v}`)}>
               {t(`view.${v}`)}
             </button>
           ))}
@@ -175,15 +228,31 @@ export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
           {blast.downstream.length === 0 ? (
             <div style={s.treeEmpty}>{t("noDownstream", { count: blast.changed_symbols.length })}</div>
           ) : (
-            blast.downstream.map((d, i) => (
-              <DownstreamNode
-                key={`${d.symbol}-${i}`}
-                d={d}
-                open={!!open[i]}
-                onToggle={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}
-                onWhy={onWhy}
-              />
-            ))
+            <>
+              <div style={s.treeControls}>
+                <Icon.Info size={12} style={s.hintIcon} />
+                <span style={s.hint}>{t("hint")}</span>
+                {blast.downstream.length > 1 && (
+                  <button
+                    onClick={() => setAll(!allOpen)}
+                    style={s.textBtn}
+                    title={allOpen ? t("collapseAll") : t("expandAll")}
+                  >
+                    <Icon.ChevronsUpDown size={12} />
+                    {allOpen ? t("collapseAll") : t("expandAll")}
+                  </button>
+                )}
+              </div>
+              {blast.downstream.map((d, i) => (
+                <DownstreamNode
+                  key={`${d.symbol}-${i}`}
+                  d={d}
+                  open={!!open[i]}
+                  onToggle={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}
+                  onWhy={onWhy}
+                />
+              ))}
+            </>
           )}
         </div>
       ) : (

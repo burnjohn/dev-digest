@@ -4,7 +4,8 @@
 "use client";
 
 import React from "react";
-import { SectionLabel, Skeleton, ErrorState } from "@devdigest/ui";
+import { useTranslations } from "next-intl";
+import { SectionLabel, Skeleton, ErrorState, Button } from "@devdigest/ui";
 import { BlastRadiusView } from "../BlastRadius";
 import { useBlast } from "@/lib/hooks/blast";
 
@@ -15,11 +16,28 @@ interface BlastTabProps {
 }
 
 export function BlastTab({ prId, onWhy }: BlastTabProps) {
-  const { data: blast, isLoading, error, refetch } = useBlast(prId);
+  const t = useTranslations("blast");
+  const { data: blast, isLoading, isFetching, error, refetch } = useBlast(prId);
+
+  const refresh = (
+    <Button
+      kind="tertiary"
+      size="sm"
+      icon="RefreshCw"
+      loading={isFetching}
+      disabled={!prId || isFetching}
+      onClick={() => refetch()}
+      title={t("refresh")}
+    >
+      {t("refresh")}
+    </Button>
+  );
 
   return (
     <section>
-      <SectionLabel icon="GitBranch">Blast radius</SectionLabel>
+      <SectionLabel icon="GitBranch" right={refresh}>
+        Blast radius
+      </SectionLabel>
       {isLoading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Skeleton height={18} width="40%" />

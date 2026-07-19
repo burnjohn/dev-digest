@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { BlastRadius } from "@devdigest/shared";
 import blastMessages from "../../../../../../../../messages/en/blast.json";
@@ -37,17 +37,26 @@ function renderTab(ui: React.ReactElement) {
 
 describe("I — BlastTab integration (data shell → impact map)", () => {
   it("I.P0.1 — success: renders the section + the impact tree from the hook data", () => {
-    useBlast.mockReturnValue({ data: BLAST, isLoading: false, error: null, refetch: vi.fn() });
+    useBlast.mockReturnValue({ data: BLAST, isLoading: false, isFetching: false, error: null, refetch: vi.fn() });
     renderTab(<BlastTab prId="pr-1" />);
     expect(screen.getByText("Blast radius")).toBeInTheDocument();
     expect(screen.getByText("rateLimit()")).toBeInTheDocument();
     expect(screen.getByText("src/api/public.ts:23")).toBeInTheDocument();
   });
 
+  it("I.P0.2 — a visible Refresh control re-fetches the impact map on demand", () => {
+    const refetch = vi.fn();
+    useBlast.mockReturnValue({ data: BLAST, isLoading: false, isFetching: false, error: null, refetch });
+    renderTab(<BlastTab prId="pr-1" />);
+    fireEvent.click(screen.getByTitle("Refresh"));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it("I.P1.1 — error: shows a retryable error state, not a blank tab", () => {
     useBlast.mockReturnValue({
       data: undefined,
       isLoading: false,
+      isFetching: false,
       error: new Error("index not ready"),
       refetch: vi.fn(),
     });

@@ -5,12 +5,36 @@
     "endpoints": "endpoints",
     "crons": "cron/jobs"
   },
-  "view": {
-    "tree": "tree",
-    "graph": "graph"
+  "statHelp": {
+    "symbols": "Top-level functions/classes changed in this PR",
+    "callers": "Places elsewhere in the codebase that call the changed symbols",
+    "endpoints": "HTTP endpoints reachable from the impacted callers",
+    "crons": "Scheduled jobs reachable from the impacted callers"
   },
-  "callerCount": "{count} callers",
-  "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "view": {
+    "tree": "Tree",
+    "graph": "Graph"
+  },
+  "viewHelp": {
+    "tree": "Expandable list: changed symbols → callers → endpoints",
+    "graph": "Node-link diagram of the first changed symbol's impact"
+  },
+  "hint": "Click a symbol to expand its callers · click a file:line to open the code",
+  "expandAll": "Expand all",
+  "collapseAll": "Collapse all",
+  "refresh": "Refresh",
+  "openCode": "Open {loc} in the Files tab",
+  "callerCount": "{count, plural, one {# caller} other {# callers}}",
+  "noDownstream": "{count, plural, one {# changed symbol} other {# changed symbols}}, no downstream callers found.",
+  "badgeHelp": {
+    "endpoint": "HTTP endpoint reachable from this caller",
+    "cron": "Scheduled job reachable from this caller"
+  },
+  "legend": {
+    "changed": "changed symbol",
+    "caller": "caller",
+    "endpoint": "endpoint / cron"
+  },
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph"

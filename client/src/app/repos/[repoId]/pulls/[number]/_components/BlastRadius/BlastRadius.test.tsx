@@ -59,7 +59,14 @@ describe("V — Blast Radius tree view", () => {
     );
     expect(screen.getByText("No top-level symbols changed in this PR.")).toBeInTheDocument();
     // no tree/graph toggle when there's nothing to show
-    expect(screen.queryByText("graph")).not.toBeInTheDocument();
+    expect(screen.queryByText("Graph")).not.toBeInTheDocument();
+  });
+
+  it("V.P1.2 — shows a usage hint + a per-stat tooltip so the map is self-explanatory", () => {
+    renderWithIntl(<BlastRadiusView blast={BLAST} />);
+    expect(screen.getByText(/click a symbol to expand/i)).toBeInTheDocument();
+    // headline stats carry hover help (title attr)
+    expect(screen.getByTitle(/functions\/classes changed/i)).toBeInTheDocument();
   });
 });
 
@@ -79,17 +86,41 @@ describe("K — click a caller location → jump to code (git-why hook)", () => 
     fireEvent.click(header); // re-expand
     expect(screen.getByText("src/api/public.ts:23")).toBeInTheDocument();
   });
+
+  it("K.P1.2 — Expand all / Collapse all toggles every node at once", () => {
+    // Two changed symbols → only the first is open by default.
+    const two: BlastRadius = {
+      changed_symbols: [
+        { name: "rateLimit", file: "src/mw/ratelimit.ts", kind: "function" },
+        { name: "authGuard", file: "src/mw/auth.ts", kind: "function" },
+      ],
+      downstream: [
+        { symbol: "rateLimit", callers: [{ name: "handler", file: "src/api/public.ts", line: 23 }], endpoints_affected: [], crons_affected: [] },
+        { symbol: "authGuard", callers: [{ name: "login", file: "src/api/session.ts", line: 9 }], endpoints_affected: [], crons_affected: [] },
+      ],
+      summary: "2 changed symbols · 2 downstream callers.",
+    };
+    renderWithIntl(<BlastRadiusView blast={two} />);
+    // second node starts collapsed
+    expect(screen.queryByText("src/api/session.ts:9")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Expand all"));
+    expect(screen.getByText("src/api/session.ts:9")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Collapse all"));
+    expect(screen.queryByText("src/api/public.ts:23")).not.toBeInTheDocument();
+  });
 });
 
 describe("G — node-link graph view", () => {
-  it("G.P0.1 — toggling to graph renders an accessible SVG impact graph", () => {
+  it("G.P0.1 — toggling to graph renders an accessible SVG impact graph + legend", () => {
     renderWithIntl(<BlastRadiusView blast={BLAST} />);
-    fireEvent.click(screen.getByText("graph"));
+    fireEvent.click(screen.getByText("Graph"));
     const svg = screen.getByLabelText("Blast radius graph");
     expect(svg).toBeInTheDocument();
-    // root symbol + both callers appear as graph nodes
-    expect(within(svg).getByText("rateLimit()")).toBeInTheDocument();
-    expect(within(svg).getByText("handler")).toBeInTheDocument();
+    // root symbol + both callers appear as graph nodes (label text + hover <title>)
+    expect(within(svg).getAllByText("rateLimit()").length).toBeGreaterThan(0);
+    expect(within(svg).getAllByText("handler").length).toBeGreaterThan(0);
+    // a legend explains the node colors
+    expect(screen.getByText("changed symbol")).toBeInTheDocument();
   });
 
   it("G.P1.1 — graph view with no downstream callers shows an empty-state, not a broken SVG", () => {
@@ -99,7 +130,7 @@ describe("G — node-link graph view", () => {
       summary: "1 changed symbol · 0 downstream callers.",
     };
     renderWithIntl(<BlastRadiusView blast={noCallers} />);
-    fireEvent.click(screen.getByText("graph"));
+    fireEvent.click(screen.getByText("Graph"));
     expect(screen.getByText("No downstream callers to graph.")).toBeInTheDocument();
   });
 });
