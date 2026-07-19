@@ -135,7 +135,9 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && (
+          <OverviewTab prBody={pr.body} prId={prId} onOpenBlast={() => setTab("blast")} />
+        )}
 
         {tab === "findings" && (
           <FindingsTab
@@ -174,6 +176,7 @@ export default function PRDetailPage() {
         {tab === "blast" && (
           <BlastTab
             prId={prId}
+            relatedPrHref={repoFullName ? (n) => githubPrUrl(repoFullName, n) : undefined}
             onWhy={(file, line) => {
               // Callers usually live OUTSIDE the PR diff, so open the real source
               // at that line on GitHub (sha-pinned). No GitHub link (local repo) →

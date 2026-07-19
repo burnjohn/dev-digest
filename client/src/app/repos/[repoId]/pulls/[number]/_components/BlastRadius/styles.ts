@@ -65,14 +65,57 @@ export const s = {
   } satisfies CSSProperties,
   // DownstreamNode
   node: { borderRadius: 6 } satisfies CSSProperties,
-  nodeHeader: (open: boolean): CSSProperties => ({
+  nodeHeader: (open: boolean, alert: "crit" | "warn" | null): CSSProperties => ({
     display: "flex",
     alignItems: "center",
     gap: 8,
     padding: "6px 8px",
     borderRadius: 6,
     cursor: "pointer",
+    flexWrap: "wrap",
     background: open ? "var(--bg-hover)" : "transparent",
+    // Left accent when the changed symbol carries a critical/warning signal.
+    boxShadow: alert
+      ? `inset 3px 0 0 ${alert === "crit" ? "var(--crit)" : "var(--warn)"}`
+      : undefined,
+  }),
+  // Risk / breaking chip.
+  chip: (color: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    fontSize: 11,
+    fontWeight: 600,
+    color,
+    background: "color-mix(in srgb, currentColor 12%, transparent)",
+    border: "1px solid color-mix(in srgb, currentColor 30%, transparent)",
+    borderRadius: 4,
+    padding: "1px 6px",
+    whiteSpace: "nowrap",
+  }),
+  // Caller role pill (business/test/boilerplate).
+  roleTag: (color: string): CSSProperties => ({
+    fontSize: 10.5,
+    fontWeight: 600,
+    color,
+    background: "color-mix(in srgb, currentColor 12%, transparent)",
+    borderRadius: 4,
+    padding: "0 5px",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  }),
+  // Existing-finding cross-reference badge on a symbol row.
+  findingBadge: (color: string, bg: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    fontSize: 11,
+    fontWeight: 600,
+    color,
+    background: bg,
+    borderRadius: 4,
+    padding: "1px 6px",
+    whiteSpace: "nowrap",
   }),
   chevron: (open: boolean): CSSProperties => ({
     color: "var(--text-muted)",
@@ -118,4 +161,65 @@ export const s = {
     background: "var(--bg-elevated)",
     display: "inline-block",
   } satisfies CSSProperties,
+  // "No agent has reviewed yet" note.
+  notReviewed: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  } satisfies CSSProperties,
+  // Dead / uncalled changed symbols.
+  deadSection: { marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" } satisfies CSSProperties,
+  deadTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    color: "var(--text-muted)",
+    marginBottom: 6,
+  } satisfies CSSProperties,
+  deadRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "3px 8px" } satisfies CSSProperties,
+  deadIcon: { color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,
+  deadName: { color: "var(--text-muted)", textDecoration: "line-through" } satisfies CSSProperties,
+  deadTag: {
+    fontSize: 10.5,
+    fontWeight: 600,
+    color: "var(--text-muted)",
+    background: "var(--bg-hover)",
+    borderRadius: 4,
+    padding: "0 6px",
+  } satisfies CSSProperties,
+  // Related PRs (collapsible).
+  relatedSection: { marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" } satisfies CSSProperties,
+  relatedHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    cursor: "pointer",
+    padding: "4px 8px",
+    borderRadius: 6,
+  } satisfies CSSProperties,
+  relatedIcon: { color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,
+  relatedTitle: { fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" } satisfies CSSProperties,
+  relatedCount: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "var(--text-muted)",
+    background: "var(--bg-hover)",
+    borderRadius: 10,
+    padding: "0 7px",
+  } satisfies CSSProperties,
+  relatedList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "6px 0 0 26px",
+  } satisfies CSSProperties,
+  relatedRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 } satisfies CSSProperties,
+  relatedNum: { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,
+  relatedPrTitle: { color: "var(--text-secondary)" } satisfies CSSProperties,
 } as const;

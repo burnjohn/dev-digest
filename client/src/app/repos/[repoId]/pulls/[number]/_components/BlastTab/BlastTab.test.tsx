@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { BlastRadius } from "@devdigest/shared";
+import { BlastRadius as BlastRadiusSchema, type BlastRadius } from "@devdigest/shared";
 import blastMessages from "../../../../../../../../messages/en/blast.json";
 import { BlastTab } from "./BlastTab";
 
@@ -14,18 +14,20 @@ afterEach(() => {
   useBlast.mockReset();
 });
 
-const BLAST: BlastRadius = {
+const BLAST: BlastRadius = BlastRadiusSchema.parse({
   changed_symbols: [{ name: "rateLimit", file: "src/mw/ratelimit.ts", kind: "function" }],
   downstream: [
     {
       symbol: "rateLimit",
+      file: "src/mw/ratelimit.ts",
       callers: [{ name: "handler", file: "src/api/public.ts", line: 23 }],
       endpoints_affected: ["GET /public/data"],
       crons_affected: [],
     },
   ],
+  findings_available: true,
   summary: "1 changed symbol · 1 downstream caller · 1 endpoint affected.",
-};
+});
 
 function renderTab(ui: React.ReactElement) {
   return render(

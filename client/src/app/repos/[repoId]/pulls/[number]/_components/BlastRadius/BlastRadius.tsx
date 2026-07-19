@@ -1,15 +1,53 @@
 /* BlastRadius — Blast Radius viewer (A3, L04).
    Colocated under the PR-detail route. Tree (default) + graph (drill-in) over a
-   BlastRadius from GET /pulls/:id/blast. Public export name: BlastRadiusView. */
+   BlastRadius from GET /pulls/:id/blast, enriched with deterministic reviewer
+   signals (no model call): caller roles, call-site risk (loop/unguarded),
+   breaking API changes, existing-finding cross-reference, dead symbols, related
+   PRs. Public export name: BlastRadiusView. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Badge, MonoLink } from "@devdigest/ui";
-import type { BlastRadius, DownstreamImpact } from "@devdigest/shared";
-import { BLAST_VIEWS, GRAPH, STAT_ICONS, type BlastView } from "./constants";
+import { Icon, Badge, MonoLink, SEV } from "@devdigest/ui";
+import type { BlastRadius, DownstreamImpact, CallerRole, Severity } from "@devdigest/shared";
+import { BLAST_VIEWS, GRAPH, ROLE_META, STAT_ICONS, type BlastView } from "./constants";
 import { blastCounts, isEmptyBlast } from "./helpers";
 import { s } from "./styles";
+
+/** A compact icon+label chip used for the call-site / breaking risk markers. */
+function Chip({ icon, color, label, title }: { icon: keyof typeof Icon; color: string; label: string; title: string }) {
+  const I = Icon[icon];
+  return (
+    <span title={title} style={s.chip(color)}>
+      {I && <I size={11} />}
+      {label}
+    </span>
+  );
+}
+
+/** Small role pill (business / test / boilerplate); `normal` renders nothing. */
+function RoleTag({ role }: { role: CallerRole }) {
+  const t = useTranslations("blast");
+  if (!ROLE_META[role].tag) return null;
+  return (
+    <span title={t(`roleHelp.${role}`)} style={s.roleTag(ROLE_META[role].color)}>
+      {t(`role.${role}`)}
+    </span>
+  );
+}
+
+/** Cross-reference badge: existing agent finding(s) landing on this changed code. */
+function FindingBadge({ severity, count }: { severity: Severity; count: number }) {
+  const t = useTranslations("blast");
+  const sev = SEV[severity];
+  const I = Icon[sev.icon as keyof typeof Icon];
+  return (
+    <span title={t("findingHelp", { count, severity: sev.label })} style={s.findingBadge(sev.c, sev.bg)}>
+      {I && <I size={11} />}
+      {t("finding", { count })}
+    </span>
+  );
+}
 
 function Summary({ blast }: { blast: BlastRadius }) {
   const t = useTranslations("blast");
@@ -41,6 +79,14 @@ function Summary({ blast }: { blast: BlastRadius }) {
   );
 }
 
+/** Highest alert level for a symbol row → drives the left-accent highlight. */
+function nodeAlert(d: DownstreamImpact): "crit" | "warn" | null {
+  if (d.finding_severity === "CRITICAL") return "crit";
+  if (d.breaking && d.endpoints_affected.length > 0) return "crit"; // breaking a live endpoint
+  if (d.breaking || d.may_throw || d.finding_severity) return "warn";
+  return null;
+}
+
 function DownstreamNode({
   d,
   open,
@@ -53,11 +99,12 @@ function DownstreamNode({
   onWhy?: (file: string, line: number) => void;
 }) {
   const t = useTranslations("blast");
+  const alert = nodeAlert(d);
   return (
     <div style={s.node}>
       <div
         onClick={onToggle}
-        style={s.nodeHeader(open)}
+        style={s.nodeHeader(open, alert)}
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -73,6 +120,13 @@ function DownstreamNode({
         <span className="mono" style={s.nodeSymbol}>
           {d.symbol}()
         </span>
+        {d.breaking && (
+          <Chip icon="AlertOctagon" color="var(--crit)" label={t("risk.breaking")} title={t("riskHelp.breaking")} />
+        )}
+        {d.finding_severity && <FindingBadge severity={d.finding_severity} count={d.finding_count} />}
+        {d.may_throw && (
+          <Chip icon="AlertTriangle" color="var(--warn)" label={t("risk.throws")} title={t("riskHelp.throws")} />
+        )}
         <span style={s.nodeCallerCount}>{t("callerCount", { count: d.callers.length })}</span>
       </div>
       {open && (
@@ -82,11 +136,23 @@ function DownstreamNode({
             return (
               <div key={ci} style={s.callerRow}>
                 <Icon.CornerDownRight size={13} style={s.callerIcon} />
-                <span style={s.callerName}>{c.name}</span>
+                <span style={{ ...s.callerName, color: ROLE_META[c.role].color }}>{c.name}</span>
+                <RoleTag role={c.role} />
                 <span style={s.callerLink} title={onWhy ? t("openCode", { loc }) : undefined}>
                   <MonoLink onClick={onWhy ? () => onWhy(c.file, c.line) : undefined}>{loc}</MonoLink>
                   {onWhy && <Icon.ExternalLink size={12} style={s.openHint} aria-hidden />}
                 </span>
+                {c.in_loop && (
+                  <Chip icon="Zap" color="var(--warn)" label={t("risk.loop")} title={t("riskHelp.loop")} />
+                )}
+                {c.unguarded && d.may_throw && (
+                  <Chip
+                    icon="AlertTriangle"
+                    color="var(--warn)"
+                    label={t("risk.unguarded")}
+                    title={t("riskHelp.unguarded")}
+                  />
+                )}
               </div>
             );
           })}
@@ -118,7 +184,61 @@ function DownstreamNode({
   );
 }
 
-/** Small color key so the graph's node colors are self-explanatory. */
+/** Changed symbols that nothing external calls — possibly dead / internal-only. */
+function DeadSymbols({ blast }: { blast: BlastRadius }) {
+  const t = useTranslations("blast");
+  if (blast.dead_symbols.length === 0) return null;
+  return (
+    <div style={s.deadSection}>
+      <div style={s.deadTitle} title={t("dead.help")}>
+        <Icon.EyeOff size={12} />
+        {t("dead.title")}
+      </div>
+      {blast.dead_symbols.map((sym, i) => (
+        <div key={i} style={s.deadRow}>
+          <Icon.Code size={13} style={s.deadIcon} />
+          <span className="mono" style={s.deadName}>
+            {sym.name}()
+          </span>
+          <span style={s.deadTag}>{t("dead.tag")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Collapsible "Prior PRs touching these files" (recency context). */
+function RelatedPrs({ blast, repoHref }: { blast: BlastRadius; repoHref?: (n: number) => string }) {
+  const t = useTranslations("blast");
+  const [open, setOpen] = React.useState(false);
+  if (blast.related_prs.length === 0) return null;
+  return (
+    <div style={s.relatedSection}>
+      <div onClick={() => setOpen((o) => !o)} style={s.relatedHeader} role="button" tabIndex={0}>
+        <Icon.History size={13} style={s.relatedIcon} />
+        <span style={s.relatedTitle}>{t("related.title")}</span>
+        <span style={s.relatedCount}>{blast.related_prs.length}</span>
+        <Icon.ChevronDown size={14} style={s.chevron(open)} />
+      </div>
+      {open && (
+        <div style={s.relatedList}>
+          {blast.related_prs.map((pr) => (
+            <div key={pr.id} style={s.relatedRow}>
+              <span style={s.relatedNum}>#{pr.number}</span>
+              {repoHref ? (
+                <MonoLink onClick={() => window.open(repoHref(pr.number), "_blank", "noopener")}>{pr.title}</MonoLink>
+              ) : (
+                <span style={s.relatedPrTitle}>{pr.title}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Small color/role key so the tree's colors + risk chips are self-explanatory. */
 function GraphLegend() {
   const t = useTranslations("blast");
   const item = (color: string, label: string) => (
@@ -150,6 +270,7 @@ function BlastGraph({ blast }: { blast: BlastRadius }) {
     x: GRAPH.callerX,
     y: 38 + i * ((H - 70) / denom),
     label: c.name,
+    color: ROLE_META[c.role].color,
   }));
   const epNodes = d.endpoints_affected.map((e, i) => ({ x: GRAPH.endpointX, y: 50 + i * 48, label: e }));
 
@@ -180,7 +301,7 @@ function BlastGraph({ blast }: { blast: BlastRadius }) {
         {callerNodes.map((c, i) => edge(root, c, `r-${i}`, "var(--accent)"))}
         {epNodes.map((e, i) => edge(callerNodes[Math.min(i, callerNodes.length - 1)]!, e, `e-${i}`))}
         {node(root, "var(--accent)")}
-        {callerNodes.map((c) => node(c, "var(--border-strong)"))}
+        {callerNodes.map((c) => node(c, c.color))}
         {epNodes.map((e) => node(e, "var(--warn)", GRAPH.endpointNodeWidth))}
       </svg>
     </div>
@@ -191,9 +312,11 @@ export interface BlastRadiusViewProps {
   blast: BlastRadius;
   /** Optional git-why hook: clicking a caller location fires this. */
   onWhy?: (file: string, line: number) => void;
+  /** Optional: build a link to a related PR by number. */
+  relatedPrHref?: (n: number) => string;
 }
 
-export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
+export function BlastRadiusView({ blast, onWhy, relatedPrHref }: BlastRadiusViewProps) {
   const t = useTranslations("blast");
   const [view, setView] = React.useState<BlastView>("tree");
   // Keyed by index, not symbol — downstream can contain the same symbol twice
@@ -223,6 +346,7 @@ export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
         </div>
       </div>
       <div style={s.summaryText}>{blast.summary}</div>
+      {!blast.findings_available && <div style={s.notReviewed}>{t("notReviewed")}</div>}
       {view === "tree" ? (
         <div style={s.tree}>
           {blast.downstream.length === 0 ? (
@@ -254,6 +378,8 @@ export function BlastRadiusView({ blast, onWhy }: BlastRadiusViewProps) {
               ))}
             </>
           )}
+          <DeadSymbols blast={blast} />
+          <RelatedPrs blast={blast} repoHref={relatedPrHref} />
         </div>
       ) : (
         <BlastGraph blast={blast} />

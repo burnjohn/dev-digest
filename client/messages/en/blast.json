@@ -35,6 +35,44 @@
     "caller": "caller",
     "endpoint": "endpoint / cron"
   },
+  "role": {
+    "business": "business",
+    "test": "test",
+    "boilerplate": "boilerplate"
+  },
+  "roleHelp": {
+    "business": "Reaches a real product surface (HTTP endpoint / cron) or a widely depended-on file",
+    "test": "Caller is a test/spec/mock — lower production impact",
+    "boilerplate": "Config / migration / generated code"
+  },
+  "risk": {
+    "breaking": "breaking API",
+    "loop": "in loop",
+    "unguarded": "unguarded",
+    "throws": "throws"
+  },
+  "riskHelp": {
+    "breaking": "This PR changed the symbol's signature/interface — callers & integrations may break",
+    "loop": "Called inside a loop — amplified performance impact",
+    "unguarded": "This call site has no try/catch and the changed code can throw — stability risk",
+    "throws": "The changed code adds a throw in this PR"
+  },
+  "finding": "{count, plural, one {# finding} other {# findings}}",
+  "findingHelp": "{count, plural, one {# existing agent finding} other {# existing agent findings}} on this changed code (worst: {severity})",
+  "notReviewed": "No agent has reviewed this PR yet — run one to cross-reference findings.",
+  "dead": {
+    "title": "Changed but not called externally",
+    "tag": "no external callers",
+    "help": "Exported/top-level symbols changed in this PR that nothing else calls — possibly dead code, or only used internally."
+  },
+  "related": {
+    "title": "Prior PRs touching these files",
+    "empty": "No other PRs have touched these files."
+  },
+  "overview": {
+    "viewFull": "View full blast radius",
+    "empty": "No blast radius yet."
+  },
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph"

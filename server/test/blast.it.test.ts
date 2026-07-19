@@ -46,39 +46,45 @@ d('Blast Radius — GET /pulls/:id/blast (L04)', () => {
   });
 
   let repoSeq = 0;
-  async function seedPr(opts: { clone?: boolean; files?: string[] } = {}) {
+  type SeedFile = string | { path: string; patch?: string };
+  async function seedRepo() {
     const name = `payments-api-blast-${repoSeq++}`;
     const [repo] = await pg.handle.db
       .insert(t.repos)
-      .values({
-        workspaceId,
-        owner: 'acme',
-        name,
-        fullName: `acme/${name}`,
-        clonePath: opts.clone === false ? null : `/mock/clones/acme/${name}`,
-      })
+      .values({ workspaceId, owner: 'acme', name, fullName: `acme/${name}`, clonePath: `/mock/clones/acme/${name}` })
       .returning();
+    return repo!;
+  }
+  async function seedPrIn(repoId: string, files: SeedFile[], clone = true) {
+    if (!clone) await pg.handle.db.update(t.repos).set({ clonePath: null }).where(eq(t.repos.id, repoId));
     const [pr] = await pg.handle.db
       .insert(t.pullRequests)
       .values({
-        workspaceId,
-        repoId: repo!.id,
-        number: 800 + repoSeq,
-        title: 'blast fixture',
-        author: 'tester',
-        branch: 'feat/x',
-        base: 'main',
-        headSha: 'deadbeef',
-        additions: 1,
-        deletions: 0,
-        filesCount: (opts.files ?? []).length,
-        status: 'needs_review',
+        workspaceId, repoId, number: 800 + repoSeq++, title: 'blast fixture', author: 'tester',
+        branch: 'feat/x', base: 'main', headSha: 'deadbeef', additions: 1, deletions: 0,
+        filesCount: files.length, status: 'needs_review',
       })
       .returning();
-    for (const path of opts.files ?? []) {
-      await pg.handle.db.insert(t.prFiles).values({ prId: pr!.id, path, additions: 1, deletions: 0 });
+    for (const f of files) {
+      const path = typeof f === 'string' ? f : f.path;
+      const patch = typeof f === 'string' ? null : (f.patch ?? null);
+      await pg.handle.db.insert(t.prFiles).values({ prId: pr!.id, path, additions: 1, deletions: 0, patch });
     }
     return pr!;
+  }
+  async function seedPr(opts: { clone?: boolean; files?: SeedFile[] } = {}) {
+    const repo = await seedRepo();
+    return seedPrIn(repo.id, opts.files ?? [], opts.clone !== false);
+  }
+  async function seedReviewWithFinding(prId: string, file: string, severity: string) {
+    const [review] = await pg.handle.db
+      .insert(t.reviews)
+      .values({ workspaceId, prId, kind: 'review', verdict: 'request_changes', summary: 's', score: 20 })
+      .returning();
+    await pg.handle.db.insert(t.findings).values({
+      reviewId: review!.id, file, startLine: 1, endLine: 1, severity, category: 'security',
+      title: 'seed finding', rationale: 'r', confidence: 0.9,
+    });
   }
 
   const app = (facade: BlastResult = DEMO_FACADE) => {
@@ -144,6 +150,84 @@ d('Blast Radius — GET /pulls/:id/blast (L04)', () => {
     const b = await get(a, pr.id);
     expect(b.changed_symbols).toEqual([]);
     expect(b.summary).toMatch(/no changed files/i);
+    await a.close();
+  });
+
+  it('E.P0.1 — enriched: declaring file + caller roles + may_throw derived from the diff', async () => {
+    const a = await app();
+    const pr = await seedPr({
+      files: [{ path: 'src/lib/shared.ts', patch: '@@ -1 +1,2 @@\n+  throw new Error("boom");' }],
+    });
+    const b = await get(a, pr.id);
+    const d = b.downstream[0]!;
+    expect(d.file).toBe('src/lib/shared.ts');
+    expect(d.may_throw).toBe(true); // +throw in the patch
+    // both DEMO_FACADE callers reach an endpoint → business
+    expect(d.callers.every((c) => c.role === 'business')).toBe(true);
+    await a.close();
+  });
+
+  it('E.P0.3 — breaking: flags a signature change on an endpoint-reachable symbol', async () => {
+    const a = await app(); // DEMO_FACADE: symbol `helper` reaches an endpoint
+    const pr = await seedPr({
+      files: [
+        { path: 'src/lib/shared.ts', patch: '@@ -1 +1 @@\n-export function helper(a) {}\n+export function helper(a, b) {}' },
+      ],
+    });
+    const b = await get(a, pr.id);
+    const d = b.downstream[0]!;
+    expect(d.breaking).toBe(true);
+    expect(d.endpoints_affected.length).toBeGreaterThan(0); // → breaking-integration risk
+    await a.close();
+  });
+
+  it('E.P0.2 — cross-references EXISTING agent findings onto the changed symbol', async () => {
+    const a = await app();
+    const pr = await seedPr({ files: ['src/lib/shared.ts'] });
+    await seedReviewWithFinding(pr.id, 'src/lib/shared.ts', 'CRITICAL');
+    const b = await get(a, pr.id);
+    expect(b.findings_available).toBe(true);
+    expect(b.downstream[0]!.finding_severity).toBe('CRITICAL'); // blocker on impacted code
+    expect(b.downstream[0]!.finding_count).toBe(1);
+    await a.close();
+  });
+
+  it('E.P1.1 — findings_available is false when no agent has reviewed yet', async () => {
+    const a = await app();
+    const pr = await seedPr({ files: ['src/lib/shared.ts'] });
+    const b = await get(a, pr.id);
+    expect(b.findings_available).toBe(false);
+    expect(b.downstream[0]!.finding_severity).toBeNull();
+    await a.close();
+  });
+
+  it('E.P1.2 — lists prior PRs in the SAME repo that touched the same file', async () => {
+    const a = await app();
+    const repo = await seedRepo();
+    const prior = await seedPrIn(repo.id, ['src/lib/shared.ts']);
+    const current = await seedPrIn(repo.id, ['src/lib/shared.ts']);
+    const b = await get(a, current.id);
+    expect(b.related_prs.map((p) => p.id)).toContain(prior.id);
+    expect(b.related_prs.every((p) => p.id !== current.id)).toBe(true); // never itself
+    await a.close();
+  });
+
+  it('E.P1.3 — surfaces changed symbols with no external callers as dead_symbols', async () => {
+    // Facade: two changed symbols, only `used` has a caller → `orphan` is dead.
+    const facade: BlastResult = {
+      changedSymbols: [
+        { file: 'src/lib/shared.ts', name: 'used', kind: 'function' },
+        { file: 'src/lib/shared.ts', name: 'orphan', kind: 'function' },
+      ],
+      callers: [{ file: 'src/api/items.ts', symbol: 'listItems', viaSymbol: 'used', line: 12, rank: 80 }],
+      impactedEndpoints: [],
+      factsByFile: {},
+    };
+    const a = await app(facade);
+    const pr = await seedPr({ files: ['src/lib/shared.ts'] });
+    const b = await get(a, pr.id);
+    expect(b.dead_symbols.map((s) => s.name)).toContain('orphan');
+    expect(b.downstream.map((d) => d.symbol)).toEqual(['used']);
     await a.close();
   });
 });

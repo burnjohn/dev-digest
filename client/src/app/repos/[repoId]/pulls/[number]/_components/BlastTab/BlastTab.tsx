@@ -13,9 +13,11 @@ interface BlastTabProps {
   prId: string | null;
   /** Jump-to-code: clicking a caller location switches to the Files tab. */
   onWhy?: (file: string, line: number) => void;
+  /** Build a link to a related PR by number (e.g. GitHub PR URL). */
+  relatedPrHref?: (n: number) => string;
 }
 
-export function BlastTab({ prId, onWhy }: BlastTabProps) {
+export function BlastTab({ prId, onWhy, relatedPrHref }: BlastTabProps) {
   const t = useTranslations("blast");
   const { data: blast, isLoading, isFetching, error, refetch } = useBlast(prId);
 
@@ -50,7 +52,7 @@ export function BlastTab({ prId, onWhy }: BlastTabProps) {
           onRetry={() => refetch()}
         />
       ) : blast ? (
-        <BlastRadiusView blast={blast} onWhy={onWhy} />
+        <BlastRadiusView blast={blast} onWhy={onWhy} relatedPrHref={relatedPrHref} />
       ) : null}
     </section>
   );

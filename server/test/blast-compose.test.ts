@@ -38,6 +38,15 @@ describe('mapFacadeBlast (compose BlastResult → BlastRadius)', () => {
     expect(d.crons_affected).toEqual(['reset-buckets (hourly)']);
   });
 
+  it('C.P1.3 — classifies endpoint-reachable callers as "business" + carries the declaring file', () => {
+    const b = mapFacadeBlast(fb());
+    const d = b.downstream[0]!;
+    expect(d.file).toBe('src/mw/ratelimit.ts'); // declaring file threaded through
+    // src/api/public.ts has an endpoint fact → business; src/server.ts has a cron → business
+    expect(d.callers.find((c) => c.file === 'src/api/public.ts')!.role).toBe('business');
+    expect(d.callers.find((c) => c.file === 'src/server.ts')!.role).toBe('business');
+  });
+
   it('C.P0.3 — duplicate caller rows collapse to one', () => {
     const dup = fb({
       callers: [
