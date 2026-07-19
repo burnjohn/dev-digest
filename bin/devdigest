@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# devdigest — pre-push CLI launcher.
+#
+#   bin/devdigest review --mode working
+#
+# Reviews the working copy with the SAME Structured Reviewer used on the PR page,
+# before anything is pushed. Runs git against YOUR current directory while
+# resolving the engine's module aliases from the server package (via tsx +
+# the server tsconfig), so it works from any repo.
+set -euo pipefail
+SERVER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../server" && pwd)"
+exec env TSX_TSCONFIG_PATH="$SERVER/tsconfig.json" \
+  node "$SERVER/node_modules/tsx/dist/cli.mjs" "$SERVER/src/cli/index.ts" "$@"
