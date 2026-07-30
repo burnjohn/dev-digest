@@ -63,6 +63,7 @@ export const RunStats = z.object({
   tokens_out: z.number().int(),
   findings: z.number().int(),
   grounding: z.string(),
+  cost: z.number().nullable().optional(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -109,5 +110,6 @@ export const RunSummary = z.object({
   // findings that trip the agent's gate. Null on failed/cancelled runs.
   score: z.number().int().nullable(),
   blockers: z.number().int().nullable(),
+  cost: z.number().nullable().optional(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;
