@@ -10,6 +10,19 @@ import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 import { runCostUsd } from '../reviews/repository/run.repo.js';
 
+export type SeverityCounts = { CRITICAL: number; WARNING: number; SUGGESTION: number };
+
+/** Tally findings by severity for the PR-list FINDINGS column. Unknown severities
+ *  are ignored; returns null when there are no findings (rendered as "—"). */
+export function countBySeverity(findings: { severity: string }[]): SeverityCounts | null {
+  if (findings.length === 0) return null;
+  const counts: SeverityCounts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+  for (const f of findings) {
+    if (f.severity in counts) counts[f.severity as keyof SeverityCounts]++;
+  }
+  return counts;
+}
+
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
  *   GET /repos/:id/pulls → list PRs for a repo (open + recently merged/closed,
@@ -114,8 +127,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap. The per-severity FINDINGS breakdown is aggregated the
+    // same way below (findingsByPr).
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
@@ -152,6 +165,30 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Per-severity FINDINGS tally per PR = count of findings across the PR's
+    // review-kind reviews, grouped by severity. Same one-IN-query pattern as
+    // SCORE/COST. Counts ALL findings (incl. dismissed) so the list total
+    // matches the PR-detail findings count.
+    const findingsByPr = new Map<string, SeverityCounts>();
+    if (prIds.length > 0) {
+      const findingRows = await container.db
+        .select({ prId: t.reviews.prId, severity: t.findings.severity })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+        .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')));
+      const grouped = new Map<string, { severity: string }[]>();
+      for (const f of findingRows) {
+        if (!f.prId) continue;
+        const list = grouped.get(f.prId);
+        if (list) list.push(f);
+        else grouped.set(f.prId, [f]);
+      }
+      for (const [prId, fs] of grouped) {
+        const counts = countBySeverity(fs);
+        if (counts) findingsByPr.set(prId, counts);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -177,6 +214,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: costByPr.get(r.id) ?? null,
+        findings_counts: findingsByPr.get(r.id) ?? null,
       };
     });
   });

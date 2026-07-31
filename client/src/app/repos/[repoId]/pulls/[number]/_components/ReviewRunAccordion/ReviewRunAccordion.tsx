@@ -31,12 +31,15 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  severityFilter,
 }: {
   review: ReviewRecord;
   prId: string;
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Forwarded to FindingsPanel: show only this severity when set. */
+  severityFilter?: string | null;
   /** When this matches review.run_id, the accordion opens and scrolls into view
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
@@ -152,6 +155,7 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            severityFilter={severityFilter}
           />
         </div>
       )}

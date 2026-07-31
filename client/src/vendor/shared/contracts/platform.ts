@@ -173,6 +173,15 @@ export const PrMeta = z.object({
   // Total review cost for this PR: sum of all runs' cost (list endpoint only).
   // null/absent when no run has a known-price cost — rendered as "—".
   cost_usd: z.number().nullish(),
+  // Per-severity findings tally across the PR's reviews (list endpoint only).
+  // null/absent when the PR has no findings — rendered as "—".
+  findings_counts: z
+    .object({
+      CRITICAL: z.number().int(),
+      WARNING: z.number().int(),
+      SUGGESTION: z.number().int(),
+    })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

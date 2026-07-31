@@ -52,4 +52,18 @@ describe("FindingsPanel (smoke)", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
   });
+
+  it("severityFilter shows only findings of that severity", () => {
+    const warning: FindingRecord = {
+      ...FINDINGS[0]!,
+      id: "f2",
+      severity: "WARNING",
+      title: "Missing null check",
+    };
+    renderWithIntl(
+      <FindingsPanel findings={[FINDINGS[0]!, warning]} prId="pr1" severityFilter="CRITICAL" />,
+    );
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+    expect(screen.queryByText("Missing null check")).not.toBeInTheDocument();
+  });
 });

@@ -2,9 +2,19 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { Badge, Icon, CircularScore, SeverityBadge, type IconName, type Severity } from "@devdigest/ui";
+import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
 import { RunCostBadge } from "../../../_components/RunCostBadge/RunCostBadge";
+import { HoverCard } from "../../../_components/HoverCard/HoverCard";
+import { FindingsPreview } from "../../../_components/FindingsPreview/FindingsPreview";
+
+const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const;
+
+function severityCounts(findings: FindingRecord[]): Record<string, number> {
+  const counts: Record<string, number> = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+  for (const f of findings) if (f.severity in counts) counts[f.severity]!++;
+  return counts;
+}
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -91,6 +101,7 @@ export function RunHistory({
   onOpenTrace,
   onGoToReview,
   onDelete,
+  findingsByRunId,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
@@ -99,6 +110,8 @@ export function RunHistory({
   /** Jump to this run's inline review accordion below (clicking the agent name). */
   onGoToReview?: (runId: string) => void;
   onDelete?: (runId: string) => void;
+  /** run_id → that run's findings, for the per-run severity badges + hover popover. */
+  findingsByRunId?: Map<string, FindingRecord[]>;
 }) {
   const t = useTranslations("prReview");
   if (runs.length === 0 && commits.length === 0) return null;
@@ -189,12 +202,31 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
+              {settled &&
+                (() => {
+                  const runFindings = findingsByRunId?.get(r.run_id) ?? [];
+                  const counts = severityCounts(runFindings);
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                      {runFindings.length > 0 ? (
+                        <HoverCard
+                          trigger={
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              {SEVERITIES.filter((sev) => counts[sev]! > 0).map((sev) => (
+                                <SeverityBadge key={sev} severity={sev as Severity} count={counts[sev]} compact />
+                              ))}
+                            </span>
+                          }
+                        >
+                          <FindingsPreview findings={runFindings} inThisRun />
+                        </HoverCard>
+                      ) : (
+                        <span>{t("runStatus.findings", { count: r.findings_count ?? 0 })}</span>
+                      )}
+                      {(r.blockers ?? 0) > 0 ? <span>{t("runStatus.blockers", { count: r.blockers ?? 0 })}</span> : null}
+                    </div>
+                  );
+                })()}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {settled && (
