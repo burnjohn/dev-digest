@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=$(jq -r .prompt); for m in client server reviewer-core e2e; do f=\"${CLAUDE_PROJECT_DIR:-.}/$m/INSIGHTS.md\"; if printf '%s' \"$p\" | grep -qiE \"$m\" && [ -f \"$f\" ] && ! grep -q 'No entries yet' \"$f\"; then echo \"== $m INSIGHTS ==\"; cat \"$f\"; fi; done"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${TMPDIR:-/tmp}/ddigest-ins-$(jq -r .session_id)\"; [ -e \"$f\" ] && exit 0; touch \"$f\"; printf '%s' '{\"decision\":\"block\",\"reason\":\"Before finishing: run the engineering-insights WRITE step. If this session produced a substantial, non-duplicate gotcha/footgun/root-cause, append it to the touched module INSIGHTS.md (dedup first). If nothing clears the bar, say so and stop.\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}

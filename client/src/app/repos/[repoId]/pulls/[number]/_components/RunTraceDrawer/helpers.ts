@@ -26,3 +26,10 @@ export function formatSeconds(ms: number): string {
 export function formatTokens(tokensIn: number, tokensOut: number): string {
   return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
 }
+
+/** USD cost badge text. null/undefined ⇒ "—" (no data — never "$0.00").
+ *  Sub-cent costs get 4 decimals ($0.0013), larger ones 3 ($0.012). */
+export function formatCost(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  return `$${usd.toFixed(usd < 0.01 ? 4 : 3)}`;
+}

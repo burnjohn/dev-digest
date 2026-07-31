@@ -64,6 +64,9 @@ export const RunStats = z.object({
   tokens_out: z.number().int(),
   findings: z.number().int(),
   grounding: z.string(),
+  // Cost in USD, computed on read from tokens × model price. null when the
+  // model has no known price (never "$0.00" for unknown — see RunCostBadge).
+  cost_usd: z.number().nullable(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -102,6 +105,9 @@ export const RunSummary = z.object({
   duration_ms: z.number().int().nullable(),
   tokens_in: z.number().int().nullable(),
   tokens_out: z.number().int().nullable(),
+  // Cost in USD for this run, computed on read (tokens × model price).
+  // null when tokens or a known price are missing — rendered as "—".
+  cost_usd: z.number().nullable(),
   findings_count: z.number().int().nullable(),
   grounding: z.string().nullable(),
   ran_at: z.string().nullable(),

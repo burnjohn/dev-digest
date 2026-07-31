@@ -8,6 +8,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { runCostUsd } from '../reviews/repository/run.repo.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -129,6 +130,28 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total review COST per PR = sum of every run's (tokens × model price),
+    // computed on read (no denorm). One IN-query + JS grouping, like SCORE.
+    // null when no run has a known-price cost — rendered as "—", never "$0.00".
+    const costByPr = new Map<string, number | null>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          model: t.agentRuns.model,
+          tokensIn: t.agentRuns.tokensIn,
+          tokensOut: t.agentRuns.tokensOut,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds));
+      for (const run of runRows) {
+        if (!run.prId) continue;
+        const cost = runCostUsd(run.model, run.tokensIn, run.tokensOut);
+        if (cost == null) continue;
+        costByPr.set(run.prId, (costByPr.get(run.prId) ?? 0) + cost);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +176,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });

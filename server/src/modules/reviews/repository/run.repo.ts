@@ -2,6 +2,18 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
+import { estimateCost } from '../../../adapters/llm/pricing.js';
+
+/** Run cost from stored tokens × model price. null when model/tokens missing
+ *  or the model has no known price — never 0 for "unknown" (rendered as "—"). */
+export function runCostUsd(
+  model: string | null,
+  tokensIn: number | null,
+  tokensOut: number | null,
+): number | null {
+  if (!model || tokensIn == null || tokensOut == null) return null;
+  return estimateCost(model, tokensIn, tokensOut);
+}
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -59,6 +71,7 @@ export async function listRunsForPull(
     duration_ms: run.durationMs,
     tokens_in: run.tokensIn,
     tokens_out: run.tokensOut,
+    cost_usd: runCostUsd(run.model, run.tokensIn, run.tokensOut),
     findings_count: run.findingsCount,
     grounding: run.grounding,
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
