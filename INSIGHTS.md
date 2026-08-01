@@ -16,6 +16,28 @@ move it into `docs/` and delete it here.
 
 ## Decisions
 
+### 2026-08-01 — Per-run severity counts are derived client-side, not a contract field
+
+**What:** the PR list's `findings_by_severity` is a new `PrMeta` field computed
+by the server, but the identical breakdown on the Agent runs timeline is derived
+in the browser from the reviews `usePrReviews` already loaded, keyed by
+`review.run_id`. `RunSummary` deliberately did **not** gain the field.
+**Why:** the two surfaces have different data on hand. The list never fetches
+findings, so it has to be told; the PR detail page already holds every finding
+for its `FindingsPanel`, so a second source would be a second query for data
+sitting in the cache. Deriving it also makes dismissal live — dismissing a
+finding in the panel updates the chip above it in the same render, which a
+denormalized column could not do without an invalidation round-trip.
+**Rejected:** a `findings_by_severity` column on `agent_runs` alongside the
+existing `findings_count`/`blockers` denorms. It would go stale on dismiss, and
+those two columns are written once at run completion precisely because they
+describe the run, not the user's later triage of it.
+**Cost:** the rollup rule now exists twice — `rollupSeverities` +
+`selectLatestReviewPerAgent` in `server/src/modules/pulls/status.ts`, and
+`countedFindings` + `countBySeverity` in `client/src/lib/findings.ts`. Both file
+headers point at each other; change one and you must change the other, or the
+same PR reports different numbers on the list and the detail page.
+
 ### 2026-07-31 — Standalone packages instead of a workspace
 
 **What:** four packages, each with its own `package.json` and lockfile; sharing

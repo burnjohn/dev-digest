@@ -1,4 +1,20 @@
 {
+  "severity": {
+    "CRITICAL": "critical",
+    "WARNING": "warning",
+    "SUGGESTION": "suggestion"
+  },
+  "aria": {
+    "severityChip": "{count} {severity} finding(s) — show them"
+  },
+  "findingsPopover": {
+    "titleForPr": "{count} {severity} finding(s)",
+    "titleInRun": "{count} {severity} finding(s) in this run",
+    "loading": "Loading findings…",
+    "empty": "No findings at this severity.",
+    "none": "No findings",
+    "more": "+{count} more not shown"
+  },
   "finding": {
     "accepted": "accepted",
     "dismissed": "dismissed",
@@ -91,6 +107,7 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
       "updated": "Updated"

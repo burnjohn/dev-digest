@@ -11,6 +11,19 @@ import { z } from 'zod';
 export const Severity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * A tally of findings per severity — the shape behind every "⛔2 ⚠2 💡2"
+ * counter in the UI. Keys mirror `Severity` exactly so a count can never drift
+ * from the enum. Who is counted (which reviews, dismissed or not) is decided by
+ * the producer and documented on the field that carries it.
+ */
+export const SeverityCounts = z.object({
+  CRITICAL: z.number().int(),
+  WARNING: z.number().int(),
+  SUGGESTION: z.number().int(),
+});
+export type SeverityCounts = z.infer<typeof SeverityCounts>;
+
 export const FindingCategory = z.enum(['bug', 'security', 'perf', 'style', 'test']);
 export type FindingCategory = z.infer<typeof FindingCategory>;
 

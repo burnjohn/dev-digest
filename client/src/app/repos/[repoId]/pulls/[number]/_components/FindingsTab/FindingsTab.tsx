@@ -8,6 +8,7 @@ import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { findingsByRun } from "@/lib/findings";
 
 interface FindingsTabProps {
   prId: string | null;
@@ -41,6 +42,11 @@ export function FindingsTab({
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  // The timeline's severity counters read from the reviews already loaded here,
+  // rather than a field on the run row — so dismissing a finding in the panel
+  // below updates the chips above it in the same render.
+  const findingsPerRun = React.useMemo(() => findingsByRun(runs), [runs]);
+
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -131,6 +137,9 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRun={findingsPerRun}
+            repoFullName={repoFullName}
+            headSha={headSha}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}

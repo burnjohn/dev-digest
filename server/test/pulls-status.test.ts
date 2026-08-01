@@ -6,7 +6,12 @@
  * + age, so it gets unit coverage independent of the route's queries.
  */
 import { describe, it, expect } from 'vitest';
-import { deriveReviewStatus, rollupSeverities, STALE_DAYS } from '../src/modules/pulls/status.js';
+import {
+  deriveReviewStatus,
+  rollupSeverities,
+  selectLatestReviewPerAgent,
+  STALE_DAYS,
+} from '../src/modules/pulls/status.js';
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 5, 11);
@@ -49,20 +54,85 @@ describe('deriveReviewStatus', () => {
   });
 });
 
+const live = (severity: string) => ({ severity, dismissedAt: null });
+
 describe('rollupSeverities', () => {
-  it('tallies findings into critical / warning / suggestion buckets (ignores unknown)', () => {
+  it('tallies findings into CRITICAL / WARNING / SUGGESTION buckets (ignores unknown)', () => {
     expect(
       rollupSeverities([
-        { severity: 'CRITICAL' },
-        { severity: 'CRITICAL' },
-        { severity: 'WARNING' },
-        { severity: 'SUGGESTION' },
-        { severity: 'WEIRD' },
+        live('CRITICAL'),
+        live('CRITICAL'),
+        live('WARNING'),
+        live('SUGGESTION'),
+        live('WEIRD'),
       ]),
-    ).toEqual({ critical: 2, warning: 1, suggestion: 1 });
+    ).toEqual({ CRITICAL: 2, WARNING: 1, SUGGESTION: 1 });
   });
 
   it('is all-zero for no findings', () => {
-    expect(rollupSeverities([])).toEqual({ critical: 0, warning: 0, suggestion: 0 });
+    expect(rollupSeverities([])).toEqual({ CRITICAL: 0, WARNING: 0, SUGGESTION: 0 });
+  });
+
+  it('skips dismissed findings — a resolved finding stops driving the counter', () => {
+    expect(
+      rollupSeverities([
+        live('CRITICAL'),
+        { severity: 'CRITICAL', dismissedAt: new Date() },
+        { severity: 'WARNING', dismissedAt: new Date() },
+      ]),
+    ).toEqual({ CRITICAL: 1, WARNING: 0, SUGGESTION: 0 });
+  });
+
+  it('counts low-confidence findings — confidence is a view filter, not a tally rule', () => {
+    // The rollup never sees confidence at all; this pins that as intentional.
+    expect(rollupSeverities([live('SUGGESTION'), live('SUGGESTION')])).toEqual({
+      CRITICAL: 0,
+      WARNING: 0,
+      SUGGESTION: 2,
+    });
+  });
+});
+
+describe('selectLatestReviewPerAgent', () => {
+  // Rows arrive newest-first, as the route's `order by created_at desc` yields.
+  it('keeps only the newest review per agent, so a re-run replaces its own', () => {
+    const keep = selectLatestReviewPerAgent([
+      { reviewId: 'sec-new', agentId: 'security' },
+      { reviewId: 'perf-new', agentId: 'perf' },
+      { reviewId: 'perf-old', agentId: 'perf' },
+      { reviewId: 'sec-old', agentId: 'security' },
+    ]);
+    expect([...keep].sort()).toEqual(['perf-new', 'sec-new']);
+  });
+
+  it('sums across different agents rather than picking one', () => {
+    const keep = selectLatestReviewPerAgent([
+      { reviewId: 'a', agentId: 'security' },
+      { reviewId: 'b', agentId: 'perf' },
+      { reviewId: 'c', agentId: 'general' },
+    ]);
+    expect(keep.size).toBe(3);
+  });
+
+  it('keeps every agent-less review — there is no agent to de-duplicate against', () => {
+    const keep = selectLatestReviewPerAgent([
+      { reviewId: 'x', agentId: null },
+      { reviewId: 'y', agentId: null },
+    ]);
+    expect([...keep].sort()).toEqual(['x', 'y']);
+  });
+
+  it('handles the same review appearing once per finding row', () => {
+    // The route joins findings→reviews, so one review yields N rows.
+    const keep = selectLatestReviewPerAgent([
+      { reviewId: 'sec-new', agentId: 'security' },
+      { reviewId: 'sec-new', agentId: 'security' },
+      { reviewId: 'sec-old', agentId: 'security' },
+    ]);
+    expect([...keep]).toEqual(['sec-new']);
+  });
+
+  it('is empty for no rows', () => {
+    expect(selectLatestReviewPerAgent([]).size).toBe(0);
   });
 });

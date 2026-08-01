@@ -1,6 +1,7 @@
-import type { FindingRecord } from "@devdigest/shared";
-
-/** Format a finding's line range ("11" when single-line, else "11-15"). */
-export function lineLabel(f: Pick<FindingRecord, "start_line" | "end_line">): string {
-  return f.start_line === f.end_line ? `${f.start_line}` : `${f.start_line}-${f.end_line}`;
-}
+/**
+ * `lineLabel` now lives in `lib/findings.ts` alongside the rollup helpers — the
+ * severity counters and their popovers format the same line ranges, and two
+ * copies would be one too many. Re-exported here so this component's imports
+ * (and its tests) keep working.
+ */
+export { lineLabel } from "@/lib/findings";

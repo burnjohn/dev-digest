@@ -5,9 +5,9 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { FindingRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 // RunCostBadge on each settled row reads the `runs` namespace.
 import runsMessages from "../../../../../../../../messages/en/runs.json";
@@ -37,12 +37,33 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(runs: RunSummary[], findingsByRun?: Map<string, FindingRecord[]>) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages, runs: runsMessages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} findingsByRun={findingsByRun} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
+}
+
+function finding(o: Partial<FindingRecord> & { id: string }): FindingRecord {
+  return {
+    severity: "WARNING",
+    category: "perf",
+    title: `Finding ${o.id}`,
+    file: "src/a.ts",
+    start_line: 1,
+    end_line: 1,
+    rationale: "because",
+    suggestion: null,
+    confidence: 0.9,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "r1",
+    accepted_at: null,
+    dismissed_at: null,
+    ...o,
+  };
 }
 
 describe("RunHistory — outcome badge", () => {
@@ -74,5 +95,91 @@ describe("RunHistory — outcome badge", () => {
   it("a running run reads 'running'", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — severity counters", () => {
+  it("breaks a run's findings down by severity instead of a flat count", () => {
+    renderRuns(
+      [run({ run_id: "r1", status: "done", findings_count: 3, blockers: 2, score: 38 })],
+      new Map([
+        [
+          "r1",
+          [
+            finding({ id: "c1", severity: "CRITICAL" }),
+            finding({ id: "c2", severity: "CRITICAL" }),
+            finding({ id: "w1", severity: "WARNING" }),
+          ],
+        ],
+      ]),
+    );
+    expect(screen.getByRole("button", { name: /2 critical/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1 warning/i })).toBeInTheDocument();
+    // The flat "3 finding(s)" line it replaces is gone; blockers stay.
+    expect(screen.queryByText(/3 finding/)).not.toBeInTheDocument();
+    expect(screen.getByText(/2 blockers/)).toBeInTheDocument();
+  });
+
+  it("counts only THAT run's findings, not the PR's", () => {
+    renderRuns(
+      [
+        run({ run_id: "r1", agent_name: "Security Reviewer", status: "done", score: 38 }),
+        run({ run_id: "r2", agent_name: "Performance Reviewer", status: "done", score: 64 }),
+      ],
+      new Map([
+        ["r1", [finding({ id: "c1", severity: "CRITICAL" })]],
+        ["r2", [finding({ id: "s1", severity: "SUGGESTION" })]],
+      ]),
+    );
+    expect(screen.getByRole("button", { name: /1 critical/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1 suggestion/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /warning/i })).not.toBeInTheDocument();
+  });
+
+  it("opens that run's findings, scoped to the clicked severity", () => {
+    renderRuns(
+      [run({ run_id: "r1", status: "done", score: 64 })],
+      new Map([
+        [
+          "r1",
+          [
+            finding({ id: "w1", severity: "WARNING", title: "N+1 query in user list endpoint" }),
+            finding({ id: "s1", severity: "SUGGESTION", title: "Extract magic number 3600" }),
+          ],
+        ],
+      ]),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /1 warning/i }));
+    const panel = screen.getByRole("dialog");
+    expect(within(panel).getByText("N+1 query in user list endpoint")).toBeInTheDocument();
+    expect(within(panel).queryByText("Extract magic number 3600")).not.toBeInTheDocument();
+    expect(within(panel).getByText(/in this run/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the flat count until the reviews behind the timeline load", () => {
+    // No findingsByRun map yet — the row must not go blank.
+    renderRuns([run({ status: "done", findings_count: 3, blockers: 0, score: 72 })]);
+    expect(screen.getByText(/3 finding/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /critical/i })).not.toBeInTheDocument();
+  });
+
+  it("falls back for a failed run, which never produced a review", () => {
+    renderRuns(
+      [run({ run_id: "r1", status: "failed", error: "429 quota exceeded" })],
+      new Map([["other-run", [finding({ id: "w1" })]]]),
+    );
+    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(screen.getByText("429 quota exceeded")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /warning/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the zero state for a clean run rather than an empty gap", () => {
+    renderRuns(
+      [run({ run_id: "r1", status: "done", findings_count: 0, blockers: 0, score: 95 })],
+      new Map([["r1", []]]),
+    );
+    expect(screen.getByText("approved")).toBeInTheDocument();
+    expect(screen.getByText("No findings")).toBeInTheDocument();
   });
 });

@@ -3,8 +3,10 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/run-cost-badge";
+import { SeverityCounters } from "@/components/severity-counters";
+import { countBySeverity } from "@/lib/findings";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,12 +90,21 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun,
+  repoFullName,
+  headSha,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Findings of the review each run produced, keyed by run id. Absent for a
+      run that produced no review (a failed one), or before reviews load —
+      those fall back to the run row's own `findings_count`. */
+  findingsByRun?: Map<string, FindingRecord[]>;
+  repoFullName?: string | null;
+  headSha?: string | null;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -150,6 +161,10 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        // Reviews load separately from runs, so a settled run may briefly have
+        // no findings to break down. Keep the flat count until they arrive
+        // rather than flashing an empty row.
+        const runFindings = findingsByRun?.get(r.run_id);
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -189,7 +204,23 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
+              {settled && runFindings && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <SeverityCounters
+                    counts={countBySeverity(runFindings)}
+                    findings={runFindings}
+                    scope="run"
+                    repoFullName={repoFullName}
+                    headSha={headSha}
+                  />
+                  {(r.blockers ?? 0) > 0 && (
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {t("runStatus.blockers", { count: r.blockers ?? 0 })}
+                    </span>
+                  )}
+                </div>
+              )}
+              {settled && !runFindings && (
                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   {t("runStatus.findings", { count: r.findings_count ?? 0 })}
                   {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}

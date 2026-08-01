@@ -25,7 +25,7 @@ export const SIZE_COLOR: Record<string, string> = {
 
 /** Grid template for both the header row and PR rows. Must stay in lockstep
     with COLUMN_KEYS below and with PRRow's cells — three separate declarations. */
-export const GRID = "1fr 132px 92px 60px 118px 78px 78px";
+export const GRID = "1fr 132px 92px 60px 148px 118px 78px 78px";
 
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;
@@ -45,6 +45,7 @@ export const COLUMN_KEYS: string[] = [
   "author",
   "size",
   "score",
+  "findings",
   "status",
   "cost",
   "updated",

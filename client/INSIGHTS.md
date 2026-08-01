@@ -42,13 +42,41 @@ _None yet._
 
 ## Codebase Patterns
 
-_None yet._
+- **2026-08-01** — Any overlay anchored to a PR-list row must be portalled to
+  `document.body` with `position: fixed`, not absolutely positioned inside the
+  row. `s.tableCard` sets `overflow: "hidden"` (it is what keeps the first/last
+  row inside the card's rounded corners), so an absolute panel is clipped at the
+  card edge — invisibly fine for the top rows and broken for every row near the
+  bottom, which is the majority. `SeverityCounters` anchors via
+  `getBoundingClientRect()`, flips above the trigger when the panel would run
+  past `window.innerHeight`, and repositions on `scroll`/`resize` (capture
+  phase) rather than closing, so a row scrolling under the cursor does not read
+  as a dismissal. Note this makes "outside click" span two disjoint nodes — the
+  dismiss handler must check the trigger wrapper **and** the portalled panel.
+  There is still no `Popover` primitive; `src/vendor/ui` is off-limits, so
+  app-level overlays copy the outside-click shape from
+  `src/vendor/ui/kit/Dropdown.tsx:60`.
+  `client/src/components/severity-counters/SeverityCounters.tsx:104`
+  `client/src/app/repos/[repoId]/pulls/styles.ts:91`
 
 ## Tool & Library Notes
 
 _None yet._
 
 ## Recurring Errors & Fixes
+
+- **2026-08-01** — `TS7053: … expression of type 'Severity' can't be used to
+  index type '{ CRITICAL: number; WARNING: number; SUGGESTION: number; }'.
+  Property 'INFO' does not exist` means `Severity` was imported from
+  `@devdigest/ui` when it should have come from `@devdigest/shared`. The two are
+  different types with the same name: the UI token map carries a fourth `INFO`
+  entry (`src/vendor/ui/primitives/tokens.ts:5`) that the Zod enum
+  (`contracts/findings.ts:11`) does not define and the API never emits. Import
+  the contract type for anything that indexes, tallies, or round-trips a
+  severity; the UI type is a superset, so a contract value still passes straight
+  into `<SeverityBadge severity={…} />` with no cast. Existing call sites that
+  do `f.severity as Severity` are papering over exactly this.
+  `client/src/components/severity-counters/SeverityCounters.tsx:9`
 
 - **2026-08-01** — A vitest failure whose two sides look identical —
   `expected '9 119 tok' to be '9 119 tok'` — is a look-alike Unicode space, not
