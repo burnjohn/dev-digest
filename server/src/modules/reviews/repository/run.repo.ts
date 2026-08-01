@@ -65,6 +65,9 @@ export async function listRunsForPull(
     score: run.score,
     blockers: run.blockers,
     cost: run.cost != null ? Number(run.cost) : null,
+    findings_critical: run.findingsCritical,
+    findings_warning: run.findingsWarning,
+    findings_suggestion: run.findingsSuggestion,
   }));
 }
 
@@ -155,6 +158,9 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** LLM cost in USD; null when unknown or free model. */
     cost?: number | null;
+    findingsCritical?: number | null;
+    findingsWarning?: number | null;
+    findingsSuggestion?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
   },
@@ -171,6 +177,9 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       cost: values.cost != null ? String(values.cost) : null,
+      findingsCritical: values.findingsCritical ?? null,
+      findingsWarning: values.findingsWarning ?? null,
+      findingsSuggestion: values.findingsSuggestion ?? null,
       error: values.error ?? null,
     })
     .where(eq(t.agentRuns.id, runId));

@@ -238,6 +238,9 @@ export class ReviewRunExecutor {
       // Deterministic blocker count (severity ≥ the agent's gate) — the signal
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
+      const findingsCritical   = keptFindings.filter((f) => f.severity === 'CRITICAL').length;
+      const findingsWarning    = keptFindings.filter((f) => f.severity === 'WARNING').length;
+      const findingsSuggestion = keptFindings.filter((f) => f.severity === 'SUGGESTION').length;
 
       // ---- Observability: agent_runs + ONE run_traces document --------------
       await this.repo.completeAgentRun(runId, {
@@ -250,6 +253,9 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         blockers,
         cost: outcome.costUsd,
+        findingsCritical,
+        findingsWarning,
+        findingsSuggestion,
         error: null,
       });
 

@@ -30,6 +30,9 @@ export const agentRuns = pgTable('agent_runs', {
   blockers: integer('blockers'),
   /** LLM cost for this run in USD (null when unknown / free model). */
   cost: numeric('cost', { precision: 12, scale: 8 }),
+  findingsCritical: integer('findings_critical'),
+  findingsWarning: integer('findings_warning'),
+  findingsSuggestion: integer('findings_suggestion'),
 });
 
 /** Whole trace of one run as a SINGLE jsonb document. */
