@@ -12,6 +12,114 @@
   src: local("Inter");
 }
 
+/* Rendered markdown (the `dd-md` wrapper from the Markdown primitive).
+   The primitive itself only styles p/strong/code/a inline, which is enough for a
+   one-line finding but not for a PR body with headings, tables and fenced code.
+   Everything here goes through the theme tokens, so light mode follows for free. */
+.dd-md > :first-child {
+  margin-top: 0;
+}
+.dd-md > :last-child {
+  margin-bottom: 0;
+}
+
+.dd-md h1,
+.dd-md h2,
+.dd-md h3,
+.dd-md h4 {
+  color: var(--text-primary);
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 20px 0 10px;
+}
+.dd-md h1 {
+  font-size: 1.3em;
+}
+.dd-md h2 {
+  font-size: 1.15em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.dd-md h3 {
+  font-size: 1.05em;
+}
+.dd-md h4 {
+  font-size: 1em;
+}
+
+.dd-md ul,
+.dd-md ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.dd-md li {
+  margin: 3px 0;
+}
+.dd-md li::marker {
+  color: var(--text-muted);
+}
+
+/* Fenced blocks scroll rather than stretching the page. The primitive gives every
+   <code> an inline pill style; inside a <pre> that reads as a badge wrapped around
+   a block, so it has to be undone — and only !important beats an inline style. */
+.dd-md pre {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-hover);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+.dd-md pre code {
+  padding: 0 !important;
+  background: none !important;
+  color: var(--text-primary) !important;
+  font-size: 0.88em !important;
+  white-space: pre;
+}
+
+/* Wide tables scroll inside the block instead of widening the description card. */
+.dd-md table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 12px;
+  font-size: 0.95em;
+}
+.dd-md th,
+.dd-md td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.dd-md th {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.dd-md blockquote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+.dd-md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+.dd-md img {
+  max-width: 100%;
+}
+.dd-md input[type="checkbox"] {
+  margin-right: 6px;
+}
+
 @keyframes ddToastIn {
   from {
     opacity: 0;
