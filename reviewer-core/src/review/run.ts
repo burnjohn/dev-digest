@@ -96,6 +96,12 @@ export interface ReviewInput {
    * type, e.g. the server's RunCancelledError); the engine stays agnostic.
    */
   checkCancelled?: () => void;
+  /**
+   * Cancellation for the LLM request itself. `checkCancelled` can only stop the
+   * loop BETWEEN chunks — in single-pass there is one chunk, so without this an
+   * in-flight generation runs to completion after the user cancels.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ReviewOutcome {
@@ -196,6 +202,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       messages: a.messages,
       maxRetries,
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;

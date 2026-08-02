@@ -107,6 +107,16 @@ export class ReviewRunExecutor {
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
     for (const { agent, runId } of jobs) {
+      // Agents run one after another, so a run cancelled while an earlier agent
+      // was still working has never been looked at. Its row already says
+      // 'cancelled' (the route wrote it); starting the agent anyway is how
+      // cancelled runs used to come back 'done' with a bill attached.
+      if (this.container.runBus.isCancelled(runId)) {
+        runLog.info(`Skipping "${agent.name}" — run was cancelled before it started`);
+        this.container.runBus.complete(runId);
+        continue;
+      }
+
       const agentStart = Date.now();
       logger?.info(
         { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
@@ -211,6 +221,9 @@ export class ReviewRunExecutor {
         checkCancelled: () => {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
+        // Stops the money, not just the loop: checkCancelled only fires between
+        // chunks, and single-pass has exactly one.
+        signal: this.container.runBus.signalFor(runId),
       });
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
@@ -294,7 +307,11 @@ export class ReviewRunExecutor {
     } catch (err) {
       // Failure/cancel: persist status + the error text + the log-so-far so the
       // run (and WHY it failed) is visible on the UI after a reload.
-      const cancelled = err instanceof RunCancelledError;
+      // RunCancelledError comes from the between-chunks checkpoint; an aborted
+      // in-flight request instead surfaces as a bare AbortError from the SDK.
+      // Both mean the same thing, so ask the bus rather than the error type.
+      const cancelled =
+        err instanceof RunCancelledError || this.container.runBus.isCancelled(runId);
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);

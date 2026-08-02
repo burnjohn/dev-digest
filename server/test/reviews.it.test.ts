@@ -7,7 +7,8 @@ import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { Review } from '@devdigest/shared';
+import type { Review, LLMProvider, StructuredRequest, StructuredResult } from '@devdigest/shared';
+import { ReviewRepository } from '../src/modules/reviews/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -117,8 +118,14 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       overrides: {
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
+        // Every provider id is stubbed, not just the one under test. The seeded
+        // agents are openrouter/deepseek, so any `all: true` review would
+        // otherwise resolve a REAL provider and bill a real API call from a
+        // test — which is exactly what it was doing.
         llm: {
-          [provider]: new MockLLMProvider(provider, { structured }),
+          openai: new MockLLMProvider('openai', { structured }),
+          anthropic: new MockLLMProvider('anthropic', { structured }),
+          openrouter: new MockLLMProvider(provider, { structured }),
         },
       },
     });
@@ -303,5 +310,110 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     // seed has 2 enabled agents; we may have created more above in this PR's ws.
     expect(body.runs.length).toBeGreaterThanOrEqual(2);
     await app.close();
+  });
+
+  /**
+   * Regression: cancelling a multi-agent review used to do nothing. The flag was
+   * erased by `complete()` inside cancelRun, the agent loop never checked it,
+   * and `completeAgentRun` had no status guard — so the in-flight request ran to
+   * the end and the remaining agents started, finished, and overwrote their
+   * 'cancelled' rows with 'done'. Real money, for work the user had stopped.
+   */
+  it('cancel stops the in-flight request AND the agents that have not started', async () => {
+    let calls = 0;
+    let firstCallStarted: () => void;
+    const inFlight = new Promise<void>((r) => (firstCallStarted = r));
+
+    // Blocks until its signal aborts — i.e. it only finishes if cancelled.
+    const stalling: LLMProvider = {
+      id: 'openai',
+      listModels: async () => [{ id: 'gpt-4.1', provider: 'openai' }],
+      complete: async () => {
+        throw new Error('unused');
+      },
+      embed: async () => [],
+      completeStructured: <T,>(req: StructuredRequest<T>) => {
+        calls++;
+        firstCallStarted();
+        return new Promise<StructuredResult<T>>((_res, rej) => {
+          req.signal?.addEventListener('abort', () => {
+            const e = new Error('The user aborted a request.');
+            e.name = 'AbortError';
+            rej(e);
+          });
+        });
+      },
+    };
+
+    const app = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        embedder: new MockEmbedder(),
+        git: new MockGitClient({ diff: DIFF }),
+        // All three ids, so the seeded openrouter agents cannot escape to the
+        // real API — every agent in the batch blocks on this one provider.
+        llm: { openai: stalling, anthropic: stalling, openrouter: stalling },
+      },
+    });
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    for (const name of ['C1', 'C2', 'C3']) {
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name, provider: 'openai', model: 'gpt-4.1', system_prompt: 'x' },
+      });
+    }
+    const body = (
+      await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { all: true } })
+    ).json();
+    const runIds: string[] = body.runs.map((r: { run_id: string }) => r.run_id);
+    expect(runIds.length).toBeGreaterThanOrEqual(3);
+
+    // Agent 1 is now blocked inside the LLM call — exactly when a user hits Cancel.
+    await inFlight;
+    for (const id of runIds) {
+      await app.inject({ method: 'POST', url: `/runs/${id}/cancel` });
+    }
+
+    const all = await waitForPrRuns(pg.handle.db, pr.id, { expected: runIds.length });
+    // Earlier tests in this file reuse the same PR, so scope to this run batch.
+    const mine = all.filter((r) => runIds.includes(r.id));
+    expect(mine).toHaveLength(runIds.length);
+
+    // The abort tore the live request down, and no later agent ever reached the LLM.
+    expect(calls).toBe(1);
+    expect(mine.map((r) => r.status)).toEqual(mine.map(() => 'cancelled'));
+    // Nothing was produced, so nothing may be reported as a cost.
+    expect(mine.map((r) => r.costUsd)).toEqual(mine.map(() => null));
+    await app.close();
+  });
+
+  it('completeAgentRun cannot resurrect a cancelled run', async () => {
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const [row] = await pg.handle.db
+      .insert(t.agentRuns)
+      .values({ workspaceId, prId: pr.id, status: 'cancelled' })
+      .returning({ id: t.agentRuns.id });
+
+    const repo = new ReviewRepository(pg.handle.db);
+    await repo.completeAgentRun(row!.id, {
+      status: 'done',
+      durationMs: 1,
+      tokensIn: 1,
+      tokensOut: 1,
+      costUsd: 0.5,
+      findingsCount: 0,
+      grounding: '0/0 passed',
+      error: null,
+    });
+
+    const [after] = await pg.handle.db
+      .select()
+      .from(t.agentRuns)
+      .where(eq(t.agentRuns.id, row!.id));
+    expect(after!.status).toBe('cancelled');
+    expect(after!.costUsd).toBeNull();
   });
 });

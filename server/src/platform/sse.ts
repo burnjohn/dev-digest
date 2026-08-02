@@ -22,11 +22,30 @@ export class RunBus {
   private seq = new Map<string, number>();
   private completed = new Set<string>();
   private cancelled = new Set<string>();
+  private controllers = new Map<string, AbortController>();
 
-  /** Request cancellation of an in-flight run. The runner checks `isCancelled`
-   *  at its next checkpoint (between map-reduce files) and stops. */
+  /**
+   * Signal handed to the LLM call so cancellation can tear the request down.
+   * The checkpoint flag alone only stops the NEXT call; an in-flight generation
+   * keeps running — and keeps billing — until it finishes on its own.
+   */
+  signalFor(runId: string): AbortSignal {
+    let c = this.controllers.get(runId);
+    if (!c) {
+      c = new AbortController();
+      this.controllers.set(runId, c);
+      // Cancelled before the run reached the LLM: hand back an already-aborted
+      // signal rather than a live one.
+      if (this.cancelled.has(runId)) c.abort();
+    }
+    return c.signal;
+  }
+
+  /** Request cancellation of an in-flight run: abort the live request, and set
+   *  the flag the runner checks at its next checkpoint. */
   cancel(runId: string): void {
     this.cancelled.add(runId);
+    this.controllers.get(runId)?.abort();
   }
 
   /** Whether cancellation has been requested for a run. */
@@ -76,7 +95,10 @@ export class RunBus {
   complete(runId: string): void {
     const e = this.emitters.get(runId);
     this.completed.add(runId);
-    this.cancelled.delete(runId);
+    // Deliberately NOT clearing `cancelled`: cancellation is terminal. It used
+    // to be cleared here, and since cancelRun() calls cancel() then complete()
+    // two lines apart, the flag lived for the length of one UPDATE — every
+    // later isCancelled() saw false, so nothing downstream could ever stop.
     e?.emit('done');
     // Keep the buffer briefly available for late subscribers; clear emitter.
     this.emitters.delete(runId);

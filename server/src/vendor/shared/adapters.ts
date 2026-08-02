@@ -67,6 +67,12 @@ export interface StructuredRequest<T> {
    * the `session_id` body field; ignored by providers that don't support it.
    */
   sessionId?: string;
+  /**
+   * Caller-owned cancellation. Aborting it tears the HTTP request down instead
+   * of merely marking the run cancelled and paying for the rest of the
+   * generation. Optional: providers that ignore it still satisfy the interface.
+   */
+  signal?: AbortSignal;
 }
 
 export interface StructuredResult<T> {
