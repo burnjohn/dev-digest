@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
@@ -109,6 +110,76 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     expect(list.json().some((r: { full_name: string }) => r.full_name === 'acme/widgets')).toBe(
       true,
     );
+    await app.close();
+  });
+
+  it('rapid refresh is idempotent while work is outstanding, and exposes the job', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    // A clone that takes a moment, so the second click lands while it is queued.
+    const slowGit = new MockGitClient();
+    const original = slowGit.clone.bind(slowGit);
+    slowGit.clone = async (...args: Parameters<typeof original>) => {
+      await new Promise((r) => setTimeout(r, 150));
+      return original(...args);
+    };
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: { git: slowGit, github: new MockGitHubClient() },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+
+    // Five clicks as fast as the client can send them.
+    const bodies = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        app.inject({ method: 'POST', url: `/repos/${repoId}/refresh` }).then((r) => r.json()),
+      ),
+    );
+    const ids = new Set(bodies.map((b: { job_id: string }) => b.job_id));
+    // One unit of work, not five — this is what kept racing git against itself.
+    expect(ids.size).toBe(1);
+
+    const jobId = [...ids][0]!;
+    const job = (await app.inject({ method: 'GET', url: `/jobs/${jobId}` })).json();
+    expect(job.kind).toBe('clone');
+    // The POST answered in milliseconds; the work is reported separately.
+    expect(['queued', 'running', 'done']).toContain(job.status);
+
+    expect((await app.inject({ method: 'GET', url: `/jobs/${randomUUID()}` })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('boot reaps job rows orphaned by a dead process, so refresh is not pinned to a ghost', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const [ws] = await pg.handle.db.select({ id: t.workspaces.id }).from(t.workspaces).limit(1);
+    const [repo] = await pg.handle.db.select({ id: t.repos.id }).from(t.repos).limit(1);
+    // A clone left 'running' when the previous process died: no live queue owns
+    // it, so without reaping it would win activeCloneJobFor() forever and every
+    // refresh would answer with a job that never completes.
+    const [ghost] = await pg.handle.db
+      .insert(t.jobs)
+      .values({
+        workspaceId: ws!.id,
+        kind: 'clone',
+        status: 'running',
+        payload: { repoId: repo!.id },
+      })
+      .returning({ id: t.jobs.id });
+
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+    });
+
+    const reaped = (await app.inject({ method: 'GET', url: `/jobs/${ghost!.id}` })).json();
+    expect(reaped.status).toBe('failed');
+    expect(reaped.error).toMatch(/orphaned/);
+
+    const refresh = (
+      await app.inject({ method: 'POST', url: `/repos/${repo!.id}/refresh` })
+    ).json();
+    expect(refresh.job_id).not.toBe(ghost!.id);
     await app.close();
   });
 

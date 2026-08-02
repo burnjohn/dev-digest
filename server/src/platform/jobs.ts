@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
 import { withTimeout, withRetry } from './resilience.js';
@@ -97,7 +97,35 @@ export class JobRunner {
       }
     }) as Promise<void>;
 
+    // Jobs are fire-and-forget: every caller drops `done` on the floor. The
+    // rethrow above is still wanted for anyone who DOES await it, but an
+    // unobserved rejection takes the whole process down — a failed clone, a
+    // git ref race, a timeout, any of them killed the API outright. Attaching a
+    // handler here marks the promise observed; a caller who awaits `done` is
+    // unaffected and still sees the rejection.
+    done.catch(() => undefined);
+
     return { id: jobId, done };
+  }
+
+  /**
+   * Fail jobs left 'queued'/'running' by a previous (now-dead) process. The
+   * queue is in-memory, so nothing will ever finish those rows — and since
+   * refresh dedupes onto the active job, a ghost row would make every refresh
+   * return a job that never completes. Call on boot, before listening; same
+   * single-instance assumption as the stale-run reaper in app.ts.
+   */
+  async reapOrphans(): Promise<number> {
+    const rows = await this.db
+      .update(t.jobs)
+      .set({
+        status: 'failed',
+        finishedAt: new Date(),
+        error: 'orphaned by server restart',
+      })
+      .where(inArray(t.jobs.status, ['queued', 'running']))
+      .returning({ id: t.jobs.id });
+    return rows.length;
   }
 
   /** Wait for the queue to drain (useful in tests). */

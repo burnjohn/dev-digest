@@ -42,6 +42,33 @@ export class SimpleGitClient implements GitClient {
     return simpleGit(this.clonePathFor(repo));
   }
 
+  /** Tail of the pending op chain, per clone directory. */
+  private locks = new Map<string, Promise<unknown>>();
+
+  /**
+   * Serialise ref-MUTATING git ops on one clone. Two concurrent `fetch`es in
+   * the same directory race on `refs/remotes/origin/<branch>` and the loser
+   * dies with `cannot lock ref … is at X but expected Y`. That is easy to
+   * trigger — the refresh button enqueues a job per click and the runner runs
+   * three at a time — and until the job runner stopped rethrowing, it took the
+   * whole API down with it.
+   *
+   * Read-only ops (diff, blame, log, revparse) are not serialised: they take no
+   * ref locks and queueing them behind a fetch would only add latency.
+   */
+  private withRepoLock<T>(repo: RepoRef, fn: () => Promise<T>): Promise<T> {
+    const key = this.clonePathFor(repo);
+    const prev = this.locks.get(key) ?? Promise.resolve();
+    // Run on both settle paths: one op failing must not wedge the queue.
+    const next = prev.then(fn, fn);
+    // Store an already-handled view so a rejection here is never unobserved.
+    this.locks.set(
+      key,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
+
   private async exists(path: string): Promise<boolean> {
     try {
       await access(path, constants.F_OK);
@@ -51,7 +78,15 @@ export class SimpleGitClient implements GitClient {
     }
   }
 
-  async clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }> {
+  clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }> {
+    return this.withRepoLock(repo, () => this.cloneUnlocked(repo, url, opts));
+  }
+
+  private async cloneUnlocked(
+    repo: RepoRef,
+    url: string,
+    opts?: CloneOptions,
+  ): Promise<{ path: string }> {
     const dest = this.clonePathFor(repo);
     await mkdir(join(this.cloneDir, repo.owner), { recursive: true });
     if (await this.exists(join(dest, '.git'))) {
@@ -69,12 +104,18 @@ export class SimpleGitClient implements GitClient {
     return { path: dest };
   }
 
-  async fetchPullHead(repo: RepoRef, n: number): Promise<void> {
-    // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head).
-    await this.git(repo).fetch(['origin', `pull/${n}/head:pr-${n}`]);
+  fetchPullHead(repo: RepoRef, n: number): Promise<void> {
+    return this.withRepoLock(repo, async () => {
+      // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head).
+      await this.git(repo).fetch(['origin', `pull/${n}/head:pr-${n}`]);
+    });
   }
 
-  async sync(repo: RepoRef, branch: string): Promise<{ head: string }> {
+  sync(repo: RepoRef, branch: string): Promise<{ head: string }> {
+    return this.withRepoLock(repo, () => this.syncUnlocked(repo, branch));
+  }
+
+  private async syncUnlocked(repo: RepoRef, branch: string): Promise<{ head: string }> {
     // Resync the read-only mirror to upstream. A bare `fetch` only moves
     // `origin/<branch>`, so we `reset --hard` to advance local HEAD + worktree —
     // safe here because we never commit to or run code from the clone.

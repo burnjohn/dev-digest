@@ -4,6 +4,7 @@ import { RepoInput } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { RepoService } from './service.js';
+import { NotFoundError } from '../../platform/errors.js';
 
 /**
  * F1 — repos module. Transport layer only: parses requests, maps status
@@ -38,6 +39,19 @@ export default async function reposRoutes(appBase: FastifyInstance) {
   app.post('/repos/:id/refresh', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     return service.refresh(workspaceId, req.params.id);
+  });
+
+  /**
+   * Status of a background job. `POST /repos/:id/refresh` returns in ~10ms
+   * because it only queues work — this is how a caller learns when the work
+   * actually finished, and why it failed. Without it a 403 from a clone is
+   * invisible: the POST already answered 200.
+   */
+  app.get('/jobs/:id', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const job = await service.jobStatus(workspaceId, req.params.id);
+    if (!job) throw new NotFoundError('Job not found');
+    return job;
   });
 
   app.delete('/repos/:id', { schema: { params: IdParams } }, async (req) => {

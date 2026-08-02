@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
@@ -83,5 +83,38 @@ export class RepoRepository {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, id)))
       .returning({ id: t.repos.id });
     return deleted.length > 0;
+  }
+
+  async jobById(
+    workspaceId: string,
+    jobId: string,
+  ): Promise<{ id: string; kind: string; status: string; error: string | null } | null> {
+    const [row] = await this.db
+      .select({ id: t.jobs.id, kind: t.jobs.kind, status: t.jobs.status, error: t.jobs.error })
+      .from(t.jobs)
+      .where(and(eq(t.jobs.workspaceId, workspaceId), eq(t.jobs.id, jobId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Id of an outstanding clone job for this repo, if any. Used to make refresh
+   * idempotent: the payload carries `repoId`, so a JSONB lookup finds a job
+   * that is queued or already running.
+   */
+  async activeCloneJobFor(workspaceId: string, repoId: string): Promise<string | null> {
+    const [row] = await this.db
+      .select({ id: t.jobs.id })
+      .from(t.jobs)
+      .where(
+        and(
+          eq(t.jobs.workspaceId, workspaceId),
+          eq(t.jobs.kind, 'clone'),
+          inArray(t.jobs.status, ['queued', 'running']),
+          sql`${t.jobs.payload}->>'repoId' = ${repoId}`,
+        ),
+      )
+      .limit(1);
+    return row?.id ?? null;
   }
 }
