@@ -10,7 +10,7 @@ import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
-import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
+import { useDeleteReview, usePrRuns } from "../../../../../../../lib/hooks/reviews";
 
 const VERDICT_COLOR: Record<string, string> = {
   request_changes: "var(--crit)",
@@ -52,6 +52,11 @@ export function ReviewRunAccordion({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
+  // Usage lives on the agent_run, not the review. reviews.run_id links the two,
+  // and the timeline on this same page has already fetched the run list, so this
+  // resolves from the react-query cache without another request.
+  const runs = usePrRuns(prId);
+  const run = review.run_id ? runs.data?.find((r) => r.run_id === review.run_id) : undefined;
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
@@ -144,6 +149,9 @@ export function ReviewRunAccordion({
                 findingsCount={findings.length}
                 blockers={blockers}
                 agentName={review.agent_name}
+                cost={run?.cost_usd}
+                tokensIn={run?.tokens_in}
+                tokensOut={run?.tokens_out}
               />
             </div>
           )}

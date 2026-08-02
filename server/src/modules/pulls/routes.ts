@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -129,6 +129,30 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total USD per PR for the list's COST column: every completed, priced run
+    // summed. Also computed on read (agent_runs has no FK back onto the PR row).
+    // Unpriced runs are excluded rather than counted as 0, so a PR with no
+    // priced run at all stays null — the UI must show "—", never "$0.00".
+    const costByPr = new Map<string, number>();
+    if (prIds.length > 0) {
+      const costRows = await container.db
+        .select({ prId: t.agentRuns.prId, total: sql<string>`sum(${t.agentRuns.costUsd})` })
+        .from(t.agentRuns)
+        .where(
+          and(
+            eq(t.agentRuns.workspaceId, workspaceId),
+            inArray(t.agentRuns.prId, prIds),
+            eq(t.agentRuns.status, 'done'),
+            isNotNull(t.agentRuns.costUsd),
+          ),
+        )
+        .groupBy(t.agentRuns.prId);
+      for (const row of costRows) {
+        // drizzle returns SQL sum() as a string; NULL only if the group is empty.
+        if (row.prId && row.total != null) costByPr.set(row.prId, Number(row.total));
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +177,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });

@@ -16,7 +16,7 @@ import { RepoNotFound } from "@/components/repo-not-found";
 import { usePulls, useRefreshRepo } from "@/lib/hooks";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
 import { ApiError } from "@/lib/api";
-import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
+import { COLUMN_KEYS, RIGHT_ALIGNED_COLUMNS, SKELETON_ROWS } from "./constants";
 import { s } from "./styles";
 import { PRRow } from "./_components/PRRow";
 import { FilterBar } from "./_components/FilterBar";
@@ -97,8 +97,8 @@ export default function PullsPage() {
           refreshing={refresh.isPending}
         />
         <div style={s.headRow}>
-          {COLUMN_KEYS.map((key, i) => (
-            <div key={key} style={s.headCell(i === COLUMN_KEYS.length - 1)}>
+          {COLUMN_KEYS.map((key) => (
+            <div key={key} style={s.headCell(RIGHT_ALIGNED_COLUMNS.has(key))}>
               {t(`list.columns.${key}`)}
             </div>
           ))}
