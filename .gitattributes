@@ -1,0 +1,7 @@
+# Machine-generated files. They must stay in the repo — drizzle-kit diffs the
+# TypeScript schema against the newest snapshot to compute the next migration,
+# so deleting one makes `db:generate` re-emit changes that are already applied.
+# But nobody reviews them: marking them generated collapses them in GitHub's
+# "Files changed" and keeps them out of language stats.
+server/src/db/migrations/meta/*_snapshot.json linguist-generated=true
+server/src/db/migrations/meta/_journal.json   linguist-generated=true
