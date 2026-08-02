@@ -113,7 +113,9 @@ export class AnthropicProvider implements LLMProvider {
               },
             ],
             tool_choice: { type: 'tool', name: toolName },
-          }),
+          },
+          // Cancellation tears the request down instead of leaving it to bill out.
+          req.signal ? { signal: req.signal } : undefined),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );

@@ -145,23 +145,33 @@ export class OpenRouterProvider implements LLMProvider {
                 // cost (USD) in `usage.cost`, instead of estimating from a price book.
                 ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
               },
-              // The only thing that actually bounds the call. Without it a stalled
-              // generation hangs the run forever, because the SDK's own timer is
-              // cleared once the response headers arrive.
-              { signal: AbortSignal.timeout(this.timeoutMs) },
+              // Two reasons to stop: our timeout (the only thing that actually
+              // bounds the call — the SDK's own timer is cleared once the
+              // response headers arrive) and the caller cancelling the run.
+              // A fresh timeout per attempt; the caller's signal is shared.
+              {
+                signal: req.signal
+                  ? AbortSignal.any([AbortSignal.timeout(this.timeoutMs), req.signal])
+                  : AbortSignal.timeout(this.timeoutMs),
+              },
             ),
           {
             retries: this.transportRetries,
             sleep: this.sleep,
             // Our own timeout counts as transport: the SDK reports a
             // caller-supplied signal as a USER abort and skips its retries.
-            isRetryable: (e) => isTransient(e) || isAbort(e),
+            // But a CANCELLED run must not be retried — that would re-issue
+            // the very request the user just paid to stop.
+            isRetryable: (e) => !req.signal?.aborted && (isTransient(e) || isAbort(e)),
             onRetry: () => {
               transportAttempts++;
             },
           },
         );
       } catch (err) {
+        // Cancellation surfaces as-is; the caller knows why it aborted and
+        // labels the run. Only OUR timeout gets renamed.
+        if (req.signal?.aborted) throw err;
         // Name the real cause. Without this a timeout would surface as a bare
         // AbortError, and an exhausted retry as whatever the last attempt threw.
         if (isAbort(err)) {

@@ -173,7 +173,10 @@ export async function completeAgentRun(
       blockers: values.blockers ?? null,
       error: values.error ?? null,
     })
-    .where(eq(t.agentRuns.id, runId));
+    // Only a RUNNING run may be completed. Without this guard a late result
+    // overwrites a 'cancelled' row with 'done' — which is how three cancelled
+    // runs ended up reported as successful, billed and all.
+    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.status, 'running')));
 }
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */
