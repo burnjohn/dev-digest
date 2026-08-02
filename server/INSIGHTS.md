@@ -13,6 +13,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 ## What Works
 
 - `2026-08-01` — The error-handler contract has a hermetic regression guard that needs no Postgres: `routes-smoke` builds the app with `buildApp({ config })` and asserts 422 + `error.code === "validation_error"` via `app.inject`, so changes to the zod branches can be verified in seconds without testcontainers → `cd server && pnpm test routes-smoke` (`test/routes-smoke.test.ts:56`)
+- `2026-08-02` — When a feature spans route → bus → executor → repo, test the WIRING, not the contract: cancellation had one passing engine-contract test (a throwing callback stops the loop) and four defects, every one of them in a layer that test never touched. The contract was the only thing not broken → `reviewer-core/test/run.test.ts:91`
 
 ## What Doesn't Work
 
