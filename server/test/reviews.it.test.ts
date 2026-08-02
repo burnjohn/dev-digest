@@ -208,6 +208,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.status).toBe('done');
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
+    // Cost survives the whole path: provider usage → ReviewOutcome.costUsd →
+    // agent_runs.cost_usd → the persisted trace. MockLLMProvider prices each
+    // structured call at 0.001; the two must agree with each other.
+    expect(run!.costUsd).toBeCloseTo(0.001, 6);
+    expect(trace.stats.cost_usd).toBe(run!.costUsd);
 
     await app.close();
   });

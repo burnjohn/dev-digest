@@ -23,8 +23,8 @@ export const SIZE_COLOR: Record<string, string> = {
   L: "var(--crit)",
 };
 
-/** Grid template for both the header row and PR rows. */
-export const GRID = "1fr 132px 92px 60px 118px 78px";
+/** Grid template for both the header row and PR rows. Tracks match COLUMN_KEYS. */
+export const GRID = "1fr 132px 92px 60px 118px 84px 78px";
 
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;
@@ -45,8 +45,15 @@ export const COLUMN_KEYS: string[] = [
   "size",
   "score",
   "status",
+  "cost",
   "updated",
 ];
+
+/**
+ * Columns whose header and cell are right-aligned. Keyed by name rather than
+ * position so adding a column can't silently misalign a neighbour.
+ */
+export const RIGHT_ALIGNED_COLUMNS = new Set(["cost", "updated"]);
 
 /** Number of skeleton rows shown while loading. */
 export const SKELETON_ROWS = 4;

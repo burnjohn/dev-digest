@@ -131,6 +131,44 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     await app.close();
   });
 
+  it('GET /repos/:id/pulls sums cost_usd over priced runs, null when none', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+    const pr = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json()[0]!;
+    const costOf = async () => {
+      const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+      return list.find((p: { id: string }) => p.id === pr.id).cost_usd;
+    };
+    const [ws] = await pg.handle.db.select({ id: t.workspaces.id }).from(t.workspaces).limit(1);
+    const run = (over: Partial<typeof t.agentRuns.$inferInsert>) => ({
+      workspaceId: ws!.id,
+      prId: pr.id,
+      status: 'done' as const,
+      ...over,
+    });
+
+    // No runs at all → null, so the UI renders "—" rather than "$0.00".
+    expect(await costOf()).toBeNull();
+
+    // Neither an unpriced run nor a failed one contributes — still null, not 0.
+    await pg.handle.db
+      .insert(t.agentRuns)
+      .values([run({ costUsd: null }), run({ costUsd: 0.5, status: 'failed' })]);
+    expect(await costOf()).toBeNull();
+
+    // Priced, completed runs sum.
+    await pg.handle.db
+      .insert(t.agentRuns)
+      .values([run({ costUsd: 0.0013 }), run({ costUsd: 0.0014 })]);
+    expect(await costOf()).toBeCloseTo(0.0027, 6);
+    await app.close();
+  });
+
   it('POST /repos/:id/poll syncs PR list and does NOT trigger a review', async () => {
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
