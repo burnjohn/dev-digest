@@ -24,12 +24,32 @@ import { toJsonSchema, parseWithRepair } from './structured.js';
 
 const NOT_SUPPORTED = 'OpenRouterProvider only implements completeStructured';
 
+/** Default wall-clock budget for a single LLM call. */
+export const DEFAULT_TIMEOUT_MS = 90_000;
+
+/**
+ * Did this error come from our own abort signal? The SDK reports a
+ * caller-supplied signal as a USER abort and deliberately skips its retries, so
+ * the retry for this case has to be ours.
+ */
+function isAbort(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name;
+  return name === 'AbortError' || name === 'TimeoutError' || name === 'APIUserAbortError';
+}
+
 export interface OpenRouterProviderOptions {
   /** OpenAI-compatible base URL (default: OpenRouter). */
   baseURL?: string;
   /** Provider id for traces/gating (default 'openrouter'). */
   id?: 'openai' | 'openrouter';
-  /** Per-request timeout (ms) — the SDK retries on timeout/5xx/429 with backoff. */
+  /**
+   * Wall-clock budget (ms) for one LLM call, enforced with a request-level
+   * AbortSignal. NOT the same as the SDK's `timeout` option: that one only
+   * covers time-to-response-headers (it clears its abort timer in a `.finally()`
+   * on the fetch promise), and OpenRouter answers 200 immediately, then holds
+   * the connection while the upstream model generates. A slow generation
+   * therefore hangs forever under the SDK timeout alone.
+   */
   timeoutMs?: number;
   maxRetries?: number;
   /** Injected cost estimator; returns USD or null when the model is unknown. */
@@ -42,16 +62,20 @@ export class OpenRouterProvider implements LLMProvider {
   private baseURL: string;
   private apiKey: string;
   private estimateCost?: OpenRouterProviderOptions['estimateCost'];
+  private timeoutMs: number;
 
   constructor(apiKey: string, opts: OpenRouterProviderOptions = {}) {
     this.id = opts.id ?? 'openrouter';
     this.apiKey = apiKey;
     this.baseURL = opts.baseURL ?? 'https://openrouter.ai/api/v1';
     this.estimateCost = opts.estimateCost;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.client = new OpenAI({
       apiKey,
       baseURL: this.baseURL,
-      timeout: opts.timeoutMs ?? 90_000,
+      // Bounds time-to-headers only; the real budget is the per-request signal
+      // in completeStructured. Kept so a dead connection still fails fast.
+      timeout: this.timeoutMs,
       maxRetries: opts.maxRetries ?? 2,
     });
   }
@@ -66,22 +90,37 @@ export class OpenRouterProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-        },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+      let res;
+      try {
+        res = await this.client.chat.completions.create(
+          {
+            model: req.model,
+            messages,
+            temperature: req.temperature ?? 0,
+            ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+            },
+            // OpenRouter session grouping — extra body field (spread is exempt from
+            // excess-property checks). Only sent when talking to OpenRouter.
+            ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+            // OpenRouter usage accounting — ask it to return the REAL generation
+            // cost (USD) in `usage.cost`, instead of estimating from a price book.
+            ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+          },
+          // The only thing that actually bounds the call. Without it a stalled
+          // generation hangs the run forever, because the SDK's own timer is
+          // cleared once the response headers arrive.
+          { signal: AbortSignal.timeout(this.timeoutMs) },
+        );
+      } catch (err) {
+        if (!isAbort(err)) throw err;
+        if (attempt <= maxRetries) continue;
+        throw new Error(
+          `OpenRouter call for ${req.schemaName} exceeded ${this.timeoutMs}ms on all ${attempt} attempt(s)`,
+        );
+      }
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.
