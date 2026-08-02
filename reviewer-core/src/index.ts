@@ -46,6 +46,13 @@ export {
   type ReviewMode,
 } from './review/run.js';
 
+// Which paths are withheld from the model as machine-generated.
+export {
+  excludeGenerated,
+  DEFAULT_GENERATED_PATTERNS,
+  type DiffExclusion,
+} from './review/exclude-generated.js';
+
 // Output: grounded Review → GitHubReviewPayload (body + inline comments + event).
 export {
   toReviewPayload,

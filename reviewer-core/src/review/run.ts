@@ -10,6 +10,7 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { excludeGenerated } from './exclude-generated.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -52,6 +53,11 @@ export interface ReviewInput {
   llm: LLMProvider;
   /** 'auto' (default) picks single-pass unless the diff is large + multi-file. */
   strategy?: ReviewStrategy;
+  /**
+   * Paths withheld from the model as machine-generated (default:
+   * DEFAULT_GENERATED_PATTERNS). Pass `false` to review the diff verbatim.
+   */
+  excludeGenerated?: RegExp[] | false;
   /** Resolved skill bodies (NOT slugs). */
   skills?: string[];
   /** Curated memory items. */
@@ -123,9 +129,21 @@ function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: numb
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
-  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
+
+  // Drop generated files BEFORE mode selection — they inflate the line count
+  // that decides single-pass vs map-reduce, and they never earn a finding.
+  const { diff, excluded } =
+    input.excludeGenerated === false
+      ? { diff: input.diff, excluded: [] as string[] }
+      : excludeGenerated(input.diff, input.excludeGenerated);
+  if (excluded.length > 0) {
+    emit('info', `Skipped ${excluded.length} generated file(s): ${excluded.join(', ')}`);
+  }
+  input = { ...input, diff };
+
+  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
 
   const promptParts = {
     system: input.systemPrompt,
