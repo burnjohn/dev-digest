@@ -25,6 +25,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 - `2026-08-01` — A skill's ```! dynamic-context block must use the same path form as its `allowed-tools` pattern: `${CLAUDE_SKILL_DIR}` expands to an absolute path, which a relative grant like `Bash(node .claude/skills/...)` does not match, so every invocation prompts for approval instead of rendering silently. Use the project-relative path in both places → `.claude/skills/engineering-insights/SKILL.md:11`
 - `2026-08-01` — Those ignored build scripts are not actually needed to run the app: tsx ships its own esbuild (no `node_modules/@esbuild/*` present, yet `tsx --version` works), so the whole stack boots by calling the local binaries directly and skipping pnpm — `server/node_modules/.bin/tsx src/db/migrate.ts`, then `tsx watch src/server.ts`, then `client/node_modules/.bin/next dev` → `tsx@4.22.4`
 - `2026-08-02` — `docker exec` without `-i` silently discards stdin, so a heredoc of SQL runs as an empty session and reports success — psql prints nothing and the INSERT count is missing. Always `docker exec -i devdigest-postgres psql` when piping SQL → `docker exec -i devdigest-postgres psql $DATABASE_URL`
+- `2026-08-03` — chrome-devtools MCP failing every call with 'The browser is already running for ~/.cache/chrome-devtools-mcp/chrome-profile' means a stale Chrome from a previous session holds the profile lock — pkill -f 'chrome-devtools-mcp/chrome-profile' (kills only the MCP-profile Chrome, not the user's main browser), then retry → observed 2026-08-03
 
 ## Recurring Errors & Fixes
 
