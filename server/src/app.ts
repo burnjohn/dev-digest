@@ -80,6 +80,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   try {
     const reaped = await new ReviewService(container).reapStaleRuns();
     if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
+    // Same for jobs: the p-queue died with the old process, so 'queued'/'running'
+    // rows are ghosts — and refresh dedupes onto them, which would pin the
+    // refresh button to a job that never completes.
+    const reapedJobs = await container.jobs.reapOrphans();
+    if (reapedJobs > 0) app.log.info({ reapedJobs }, 'reaped orphaned jobs on boot');
   } catch (err) {
     app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
   }

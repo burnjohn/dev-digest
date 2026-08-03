@@ -4,8 +4,10 @@
    and are re-exported alongside these from hooks/index.ts. */
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { notify } from "../toast";
 import type {
   Settings,
   SettingsUpdate,
@@ -79,15 +81,59 @@ export function useAddRepo() {
   });
 }
 
+type JobStatus = { id: string; kind: string; status: string; error: string | null };
+
+/**
+ * Refresh a repo and follow the WORK, not the request.
+ *
+ * `POST /refresh` only queues jobs and answers in ~10ms, so a mutation's own
+ * `isPending` is true for a few milliseconds while git runs for seconds. Bind a
+ * button to that and it re-enables immediately, which is how rapid clicking
+ * used to pile up concurrent fetches. `pending` here stays true until the job
+ * reaches a terminal state, and a failure — a 403 on a private repo, say —
+ * surfaces as a toast instead of vanishing behind the 200 the POST already
+ * returned.
+ */
 export function useRefreshRepo() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (repoId: string) => api.post<Repo>(`/repos/${repoId}/refresh`),
-    onSuccess: (_d, repoId) => {
-      qc.invalidateQueries({ queryKey: ["repos"] });
-      qc.invalidateQueries({ queryKey: ["pulls", repoId] });
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [repoId, setRepoId] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ status: string; job_id: string }>(`/repos/${id}/refresh`),
+    onSuccess: (data, id) => {
+      setRepoId(id);
+      setJobId(data.job_id ?? null);
     },
   });
+
+  const job = useQuery({
+    queryKey: ["job", jobId],
+    queryFn: () => api.get<JobStatus>(`/jobs/${jobId}`),
+    enabled: !!jobId,
+    refetchInterval: (q) =>
+      q.state.data && ["done", "failed"].includes(q.state.data.status) ? false : 700,
+  });
+
+  const status = job.data?.status;
+  useEffect(() => {
+    if (!jobId || !status || !["done", "failed"].includes(status)) return;
+    if (status === "failed") {
+      notify.error(job.data?.error?.split("\n")[0] ?? "Refresh failed");
+    } else {
+      qc.invalidateQueries({ queryKey: ["repos"] });
+      if (repoId) qc.invalidateQueries({ queryKey: ["pulls", repoId] });
+    }
+    setJobId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, status]);
+
+  return {
+    mutate: mutation.mutate,
+    /** True from the click until the queued work settles — not just the POST. */
+    isPending: mutation.isPending || !!jobId,
+  };
 }
 
 export function useDeleteRepo() {

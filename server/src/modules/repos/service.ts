@@ -111,10 +111,52 @@ export class RepoService {
   }
 
   /** Re-fetch the clone for an existing repo (enqueues a fresh `clone` job). */
-  async refresh(workspaceId: string, id: string): Promise<{ status: 'refreshing' }> {
+  /** Status of one background job, scoped to the workspace. */
+  async jobStatus(
+    workspaceId: string,
+    jobId: string,
+  ): Promise<{ id: string; kind: string; status: string; error: string | null } | null> {
+    return this.repo.jobById(workspaceId, jobId);
+  }
+
+  /** Tail of the pending refresh chain, per repo — see `refresh`. */
+  private refreshChain = new Map<string, Promise<unknown>>();
+
+  refresh(workspaceId: string, id: string): Promise<{ status: 'refreshing'; job_id: string }> {
+    // "Is one already queued?" then "queue one" is check-then-act, and five
+    // clicks arrive as five concurrent requests: they all read before any of
+    // them writes. Serialising per repo makes the guard hold. Safe as an
+    // in-process lock because the server already assumes single-instance (it
+    // reaps orphaned runs on boot on that basis).
+    const prev = this.refreshChain.get(id) ?? Promise.resolve();
+    const next = prev.then(
+      () => this.refreshUnlocked(workspaceId, id),
+      () => this.refreshUnlocked(workspaceId, id),
+    );
+    this.refreshChain.set(
+      id,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
+
+  private async refreshUnlocked(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ status: 'refreshing'; job_id: string }> {
     const repo = await this.repo.getById(workspaceId, id);
     if (!repo) throw new NotFoundError('Repo not found');
-    await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
+
+    // Idempotent while work is outstanding. The HTTP call returns in ~10ms —
+    // it only queues — so the button re-enables long before git finishes, and a
+    // second click used to queue a second clone. Two `git fetch`es in one
+    // directory then race on refs/remotes/* and one dies. Callers other than
+    // the button (polling, review) can collide the same way, so the guard lives
+    // here rather than in the UI.
+    const active = await this.repo.activeCloneJobFor(workspaceId, repo.id);
+    if (active) return { status: 'refreshing', job_id: active };
+
+    const { id: jobId } = await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: repo.id,
       owner: repo.owner,
       name: repo.name,
@@ -134,7 +176,7 @@ export class RepoService {
     } catch {
       // No handler / transient enqueue failure — refresh button is best-effort.
     }
-    return { status: 'refreshing' };
+    return { status: 'refreshing', job_id: jobId };
   }
 
   async remove(workspaceId: string, id: string): Promise<void> {

@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
 import { withTimeout, withRetry } from './resilience.js';
@@ -14,6 +14,17 @@ import { withTimeout, withRetry } from './resilience.js';
  */
 
 export type JobHandler = (payload: unknown, ctx: { jobId: string }) => Promise<void>;
+
+/**
+ * Strip credentials embedded in URLs (https://user:token@host/…) from a
+ * message before it is persisted. git anonymizes URLs in its own error
+ * output, but `jobs.error` is shared by every job kind — present and future —
+ * and is now visible to clients via GET /jobs/:id, so the guarantee has to
+ * live at this chokepoint rather than in git.
+ */
+export function redactUrlCredentials(message: string): string {
+  return message.replace(/(https?:\/\/)[^@/\s]+@/gi, '$1***@');
+}
 
 export interface JobRunnerOptions {
   concurrency?: number;
@@ -90,14 +101,42 @@ export class JobRunner {
           .set({
             status: 'failed',
             finishedAt: new Date(),
-            error: (err as Error).message,
+            error: redactUrlCredentials((err as Error).message),
           })
           .where(eq(t.jobs.id, jobId));
         throw err;
       }
     }) as Promise<void>;
 
+    // Jobs are fire-and-forget: every caller drops `done` on the floor. The
+    // rethrow above is still wanted for anyone who DOES await it, but an
+    // unobserved rejection takes the whole process down — a failed clone, a
+    // git ref race, a timeout, any of them killed the API outright. Attaching a
+    // handler here marks the promise observed; a caller who awaits `done` is
+    // unaffected and still sees the rejection.
+    done.catch(() => undefined);
+
     return { id: jobId, done };
+  }
+
+  /**
+   * Fail jobs left 'queued'/'running' by a previous (now-dead) process. The
+   * queue is in-memory, so nothing will ever finish those rows — and since
+   * refresh dedupes onto the active job, a ghost row would make every refresh
+   * return a job that never completes. Call on boot, before listening; same
+   * single-instance assumption as the stale-run reaper in app.ts.
+   */
+  async reapOrphans(): Promise<number> {
+    const rows = await this.db
+      .update(t.jobs)
+      .set({
+        status: 'failed',
+        finishedAt: new Date(),
+        error: 'orphaned by server restart',
+      })
+      .where(inArray(t.jobs.status, ['queued', 'running']))
+      .returning({ id: t.jobs.id });
+    return rows.length;
   }
 
   /** Wait for the queue to drain (useful in tests). */
