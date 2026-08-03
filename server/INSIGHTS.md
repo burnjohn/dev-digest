@@ -31,6 +31,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Tool & Library Notes
 
+- `2026-08-03` — git strips URL userinfo from its own error output (transport_anonymize_url) — a tokened clone URL fails with "fatal: unable to access 'https://github.com/...'" with credentials already removed, so a reviewer claim that the PAT leaks via git stderr into jobs.error did not reproduce; the scrub added in platform/jobs.ts redactUrlCredentials() is defense-in-depth for non-git job kinds, not a fix for git → verified empirically 2026-08-03 against a live 403 row and a synthetic bad-token clone (PR #7)
+
 ## Recurring Errors & Fixes
 
 - `2026-08-01` — A 500 with a generic `internal_error` body where a route should have answered 422 `validation_error` on a malformed payload means a ZodError reached the handler and failed every branch: it was raised by a service-level `.parse()` inside `src/vendor/shared/`, so `err instanceof z.ZodError` was false against the server’s own zod copy. The shape check (`name === "ZodError"` plus an `issues` or `errors` array) is the branch that actually catches it → `src/app.ts:138` → CLAUDE.md
