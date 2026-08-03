@@ -15,6 +15,17 @@ import { withTimeout, withRetry } from './resilience.js';
 
 export type JobHandler = (payload: unknown, ctx: { jobId: string }) => Promise<void>;
 
+/**
+ * Strip credentials embedded in URLs (https://user:token@host/…) from a
+ * message before it is persisted. git anonymizes URLs in its own error
+ * output, but `jobs.error` is shared by every job kind — present and future —
+ * and is now visible to clients via GET /jobs/:id, so the guarantee has to
+ * live at this chokepoint rather than in git.
+ */
+export function redactUrlCredentials(message: string): string {
+  return message.replace(/(https?:\/\/)[^@/\s]+@/gi, '$1***@');
+}
+
 export interface JobRunnerOptions {
   concurrency?: number;
   timeoutMs?: number;
@@ -90,7 +101,7 @@ export class JobRunner {
           .set({
             status: 'failed',
             finishedAt: new Date(),
-            error: (err as Error).message,
+            error: redactUrlCredentials((err as Error).message),
           })
           .where(eq(t.jobs.id, jobId));
         throw err;
