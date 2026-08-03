@@ -75,6 +75,37 @@ const commitRowStyle: React.CSSProperties = {
   background: "transparent",
 };
 
+/**
+ * Agent name, per the design: muted mono at rest, accent + underline on hover
+ * (it navigates to the run's accordion below, so it reads as a link on touch).
+ */
+function AgentName({ name, title, onClick }: { name: string; title: string; onClick?: () => void }) {
+  const [hover, setHover] = React.useState(false);
+  const active = hover && !!onClick;
+  return (
+    <button
+      type="button"
+      className="mono"
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        fontSize: 12,
+        cursor: onClick ? "pointer" : "default",
+        color: active ? "var(--accent-text)" : "var(--text-secondary)",
+        textDecoration: active ? "underline" : "none",
+        textUnderlineOffset: 2,
+      }}
+    >
+      {name}
+    </button>
+  );
+}
+
 type TimelineItem =
   | { kind: "run"; ts: number; run: RunSummary }
   | { kind: "commit"; ts: number; commit: PrCommit };
@@ -165,26 +196,12 @@ export function RunHistory({
             </Badge>
             {settled && r.score != null && <CircularScore score={r.score} size={30} stroke={3} />}
             <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                <button
-                  type="button"
-                  onClick={() => onGoToReview?.(r.run_id)}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <AgentName
+                  name={r.agent_name ?? "Agent"}
                   title={t("timeline.goToReview")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    font: "inherit",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                    cursor: onGoToReview ? "pointer" : "default",
-                    textDecoration: onGoToReview ? "underline" : "none",
-                    textDecorationStyle: "dotted",
-                    textUnderlineOffset: 3,
-                  }}
-                >
-                  {r.agent_name ?? "Agent"}
-                </button>{" "}
+                  onClick={onGoToReview ? () => onGoToReview(r.run_id) : undefined}
+                />
                 <span className="mono" style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
                   {r.provider}/{r.model}
                 </span>
@@ -205,8 +222,9 @@ export function RunHistory({
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        fontSize: 12,
+                        gap: 10,
+                        marginTop: 3,
+                        fontSize: 11.5,
                         color: "var(--text-muted)",
                       }}
                     >

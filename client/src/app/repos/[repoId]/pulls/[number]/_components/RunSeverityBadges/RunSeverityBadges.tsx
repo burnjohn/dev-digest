@@ -65,7 +65,7 @@ export function RunSeverityBadges({
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: 12,
+          gap: 10,
           background: "none",
           border: "none",
           padding: 0,
@@ -85,15 +85,15 @@ export function RunSeverityBadges({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
+                gap: 4,
                 color: s.c,
-                fontSize: 13,
+                fontSize: 11.5,
                 fontWeight: 600,
-                paddingBottom: 3,
-                borderBottom: `1.5px dotted ${s.c}`,
+                paddingBottom: 1,
+                borderBottom: `1px dotted ${s.c}`,
               }}
             >
-              <I size={14} />
+              <I size={12.5} />
               <span className="tnum">{count}</span>
             </span>
           );
