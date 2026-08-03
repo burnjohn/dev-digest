@@ -12,6 +12,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## What Works
 
+- `2026-08-03` — Pixel-matching against ~/Downloads/DevDigest Design (standalone).html: the file is a bundler blob (markup is compressed, grep finds nothing) — open it in the browser, locate the element by its text, and read getComputedStyle()/inline style off the live DOM; hover states are React state, so dispatching a synthetic mouseenter on the design page flips the element into its hover style for capture → extracted chip (11.5px/600, 1px dotted) and agent-name hover (--accent-text + underline) this way (PR #8)
+
 ## What Doesn't Work
 
 ## Codebase Patterns
