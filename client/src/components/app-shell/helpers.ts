@@ -1,7 +1,7 @@
 /** Pure helpers for AppShell. */
 
 import type { RepoSummary } from "@devdigest/ui";
-import type { Repo } from "../../lib/types";
+import type { Repo } from "@/lib/types";
 
 /** Map a lib `Repo` to the `RepoSummary` shape the AppFrame shell context expects. */
 export function toShellRepo(r: Repo): RepoSummary {

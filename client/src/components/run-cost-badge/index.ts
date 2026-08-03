@@ -1,1 +1,1 @@
-export { RunCostBadge, default } from "./RunCostBadge";
+export { RunCostBadge } from "./RunCostBadge";

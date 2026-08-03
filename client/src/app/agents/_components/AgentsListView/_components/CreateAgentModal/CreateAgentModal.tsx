@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@devdigest/ui";
 import type { Provider } from "@devdigest/shared";
-import { useCreateAgent } from "../../../../../../lib/hooks/agents";
+import { useCreateAgent } from "@/lib/hooks/agents";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH, PROVIDER_OPTIONS } from "./constants";
 import { s } from "./styles";
 

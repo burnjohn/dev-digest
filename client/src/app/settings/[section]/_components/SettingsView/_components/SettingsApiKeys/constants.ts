@@ -1,4 +1,4 @@
-import type { ConnTestProvider } from "../../../../../../../lib/types";
+import type { ConnTestProvider } from "@/lib/types";
 
 /** One configurable provider key row in the API Keys section. */
 export interface KeyRowSpec {

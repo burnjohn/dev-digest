@@ -74,4 +74,3 @@ export function MermaidDiagram({ chart }: { chart: string }) {
   );
 }
 
-export default MermaidDiagram;

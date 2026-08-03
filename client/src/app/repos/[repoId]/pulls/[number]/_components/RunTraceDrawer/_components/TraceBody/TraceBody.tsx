@@ -14,7 +14,26 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
-import { Row, Stat } from "../atoms";
+
+function Stat({ label, val }: { label: string; val: React.ReactNode }) {
+  return (
+    <div style={s.stat}>
+      <div style={s.statLabel}>{label}</div>
+      <div className="tnum" style={s.statVal}>
+        {val}
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={s.row}>
+      <span style={s.rowLabel}>{label}</span>
+      {children}
+    </div>
+  );
+}
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");

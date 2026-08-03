@@ -6,11 +6,11 @@
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button, Dropdown, ErrorState, Skeleton, Icon, Badge } from "@devdigest/ui";
-import { AppShell } from "../../../components/app-shell";
+import { AppShell } from "@/components/app-shell";
 import { AgentCard } from "../_components/AgentCard";
 import { AgentEditor } from "./_components/AgentEditor";
-import { useAgents, useAgent, useUpdateAgent } from "../../../lib/hooks/agents";
-import { ApiError } from "../../../lib/api";
+import { useAgents, useAgent, useUpdateAgent } from "@/lib/hooks/agents";
+import { ApiError } from "@/lib/api";
 
 const VALID_TABS = ["config"];
 

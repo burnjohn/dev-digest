@@ -170,4 +170,3 @@ export function FindingsPopover({
   );
 }
 
-export default FindingsPopover;

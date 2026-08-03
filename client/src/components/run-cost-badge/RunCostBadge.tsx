@@ -5,7 +5,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { formatCostUsd, formatTokenCount } from "../../lib/format";
+import { formatCostUsd, formatTokenCount } from "@/lib/format";
 
 interface RunCostBadgeProps {
   /** USD for the run. Null when unpriced or the run never reached the model. */
@@ -45,4 +45,3 @@ export function RunCostBadge({ cost, variant = "compact", tokens }: RunCostBadge
   );
 }
 
-export default RunCostBadge;

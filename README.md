@@ -64,11 +64,12 @@ Each package has its own README with deeper diagrams:
 [`e2e`](e2e/README.md).
 
 Alongside each README, every package carries a small set of curated files for
-working with an AI agent: **`CLAUDE.md`** (commands, conventions, gotchas,
-do-not-touch zones), **`docs/`** (how it works today), **`specs/`** (what we
-intend to build) and **`INSIGHTS.md`** (decisions and dead ends). The READMEs
-stay the source of truth — `CLAUDE.md` only points at them. Start at the root
-[`CLAUDE.md`](CLAUDE.md).
+working with an AI agent: **`AGENTS.md`** (commands, conventions, gotchas,
+do-not-touch zones — symlinked as `CLAUDE.md` for Claude Code), **`docs/`**
+(how it works today), **`specs/`** (what we intend to build) and
+**`INSIGHTS.md`** (decisions and dead ends). The READMEs stay the source of
+truth — `AGENTS.md` only points at them. Start at the root
+[`AGENTS.md`](AGENTS.md).
 
 ## What works on day 1
 

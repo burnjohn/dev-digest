@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { EmptyState, SETTINGS_SECTIONS } from "@devdigest/ui";
 import { useTranslations } from "next-intl";
-import { AppShell } from "../../../../../components/app-shell";
+import { AppShell } from "@/components/app-shell";
 import { SettingsApiKeys } from "./_components/SettingsApiKeys";
 import { SettingsModels } from "./_components/SettingsModels";
 import { DEFAULT_SECTION, SECTION_API_KEYS, SECTION_MODELS } from "./constants";

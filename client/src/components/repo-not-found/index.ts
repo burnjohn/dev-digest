@@ -1,1 +1,1 @@
-export { RepoNotFound, default } from "./RepoNotFound";
+export { RepoNotFound } from "./RepoNotFound";

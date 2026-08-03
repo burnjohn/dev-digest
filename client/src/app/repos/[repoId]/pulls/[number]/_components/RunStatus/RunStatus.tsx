@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { LiveLogStream, type LogLine } from "@devdigest/ui";
-import { useRunEvents } from "../../../../../../../lib/hooks/reviews";
+import { useRunEvents } from "@/lib/hooks/reviews";
 import { LOG_HEIGHT } from "./constants";
 import { s } from "./styles";
 

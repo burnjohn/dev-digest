@@ -1,1 +1,1 @@
-export { SeverityCounters, default } from "./SeverityCounters";
+export { SeverityCounters } from "./SeverityCounters";

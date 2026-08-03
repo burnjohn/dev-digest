@@ -7,8 +7,8 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
-import { useAgents } from "../../../../../../../lib/hooks/agents";
-import { useRunReview } from "../../../../../../../lib/hooks/reviews";
+import { useAgents } from "@/lib/hooks/agents";
+import { useRunReview } from "@/lib/hooks/reviews";
 import { DROPDOWN_WIDTH } from "./constants";
 
 export function RunReviewDropdown({

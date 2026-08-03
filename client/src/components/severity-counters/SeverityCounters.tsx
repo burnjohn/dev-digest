@@ -11,7 +11,7 @@ import { SeverityBadge } from "@devdigest/ui";
 // `INFO` entry the API never produces, and SeverityCounts has no bucket for it.
 import type { FindingRecord, Severity, SeverityCounts } from "@devdigest/shared";
 import { findingsOfSeverity, totalCount } from "@/lib/findings";
-import { FindingsPopover } from "@/components/findings-popover";
+import { FindingsPopover } from "./FindingsPopover";
 
 /** Display order — worst first, matching the findings panel's sort. */
 const ORDER: Severity[] = ["CRITICAL", "WARNING", "SUGGESTION"];
@@ -195,4 +195,3 @@ export function SeverityCounters({
   );
 }
 
-export default SeverityCounters;

@@ -3,9 +3,9 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { useRepos } from "../lib/hooks";
-import { AppShell } from "../components/app-shell";
-import { PageContainer } from "../components/page-shell";
+import { useRepos } from "@/lib/hooks";
+import { AppShell } from "@/components/app-shell";
+import { PageContainer } from "./_components/PageContainer";
 import { EmptyState, Button, Skeleton } from "@devdigest/ui";
 
 export default function HomePage() {

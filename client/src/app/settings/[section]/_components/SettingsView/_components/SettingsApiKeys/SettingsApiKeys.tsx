@@ -3,9 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, FormField, TextInput } from "@devdigest/ui";
-import { useTestConnection, useSecretsStatus } from "../../../../../../../lib/hooks";
-import { ApiError } from "../../../../../../../lib/api";
-import type { ConnTestProvider } from "../../../../../../../lib/types";
+import { useTestConnection, useSecretsStatus } from "@/lib/hooks";
+import { ApiError } from "@/lib/api";
+import type { ConnTestProvider } from "@/lib/types";
 import { SectionTitle } from "../SectionTitle";
 import { KEY_ROWS } from "./constants";
 import { s } from "./styles";

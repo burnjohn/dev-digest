@@ -29,8 +29,25 @@ them here.
 
 ## Decisions
 
-_None yet. Add the first one the next time a UI approach is tried and
-abandoned — that is exactly what this file is for._
+### 2026-08-03 — Zero-consumer components: judge by what they are, not just the call count
+
+**What:** during the ui-architecture refactor, two zero-consumer components
+were found (`components/page-shell`'s `FeaturePlaceholder` and
+`components/mermaid-diagram`). Both were kept rather than deleted, but for
+different reasons discovered by reading each file, not by the caller count
+alone: `FeaturePlaceholder`'s own header comment called itself temporary
+scaffolding ("Feature agents (A1–A6) replace `FeaturePlaceholder` with their
+real screen"), while `MermaidDiagram` is a fully-built component backed by a
+real `mermaid` package dependency (syntax validation, lazy import, SVG
+render) — no stub markers, no TODO, just unwired.
+**Why:** "zero callers" alone doesn't distinguish leftover scaffolding from
+real work that hasn't been connected yet. The file's own content (a comment
+admitting temporariness vs. a genuine implementation with a real dependency)
+is the signal that matters, and only the human who owns the roadmap can say
+whether unwired-but-real functionality should stay.
+**Rejected:** deleting both as "dead code" on caller count alone — would have
+destroyed the `mermaid` rendering work with no way to tell later whether it
+was intentional.
 
 ## What Works
 
@@ -41,6 +58,19 @@ _None yet._
 _None yet._
 
 ## Codebase Patterns
+
+- **2026-08-03** — A single-line component barrel (`export { X } from "./X"`)
+  is the repo's real convention at every nesting depth, not just at a feature
+  root. `components/diff-viewer/` alone has 7 of them
+  (`CodeLine/index.ts`, `FileCard/index.ts`, etc.), and ~20 more exist under
+  `app/**/_components/<Name>/index.ts`. The anti-pattern to actually avoid is an
+  `export *` hub (`components/index.ts` re-exporting every feature, or
+  `lib/hooks/index.ts` doing `export * from "./reviews"` across 5 sibling
+  files, which resolves any name collision silently by file order) — not a
+  nested `index.ts` per se. Judge a barrel by whether it re-exports everything
+  in its directory (`export *`) vs. one named thing from one sibling file.
+  `client/src/components/diff-viewer/CodeLine/index.ts`
+  `client/src/lib/hooks/index.ts`
 
 - **2026-08-01** — Any overlay anchored to a PR-list row must be portalled to
   `document.body` with `position: fixed`, not absolutely positioned inside the
