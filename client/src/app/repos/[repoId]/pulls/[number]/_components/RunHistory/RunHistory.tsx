@@ -3,8 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { FindingRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/RunCostBadge";
+import { RunSeverityBadges } from "../RunSeverityBadges";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,12 +89,19 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /**
+   * The run's findings, joined from the reviews the page already fetched
+   * (reviews.run_id → run). Optional: without it (or for runs with no review)
+   * the row falls back to the plain "{count} finding(s)" text.
+   */
+  findingsByRun?: Map<string, FindingRecord[]>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -189,12 +197,30 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
+              {settled &&
+                (() => {
+                  const fs = findingsByRun?.get(r.run_id);
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {fs && fs.length > 0 ? (
+                        <RunSeverityBadges findings={fs} onClick={() => onOpenTrace(r.run_id)} />
+                      ) : (
+                        t("runStatus.findings", { count: r.findings_count ?? 0 })
+                      )}
+                      {(r.blockers ?? 0) > 0
+                        ? t("runStatus.blockers", { count: r.blockers ?? 0 })
+                        : ""}
+                    </div>
+                  );
+                })()}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
