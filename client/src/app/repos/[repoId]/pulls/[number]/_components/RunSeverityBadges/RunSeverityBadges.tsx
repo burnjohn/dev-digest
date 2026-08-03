@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { SeverityBadge, type Severity } from "@devdigest/ui";
+import { Icon, SEV, type Severity } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { SEVERITY_ORDER } from "../FindingsPanel/constants";
 import { RunFindingsPopover } from "./RunFindingsPopover";
@@ -65,16 +65,39 @@ export function RunSeverityBadges({
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: 6,
+          gap: 12,
           background: "none",
           border: "none",
           padding: 0,
-          cursor: onClick ? "pointer" : "default",
+          // `help` (the question-mark cursor): the primary affordance is the
+          // hover popover; the click-through to the trace is secondary.
+          cursor: onClick ? "help" : "default",
         }}
       >
-        {groups.map(([severity, count]) => (
-          <SeverityBadge key={severity} severity={severity} count={count} compact />
-        ))}
+        {groups.map(([severity, count]) => {
+          // Per the design: bare icon + count in the severity color with a
+          // dotted underline — not the vendor SeverityBadge pill.
+          const s = SEV[severity];
+          const I = Icon[s.icon];
+          return (
+            <span
+              key={severity}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: s.c,
+                fontSize: 13,
+                fontWeight: 600,
+                paddingBottom: 3,
+                borderBottom: `1.5px dotted ${s.c}`,
+              }}
+            >
+              <I size={14} />
+              <span className="tnum">{count}</span>
+            </span>
+          );
+        })}
       </button>
       {open && <RunFindingsPopover findings={counted} />}
     </span>
