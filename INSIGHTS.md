@@ -19,6 +19,9 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Codebase Patterns
 
+- `2026-08-05` — client/src/vendor/shared is a hand-maintained COPY, not a symlink — a new shared contract must be added to BOTH server/src/vendor/shared/contracts/ (canonical) and client/src/vendor/shared/contracts/, updating both barrels; the copies have already drifted, so never assume one edit serves both → `diff -rq server/src/vendor/shared client/src/vendor/shared` reports adapters.ts, contracts/eval-ci.ts, knowledge.ts, productionize.ts and trace.ts differing, and there is no sync script; client/CLAUDE.md's "symlinked from server" is wrong, observed 2026-08-05
+- `2026-08-05` — SecretKey is an OPEN union — `| (string & {})` at server/src/vendor/shared/adapters.ts:280-285 — so namespaced secret keys like GITHUB_TOKEN:<uuid> are already type-legal and per-entity secrets need no shared-contract edit → verified while designing per-repo GitHub tokens, docs/superpowers/specs/2026-08-05-per-repo-github-tokens-design.md
+
 ## Tool & Library Notes
 
 - `2026-08-01` — Matching zod version strings are NOT a defence against the dual-instance problem: `server/`, `client/`, and `reviewer-core/` each declare `zod: ^3.24.1` and each has its own lockfile, so they still resolve to distinct module copies. Do not "fix" a cross-boundary `instanceof` by aligning versions — it is already aligned → `zod@^3.24.1` in server/package.json:38
@@ -26,6 +29,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 - `2026-08-01` — Those ignored build scripts are not actually needed to run the app: tsx ships its own esbuild (no `node_modules/@esbuild/*` present, yet `tsx --version` works), so the whole stack boots by calling the local binaries directly and skipping pnpm — `server/node_modules/.bin/tsx src/db/migrate.ts`, then `tsx watch src/server.ts`, then `client/node_modules/.bin/next dev` → `tsx@4.22.4`
 - `2026-08-02` — `docker exec` without `-i` silently discards stdin, so a heredoc of SQL runs as an empty session and reports success — psql prints nothing and the INSERT count is missing. Always `docker exec -i devdigest-postgres psql` when piping SQL → `docker exec -i devdigest-postgres psql $DATABASE_URL`
 - `2026-08-03` — chrome-devtools MCP failing every call with 'The browser is already running for ~/.cache/chrome-devtools-mcp/chrome-profile' means a stale Chrome from a previous session holds the profile lock — pkill -f 'chrome-devtools-mcp/chrome-profile' (kills only the MCP-profile Chrome, not the user's main browser), then retry → observed 2026-08-03
+- `2026-08-05` — pnpm@11.6.0 refuses to RUN a script when the project has ignored build scripts: `cd server && pnpm db:migrate` exits 1 with ERR_PNPM_IGNORED_BUILDS (esbuild, ssh2, cpu-features, protobufjs) from its pre-run deps check, before the migration is even attempted — which kills ./scripts/dev.sh at the migrate step with nothing started → bypass with `./node_modules/.bin/tsx src/db/migrate.ts`; fix permanently by filling in the allowBuilds stub pnpm auto-generates at server/pnpm-workspace.yaml, or `pnpm approve-builds`, observed 2026-08-05
 
 ## Recurring Errors & Fixes
 
@@ -33,6 +37,6 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ### 2026-08-01
 
-- Stack is up but API is on :3011, not :3001 — a `docker-flowise-1` container holds 3001; started with API_PORT=3011 and NEXT_PUBLIC_API_BASE=http://localhost:3011
+- Stack is up but API is on :3011, not :3001 — a `docker-flowise-1` container holds 3001; started with API_PORT=3011 and NEXT_PUBLIC_API_BASE=http://localhost:3011 ×2 (2026-08-05, and :3000 is taken by another app too — web moved to :3010, which also requires WEB_PORT=3010 on the API for CORS)
 
 ## Open Questions

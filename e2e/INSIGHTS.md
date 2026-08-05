@@ -16,6 +16,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Codebase Patterns
 
+- `2026-08-05` — e2e/ never contacts GitHub — the specs run entirely on seeded data, so any flow that needs a live GitHub call (validating a PAT, importing PRs) cannot be covered here and belongs in server hermetic/DB-backed tests with a fake GitHubClient injected via ContainerOverrides → `grep -rn 'GITHUB_TOKEN|github' e2e/` returns no source hits, confirmed 2026-08-05
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes
