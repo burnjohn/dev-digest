@@ -60,5 +60,14 @@ d('github_tokens schema', () => {
     await expect(
       db.insert(t.githubTokens).values({ workspaceId, label: 'dupe' }),
     ).rejects.toThrow();
+
+    // The constraint is composite, not global: a second workspace may reuse the
+    // label. Without this half, a plain UNIQUE(label) would pass the test above.
+    // seed() is idempotent (it looks the workspace up by name), so it cannot
+    // hand back a second one — insert the workspace row directly.
+    const [other] = await db.insert(t.workspaces).values({ name: 'other-ws' }).returning();
+    await expect(
+      db.insert(t.githubTokens).values({ workspaceId: other!.id, label: 'dupe' }),
+    ).resolves.toBeDefined();
   });
 });
