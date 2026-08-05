@@ -63,6 +63,15 @@ export function FindingsTab({
     [onDelete],
   );
 
+  // Severity badges on timeline rows: the reviews this tab already receives
+  // carry each run's findings (reviews.run_id → run) — same client-side join
+  // the trace drawer uses. No extra fetch.
+  const findingsByRun = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const review of runs) if (review.run_id) m.set(review.run_id, review.findings);
+    return m;
+  }, [runs]);
+
   // Timeline → Review-runs navigation: clicking an agent name in the timeline
   // opens + scrolls to that run's accordion below. The nonce re-triggers the
   // scroll even when the same run is clicked twice.
@@ -131,6 +140,7 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRun={findingsByRun}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}

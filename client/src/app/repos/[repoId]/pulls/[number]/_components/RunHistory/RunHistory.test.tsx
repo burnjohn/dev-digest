@@ -4,10 +4,10 @@
  * a settled run is colored/labelled by its denormalized blocker/finding counts,
  * and shows the review score ring.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { FindingRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
@@ -35,12 +35,43 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(
+  runs: RunSummary[],
+  opts: { findingsByRun?: Map<string, FindingRecord[]>; onOpenTrace?: (id: string) => void } = {},
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory
+        runs={runs}
+        findingsByRun={opts.findingsByRun}
+        onOpenTrace={opts.onOpenTrace ?? (() => {})}
+      />
     </NextIntlClientProvider>,
   );
+}
+
+let seq = 0;
+function finding(o: Partial<FindingRecord>): FindingRecord {
+  seq += 1;
+  return {
+    id: `f-${seq}`,
+    review_id: "rev-1",
+    severity: "WARNING",
+    category: "bug",
+    title: `Finding ${seq}`,
+    file: "src/a.ts",
+    start_line: 1,
+    end_line: 2,
+    rationale: "why",
+    suggestion: null,
+    confidence: 0.8,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    accepted_at: null,
+    dismissed_at: null,
+    ...o,
+  } as FindingRecord;
 }
 
 describe("RunHistory — outcome badge", () => {
@@ -95,5 +126,44 @@ describe("RunHistory — run cost", () => {
   it("shows no cost line for a run that has not settled", () => {
     renderRuns([run({ status: "running", score: null, blockers: null, cost_usd: null })]);
     expect(screen.queryByText(/tok ·/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — severity badges", () => {
+  const mapFor = (runId: string, findings: FindingRecord[]) =>
+    new Map([[runId, findings]]);
+
+  it("replaces the plain findings text with badges, keeping the blockers suffix", () => {
+    renderRuns(
+      [run({ status: "done", findings_count: 3, blockers: 2, score: 38 })],
+      {
+        findingsByRun: mapFor("run-1", [
+          finding({ severity: "CRITICAL" }),
+          finding({ severity: "CRITICAL" }),
+          finding({ severity: "WARNING" }),
+        ]),
+      },
+    );
+    expect(screen.queryByText("3 finding(s)")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Findings by severity/)).toBeInTheDocument();
+    expect(screen.getByText(/2 blockers/)).toBeInTheDocument();
+  });
+
+  it("falls back to the plain text when the run has no joined findings", () => {
+    renderRuns([run({ status: "done", findings_count: 3, blockers: 0 })], {
+      findingsByRun: new Map(),
+    });
+    expect(screen.getByText("3 finding(s)")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Findings by severity/)).not.toBeInTheDocument();
+  });
+
+  it("clicking the badge group opens the trace for that run", () => {
+    const onOpenTrace = vi.fn();
+    renderRuns(
+      [run({ status: "done", findings_count: 1, blockers: 0 })],
+      { findingsByRun: mapFor("run-1", [finding({ severity: "WARNING" })]), onOpenTrace },
+    );
+    fireEvent.click(screen.getByLabelText(/Findings by severity/));
+    expect(onOpenTrace).toHaveBeenCalledWith("run-1");
   });
 });

@@ -3,8 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { FindingRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/RunCostBadge";
+import { RunSeverityBadges } from "../RunSeverityBadges";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -74,6 +75,37 @@ const commitRowStyle: React.CSSProperties = {
   background: "transparent",
 };
 
+/**
+ * Agent name, per the design: muted mono at rest, accent + underline on hover
+ * (it navigates to the run's accordion below, so it reads as a link on touch).
+ */
+function AgentName({ name, title, onClick }: { name: string; title: string; onClick?: () => void }) {
+  const [hover, setHover] = React.useState(false);
+  const active = hover && !!onClick;
+  return (
+    <button
+      type="button"
+      className="mono"
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        fontSize: 12,
+        cursor: onClick ? "pointer" : "default",
+        color: active ? "var(--accent-text)" : "var(--text-secondary)",
+        textDecoration: active ? "underline" : "none",
+        textUnderlineOffset: 2,
+      }}
+    >
+      {name}
+    </button>
+  );
+}
+
 type TimelineItem =
   | { kind: "run"; ts: number; run: RunSummary }
   | { kind: "commit"; ts: number; commit: PrCommit };
@@ -88,12 +120,19 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /**
+   * The run's findings, joined from the reviews the page already fetched
+   * (reviews.run_id → run). Optional: without it (or for runs with no review)
+   * the row falls back to the plain "{count} finding(s)" text.
+   */
+  findingsByRun?: Map<string, FindingRecord[]>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -157,26 +196,12 @@ export function RunHistory({
             </Badge>
             {settled && r.score != null && <CircularScore score={r.score} size={30} stroke={3} />}
             <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                <button
-                  type="button"
-                  onClick={() => onGoToReview?.(r.run_id)}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <AgentName
+                  name={r.agent_name ?? "Agent"}
                   title={t("timeline.goToReview")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    font: "inherit",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                    cursor: onGoToReview ? "pointer" : "default",
-                    textDecoration: onGoToReview ? "underline" : "none",
-                    textDecorationStyle: "dotted",
-                    textUnderlineOffset: 3,
-                  }}
-                >
-                  {r.agent_name ?? "Agent"}
-                </button>{" "}
+                  onClick={onGoToReview ? () => onGoToReview(r.run_id) : undefined}
+                />
                 <span className="mono" style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
                   {r.provider}/{r.model}
                 </span>
@@ -189,12 +214,31 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
+              {settled &&
+                (() => {
+                  const fs = findingsByRun?.get(r.run_id);
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        marginTop: 3,
+                        fontSize: 11.5,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {fs && fs.length > 0 ? (
+                        <RunSeverityBadges findings={fs} onClick={() => onOpenTrace(r.run_id)} />
+                      ) : (
+                        t("runStatus.findings", { count: r.findings_count ?? 0 })
+                      )}
+                      {(r.blockers ?? 0) > 0
+                        ? t("runStatus.blockers", { count: r.blockers ?? 0 })
+                        : ""}
+                    </div>
+                  );
+                })()}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
