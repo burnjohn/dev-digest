@@ -14,6 +14,7 @@
  */
 export * from './schema/core';
 export * from './schema/repos';
+export * from './schema/github-tokens';
 export * from './schema/pulls';
 export * from './schema/reviews';
 export * from './schema/skills';
@@ -28,6 +29,7 @@ export * from './schema/repo-intel';
 
 import { users, workspaces, workspaceMembers, settings } from './schema/core';
 import { repos } from './schema/repos';
+import { githubTokens } from './schema/github-tokens';
 import { pullRequests, prFiles, prCommits } from './schema/pulls';
 import { reviews, findings, prIntent, prBrief } from './schema/reviews';
 import { skills, skillVersions } from './schema/skills';
@@ -53,6 +55,7 @@ export const schema = {
   workspaceMembers,
   settings,
   repos,
+  githubTokens,
   pullRequests,
   prFiles,
   prCommits,
