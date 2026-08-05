@@ -2,9 +2,30 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import {
+  Badge,
+  Icon,
+  CircularScore,
+  Dropdown,
+  SeverityCounts,
+  type IconName,
+  type SeverityCountsValue,
+} from "@devdigest/ui";
+import type { RunSummary, PrCommit, ReviewRecord } from "@devdigest/shared";
 import { formatCost } from "@/lib/format";
+import { FindingsPopoverList } from "@/components/findings-popover/FindingsPopoverList";
+import { liveFindings } from "@/components/findings-popover/helpers";
+
+/** Live per-severity tally for one review's findings (dismissed excluded). */
+function severityCounts(review: ReviewRecord | undefined): SeverityCountsValue {
+  const counts: SeverityCountsValue = { critical: 0, warning: 0, suggestion: 0 };
+  for (const f of liveFindings(review?.findings ?? [])) {
+    if (f.severity === "CRITICAL") counts.critical += 1;
+    else if (f.severity === "WARNING") counts.warning += 1;
+    else if (f.severity === "SUGGESTION") counts.suggestion += 1;
+  }
+  return counts;
+}
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,12 +109,16 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  reviews,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** This run's own findings breakdown (matched by `run_id`, not the PR's
+   * latest review) — when absent for a run, the plain-text count is shown. */
+  reviews?: ReviewRecord[];
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -150,6 +175,9 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const review = reviews?.find((rv) => rv.run_id === r.run_id);
+        const counts = review ? severityCounts(review) : null;
+        const hasCounts = !!counts && (counts.critical > 0 || counts.warning > 0 || counts.suggestion > 0);
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -189,12 +217,21 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
+              {settled &&
+                (counts ? (
+                  hasCounts ? (
+                    <Dropdown align="left" width={320} trigger={<SeverityCounts counts={counts} />}>
+                      <FindingsPopoverList findings={review?.findings} />
+                    </Dropdown>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--ok)" }}>{t("list.findingsNone")}</div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {t("runStatus.findings", { count: r.findings_count ?? 0 })}
+                    {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                  </div>
+                ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}

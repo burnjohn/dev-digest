@@ -5,9 +5,9 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { RunSummary, ReviewRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
@@ -35,12 +35,31 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(runs: RunSummary[], reviews?: ReviewRecord[]) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} reviews={reviews} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
+}
+
+function review(o: Partial<ReviewRecord>): ReviewRecord {
+  return {
+    id: "rev-1",
+    pr_id: "pr-1",
+    agent_id: "a1",
+    run_id: "run-1",
+    agent_name: "Security Reviewer",
+    kind: "review",
+    verdict: "request_changes",
+    summary: null,
+    score: 40,
+    model: "deepseek/deepseek-v4-flash",
+    cost_usd: null,
+    created_at: "2026-06-11T18:44:34.000Z",
+    findings: [],
+    ...o,
+  };
 }
 
 describe("RunHistory — outcome badge", () => {
@@ -82,5 +101,42 @@ describe("RunHistory — outcome badge", () => {
   it("a settled run with unknown cost shows the em dash", () => {
     renderRuns([run({ status: "done", cost_usd: null })]);
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — per-run findings badges", () => {
+  it("renders severity badges + a popover for a run matched by run_id, instead of the plain-text count", () => {
+    const rev = review({
+      run_id: "run-1",
+      findings: [
+        {
+          id: "f-1",
+          review_id: "rev-1",
+          severity: "CRITICAL",
+          category: "security",
+          title: "Hardcoded secret",
+          file: "src/config.ts",
+          start_line: 11,
+          end_line: 11,
+          rationale: "A live key is committed in source.",
+          suggestion: null,
+          confidence: 0.9,
+          kind: "finding",
+          accepted_at: null,
+          dismissed_at: null,
+        },
+      ],
+    });
+    renderRuns([run({ run_id: "run-1", status: "done", findings_count: 1 })], [rev]);
+    expect(screen.queryByText(/1 finding\(s\)/)).not.toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("1"));
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+  });
+
+  it("falls back to the plain-text findings count for a run with no matching review", () => {
+    const rev = review({ run_id: "some-other-run" });
+    renderRuns([run({ run_id: "run-1", status: "done", findings_count: 2 })], [rev]);
+    expect(screen.getByText(/2 finding\(s\)/)).toBeInTheDocument();
   });
 });

@@ -227,6 +227,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(listedPr.cost_usd).toBeCloseTo(expectedCost);
     expect(listedPr.latest_run_cost_usd).toBeCloseTo(expectedCost);
 
+    // FINDINGS column: the id of this PR's one review, plus its live
+    // per-severity breakdown (grounding kept exactly one CRITICAL finding).
+    expect(listedPr.latest_review_id).toBe(review.id);
+    expect(listedPr.findings).toEqual({ critical: 1, warning: 0, suggestion: 0 });
+
     await app.close();
   });
 
@@ -252,7 +257,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
 
   it('finding actions: accept, dismiss', async () => {
     const app = await appWith(REVIEW_FIXTURE);
-    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
     const agent = (
       await app.inject({
         method: 'POST',
@@ -267,6 +272,14 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     ).json();
     const findingId = reviews[0].findings[0].id;
 
+    // Before dismissing, the PR-list FINDINGS column counts the one CRITICAL finding.
+    const before = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json();
+    expect(before.find((p: { id: string }) => p.id === pr.id).findings).toEqual({
+      critical: 1,
+      warning: 0,
+      suggestion: 0,
+    });
+
     const accepted = (
       await app.inject({ method: 'POST', url: `/findings/${findingId}/accept` })
     ).json();
@@ -277,6 +290,15 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     ).json();
     expect(dismissed.finding.dismissed_at).not.toBeNull();
     expect(dismissed.finding.accepted_at).toBeNull();
+
+    // FINDINGS counts are LIVE, not a snapshot: dismissing drops the count on
+    // the very next list fetch, with no other state change.
+    const after = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json();
+    expect(after.find((p: { id: string }) => p.id === pr.id).findings).toEqual({
+      critical: 0,
+      warning: 0,
+      suggestion: 0,
+    });
 
     await app.close();
   });

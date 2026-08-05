@@ -176,6 +176,21 @@ export const PrMeta = z.object({
   // Cost of the single most recent agent run against this PR (by ranAt).
   // null/absent when that run's cost is unknown or the PR has no runs.
   latest_run_cost_usd: z.number().nullish(),
+  // id of the review the `findings` breakdown below belongs to (list
+  // endpoint only; null/absent until reviewed) — lets the client lazily
+  // fetch that one review's full findings for the click-popover without a
+  // second round-trip to figure out which review to ask for.
+  latest_review_id: z.string().nullish(),
+  // Live per-severity counts for the PR's latest review (dismissed findings
+  // excluded); null/absent until reviewed. Not summed across every review —
+  // only the latest, so a finding flagged by two agents isn't double-counted.
+  findings: z
+    .object({
+      critical: z.number().int(),
+      warning: z.number().int(),
+      suggestion: z.number().int(),
+    })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

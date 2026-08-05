@@ -62,15 +62,29 @@ function DropdownItem({ it, onClose }: { it: DropdownItemDef; onClose: () => voi
 export function Dropdown({
   trigger,
   items,
+  children,
   align = "left",
   width = 230,
+  onOpenChange,
 }: {
   trigger: React.ReactNode;
-  items: DropdownItemDef[];
+  items?: DropdownItemDef[];
+  children?: React.ReactNode;
   align?: "left" | "right";
   width?: number;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpenState] = React.useState(false);
+  const setOpen = React.useCallback(
+    (next: boolean | ((o: boolean) => boolean)) => {
+      setOpenState((prev) => {
+        const value = typeof next === "function" ? next(prev) : next;
+        if (value !== prev) onOpenChange?.(value);
+        return value;
+      });
+    },
+    [onOpenChange],
+  );
   const ref = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -78,7 +92,7 @@ export function Dropdown({
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
-  }, []);
+  }, [setOpen]);
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
@@ -98,13 +112,14 @@ export function Dropdown({
             animation: "ddpop .12s ease",
           }}
         >
-          {items.map((it, i) =>
-            it.divider ? (
-              <div key={i} style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
-            ) : (
-              <DropdownItem key={i} it={it} onClose={() => setOpen(false)} />
-            )
-          )}
+          {children ??
+            items?.map((it, i) =>
+              it.divider ? (
+                <div key={i} style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
+              ) : (
+                <DropdownItem key={i} it={it} onClose={() => setOpen(false)} />
+              )
+            )}
         </div>
       )}
     </div>

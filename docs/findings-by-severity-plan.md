@@ -1,6 +1,9 @@
 # Findings by severity — PR list + Agent runs timeline
 
-**Status:** not started — parked for later.
+**Status:** done — implemented on `feat/findings-by-severity`, all 22 steps
+landed, verified via automated tests + a manual browser pass (with the
+`tableCard.overflow: hidden` clipping fix from step 22's manual pass, not
+in the original plan).
 
 ## Context
 

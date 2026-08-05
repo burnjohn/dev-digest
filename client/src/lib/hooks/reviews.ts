@@ -48,11 +48,11 @@ export function usePrRuns(prId: string | null | undefined) {
 }
 
 // ---- Persisted reviews + findings for a PR ----
-export function usePrReviews(prId: string | null | undefined) {
+export function usePrReviews(prId: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
-    enabled: !!prId,
+    enabled: !!prId && enabled,
   });
 }
 
@@ -155,7 +155,14 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId) {
+        qc.invalidateQueries({ queryKey: ["reviews", prId] });
+        // The PR list's live findings counts are derived from this same
+        // accept/dismiss state — without this, dismissing a finding never
+        // invalidates the list's cache key, so counts stay stale until an
+        // unrelated refetch.
+        qc.invalidateQueries({ queryKey: ["pulls"] });
+      }
     },
   });
 }
