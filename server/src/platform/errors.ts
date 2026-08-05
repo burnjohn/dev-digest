@@ -39,3 +39,14 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+/**
+ * No usable GitHub token for this repo — either none was ever assigned or the
+ * assigned one was deleted. 422, not ConfigError's 500: this is user-fixable
+ * state, and the client renders a "assign a token" CTA off the code.
+ */
+export class MissingTokenError extends AppError {
+  constructor(message = 'No GitHub token is assigned to this repository', details?: unknown) {
+    super('token_missing', message, 422, details);
+  }
+}
