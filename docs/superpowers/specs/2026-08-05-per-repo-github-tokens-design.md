@@ -84,7 +84,7 @@ tokenFor(githubTokenId):
   otherwise                           → throw MissingTokenError
 ```
 
-One lookup, no fallback. Owned by `GitHubTokenResolver` (db + secrets), the only place that knows the key format — so replacing `LocalSecretsProvider` with a Vault backend stays a one-adapter change.
+One lookup, no fallback, and **no database access**: with `legacy` gone there is no row to read, and the FK guarantees a non-null `github_token_id` points at a real row. So this is a small module (`modules/github-tokens/resolver.ts`) exposing `tokenSecretKey(id)` and `resolveGitHubToken(secrets, id)` — the only place that knows the key format, so replacing `LocalSecretsProvider` with a Vault backend stays a one-adapter change.
 
 ### Container
 
@@ -151,6 +151,7 @@ New module `server/src/modules/github-tokens/` (routes + service + repository), 
 | `DELETE /github-tokens/:id` | succeeds; FK nulls affected repos; returns `{deleted, orphaned_repos: n}` |
 | `POST /github-tokens/test` | ephemeral validation, nothing persisted — powers the inline Test button |
 | `PATCH /repos/:id/github-token` | `{github_token_id: string \| null}` — reassign |
+| `POST /repos/:id/test-access` | resolves the repo's **stored** token server-side and probes it against this repo; powers the *Test access to this repo* button without the value ever reaching the browser |
 | `POST /repos` | body gains **optional** `github_token_id` |
 
 `github_token_id` is optional on `POST /repos` so existing callers posting `{url}` alone (including `e2e/`) keep working; omitted means **no token**, and the repo is created in the broken state. The UI always sends it. With the env fallback gone there is no longer any implicit token to inherit, at creation time or after.
@@ -207,7 +208,7 @@ New hooks in `client/src/lib/hooks/` (`useGitHubTokens`, `useCreateGitHubToken`,
 ## Failure modes
 
 1. **Bad PAT on create** → validated before any write; 422; nothing persisted.
-2. **Token valid but cannot see the repo** — a PAT that authenticates fine still 404s on a private repo it lacks access to. `POST /repos` validates the chosen token against `owner/name` before inserting, returning 422, rather than accepting the repo and failing in the clone job minutes later.
+2. **Token valid but cannot see the repo** — a PAT that authenticates fine still 404s on a private repo it lacks access to. `POST /repos` probes the chosen token against `owner/name` before inserting, returning 422, rather than accepting the repo and failing in the clone job minutes later. The probe is **`listPullRequests`**, not a repo read: `GitHubClient` has no `getRepo` (`server/src/vendor/shared/adapters.ts:149-173`) and adding one would edit an existing shared contract, while listing PRs is both a valid 404-on-no-access check and the exact capability DevDigest depends on.
 3. **Token deleted while in use** → FK nulls `repos.github_token_id`; repos show the broken badge; reads still work from Postgres; poll/clone fail with `token_missing`.
 4. **Token revoked upstream** → no background revalidation. GitHub's 401 surfaces as the existing `ExternalServiceError` 502; the Test button and `last_validated_at` are the whole story.
 5. **No `delete` on `SecretsProvider`** — the interface has only `get`/`set` (`server/src/vendor/shared/adapters.ts:287-294`). Deletion tombstones the value with `set(key, '')`: `local.ts:39` does `if (stored) return stored`, so `''` is falsy and falls through as absent. With the env special case gone, an absent value now means `MissingTokenError` — there is nothing left to fall through *to*. No secret material remains; an empty key lingers in `secrets.json`. The cleaner fix — an optional `delete?()` on the interface — is additive and breaks no consumer, but edits an existing shared contract file, so it is not proposed here.
