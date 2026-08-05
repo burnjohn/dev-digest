@@ -2551,7 +2551,11 @@ Expected: all green. Every command must be run and its output read — no claimi
 
 - [ ] **Step 6: Run the real app and drive it**
 
-Boot the stack and click the flow through in a browser: add a repo choosing a token, delete that token in Settings, see the badge, reassign it, see the badge clear.
+Boot the stack and click through **both** flows in a browser. The first is the primary one — it is the exact state the migration leaves behind, and the repo owner specifically wants it exercised:
+
+**A. Recovering an already-broken repo (the real first-run path).** The existing seeded repo has no token after Task 6, so start there: open it, confirm the `no token` badge in the PR header and that existing PRs are still readable; confirm `POST /repos/:id/poll` fails visibly rather than silently; go to the repo's settings page, create a token inline with a real PAT, watch the badge clear, then poll successfully.
+
+**B. Losing a token.** Add a second repo choosing that token, delete the token in Settings → GitHub Tokens, confirm the orphan warning names both repos, confirm both go broken, then reassign.
 
 ```bash
 ./scripts/dev.sh
