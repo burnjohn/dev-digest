@@ -12,6 +12,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## What Works
 
+- `2026-08-05` — Cheapest proof that a mirrored edit landed identically in both vendor/shared copies: 'git diff <server-file> <client-file>' prints the same index blob hashes for both when they are in sync (7308b5f..e12b68c on both index.ts files after adding one barrel line), and 'md5 a b' plus a bare 'diff' exiting 0 confirms new files are byte-identical — no sync script exists, so this is the only guard against a half-applied mirror → used in Task 3 of per-repo-github-tokens, commit 4297f4a
+
 ## What Doesn't Work
 
 - `2026-08-01` — `instanceof` cannot be trusted for ANY class constructed inside `server/src/vendor/shared/` — not just `ZodError`. Each package resolves its own copy of the dependency, so the prototype chains differ and the check silently returns false; nothing throws and no type error appears, which is why the failure surfaces only as a wrong branch being taken further downstream. Match by shape (a discriminating field, e.g. an `issues` array) instead → `server/src/app.ts:140`
@@ -19,8 +21,9 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Codebase Patterns
 
-- `2026-08-05` — client/src/vendor/shared is a hand-maintained COPY, not a symlink — a new shared contract must be added to BOTH server/src/vendor/shared/contracts/ (canonical) and client/src/vendor/shared/contracts/, updating both barrels; the copies have already drifted, so never assume one edit serves both → `diff -rq server/src/vendor/shared client/src/vendor/shared` reports adapters.ts, contracts/eval-ci.ts, knowledge.ts, productionize.ts and trace.ts differing, and there is no sync script; client/CLAUDE.md's "symlinked from server" is wrong, observed 2026-08-05
+- `2026-08-05` — client/src/vendor/shared is a hand-maintained COPY, not a symlink — a new shared contract must be added to BOTH server/src/vendor/shared/contracts/ (canonical) and client/src/vendor/shared/contracts/, updating both barrels; the copies have already drifted, so never assume one edit serves both → `diff -rq server/src/vendor/shared client/src/vendor/shared` reports adapters.ts, contracts/eval-ci.ts, knowledge.ts, productionize.ts and trace.ts differing, and there is no sync script; client/CLAUDE.md's "symlinked from server" is wrong, observed 2026-08-05 ×2 (2026-08-05)
 - `2026-08-05` — SecretKey is an OPEN union — `| (string & {})` at server/src/vendor/shared/adapters.ts:280-285 — so namespaced secret keys like GITHUB_TOKEN:<uuid> are already type-legal and per-entity secrets need no shared-contract edit → verified while designing per-repo GitHub tokens, docs/superpowers/specs/2026-08-05-per-repo-github-tokens-design.md
+- `2026-08-05` — Adding a contract that .extend()s a base from the dual-copy vendor/shared: diff the BASE file across both copies before extending, not just after copying your new file — a drifted base yields two differently-typed contracts that both typecheck cleanly and split the contract silently, since each package resolves its own copy and neither tsc run can see the other. RepoWithToken/RepoCreate .extend() Repo/RepoInput from contracts/platform.js, and that only worked because platform.ts and index.ts happen to be byte-identical between the copies while 5 sibling files (adapters.ts, eval-ci.ts, knowledge.ts, productionize.ts, trace.ts) are drifted → verified adding contracts/github-tokens.ts in Task 3 of per-repo-github-tokens, 'diff server/src/vendor/shared/contracts/platform.ts client/src/vendor/shared/contracts/platform.ts' exits 0, commit 4297f4a
 
 ## Tool & Library Notes
 
