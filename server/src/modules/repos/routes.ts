@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RepoInput } from '@devdigest/shared';
+import { AssignRepoTokenInput, RepoCreate } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { RepoService } from './service.js';
@@ -9,10 +9,12 @@ import { NotFoundError } from '../../platform/errors.js';
 /**
  * F1 — repos module. Transport layer only: parses requests, maps status
  * codes, and delegates all business logic to RepoService.
- *   POST   /repos              → add repo (parse URL, persist, enqueue real clone)
- *   GET    /repos              → list repos (workspace-scoped)
- *   POST   /repos/:id/refresh  → re-fetch clone + bump last_polled_at
- *   DELETE /repos/:id          → remove repo
+ *   POST   /repos                    → add repo (parse URL, persist, enqueue real clone)
+ *   GET    /repos                    → list repos + their token label (workspace-scoped)
+ *   PATCH  /repos/:id/github-token   → point the repo at another token (null clears)
+ *   POST   /repos/:id/test-access    → probe the repo's OWN stored token, server-side
+ *   POST   /repos/:id/refresh        → re-fetch clone + bump last_polled_at
+ *   DELETE /repos/:id                → remove repo
  *
  * The clone runs as a JobRunner job (kind 'clone') — real `git clone` via the
  * GitClient adapter into <cloneDir>/<owner>/<repo>.
@@ -24,9 +26,16 @@ export default async function reposRoutes(appBase: FastifyInstance) {
   // Register the clone job handler once.
   service.registerCloneJobHandler();
 
-  app.post('/repos', { schema: { body: RepoInput } }, async (req, reply) => {
+  app.post('/repos', { schema: { body: RepoCreate } }, async (req, reply) => {
     const { workspaceId, userId } = await getContext(app.container, req);
-    const { repo, created } = await service.add(workspaceId, userId, req.body.url);
+    // `github_token_id` is optional: a caller posting `{ url }` alone still
+    // works and gets a repo with NO token — there is no implicit fallback.
+    const { repo, created } = await service.add(
+      workspaceId,
+      userId,
+      req.body.url,
+      req.body.github_token_id ?? null,
+    );
     reply.status(created ? 201 : 200);
     return repo;
   });
@@ -35,6 +44,32 @@ export default async function reposRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
   });
+
+  app.patch(
+    '/repos/:id/github-token',
+    { schema: { params: IdParams, body: AssignRepoTokenInput } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.assignToken(workspaceId, req.params.id, req.body.github_token_id);
+    },
+  );
+
+  /**
+   * Probe the token this repo already has. The raw value is resolved
+   * server-side from the SecretsProvider and never crosses this boundary in
+   * either direction — the request carries only the repo id.
+   */
+  app.post(
+    '/repos/:id/test-access',
+    {
+      schema: { params: IdParams },
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.testAccess(workspaceId, req.params.id);
+    },
+  );
 
   app.post('/repos/:id/refresh', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

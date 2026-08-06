@@ -132,6 +132,13 @@ export interface MockGitHubOptions {
    * a canned login.
    */
   rejectAuth?: boolean;
+  /**
+   * Opt-in only, same style as `rejectAuth` — every existing caller omits it.
+   * Set to simulate a repo the token cannot SEE: GitHub answers 404 on
+   * `listPullRequests` for a private repo outside the PAT's scope, which is
+   * the probe `GitHubTokenService.probeAccess` relies on.
+   */
+  rejectRepoAccess?: boolean;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -143,6 +150,7 @@ export class MockGitHubClient implements GitHubClient {
   constructor(private opts: MockGitHubOptions = {}) {}
 
   async listPullRequests(_repo: RepoRef): Promise<PrMeta[]> {
+    if (this.opts.rejectRepoAccess) throw new Error('Not Found');
     return (
       this.opts.pulls ?? [
         {
