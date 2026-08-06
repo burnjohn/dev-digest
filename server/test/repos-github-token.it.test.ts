@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +7,7 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
+import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { LocalSecretsProvider } from '../src/adapters/secrets/local.js';
 import { RepoService } from '../src/modules/repos/service.js';
@@ -228,9 +230,68 @@ d('repos ↔ github token', () => {
       expect(rows.some((r: { full_name: string }) => r.full_name === 'acme/private-thing')).toBe(
         false,
       );
+
+      // The SAME guard on the reassign path. `add` and `assignToken` share
+      // `probeToken`, but they are separate call sites: deleting the call from
+      // one of them has to fail a test.
+      const existing = await repoNamed('acme/no-token');
+      const patched = await rejectApp.inject({
+        method: 'PATCH',
+        url: `/repos/${existing.id}/github-token`,
+        payload: { github_token_id: token.id },
+      });
+      expect(patched.statusCode).toBe(422);
+      expect(patched.json().error.message).toMatch(/cannot read acme\/no-token/);
+      expect((await repoNamed('acme/no-token')).github_token_id).toBeNull();
     } finally {
       await rejectApp.close();
     }
+  });
+
+  /**
+   * `resolveGitHubToken` maps `GITHUB_TOKEN:<id>` by id ALONE — it takes no Db
+   * on purpose, because ownership is authorization and belongs in the service.
+   * These are the only two paths where a token id arrives from an untrusted
+   * request body, so they are the only two that need the check. The second
+   * workspace's token has a real stored value here, so without the guard the
+   * probe would succeed and the repo would clone with another tenant's PAT.
+   */
+  it('a token id belonging to another workspace is 404, not usable', async () => {
+    const [otherWs] = await pg.handle.db
+      .insert(t.workspaces)
+      .values({ name: 'other-tenant' })
+      .returning();
+    const [foreign] = await pg.handle.db
+      .insert(t.githubTokens)
+      .values({ workspaceId: otherWs!.id, label: 'other-tenant-pat' })
+      .returning();
+    // Resolvable on purpose: only the ownership check can produce the 404.
+    stored[`GITHUB_TOKEN:${foreign!.id}`] = 'ghp_other_tenant';
+
+    const added = await app.inject({
+      method: 'POST',
+      url: '/repos',
+      payload: { url: 'https://github.com/acme/cross-tenant', github_token_id: foreign!.id },
+    });
+    expect(added.statusCode).toBe(404);
+    expect(added.json().error.message).toBe('Token not found');
+    expect(await repoNamed('acme/cross-tenant')).toBeUndefined();
+
+    const target = await repoNamed('acme/no-token');
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/repos/${target.id}/github-token`,
+      payload: { github_token_id: foreign!.id },
+    });
+    expect(patched.statusCode).toBe(404);
+    expect(patched.json().error.message).toBe('Token not found');
+
+    // No repo anywhere ended up pointing at the foreign token.
+    const pointing = await pg.handle.db
+      .select({ id: t.repos.id })
+      .from(t.repos)
+      .where(eq(t.repos.githubTokenId, foreign!.id));
+    expect(pointing).toEqual([]);
   });
 });
 
@@ -270,13 +331,20 @@ d('clone job token resolution', () => {
   });
 
   it("authenticates the clone with the repo's own token, never the bare env one", async () => {
-    const token = (
-      await app.inject({
-        method: 'POST',
-        url: '/github-tokens',
-        payload: { label: 'cloner', token: 'ghp_repo_own' },
-      })
-    ).json();
+    const tokenRes = await app.inject({
+      method: 'POST',
+      url: '/github-tokens',
+      payload: { label: 'cloner', token: 'ghp_repo_own' },
+    });
+    // Asserted directly, not inferred downstream: this is the ONLY test that
+    // writes through the real LocalSecretsProvider, so it is the guard against
+    // the detached-`secrets.set` bug (which surfaced as 502 "Failed to store
+    // the token value"). Without this line a reintroduction fails several steps
+    // later as a confusing null-vs-undefined mismatch.
+    expect(tokenRes.statusCode).toBe(201);
+    const token = tokenRes.json();
+    expect(token.id).toBeTruthy();
+    expect(token.configured).toBe(true);
 
     const added = await app.inject({
       method: 'POST',

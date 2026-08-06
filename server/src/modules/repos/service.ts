@@ -5,6 +5,7 @@ import { RepoRepository } from './repository.js';
 import { parseRepoUrl, withGitHubToken, toRepoWithTokenDto } from './helpers.js';
 import { resolveGitHubToken } from '../github-tokens/resolver.js';
 import { GitHubTokenService } from '../github-tokens/service.js';
+import { GitHubTokenRepository } from '../github-tokens/repository.js';
 import { CLONE_JOB_KIND, CLONE_DEPTH } from './constants.js';
 import {
   INDEX_JOB_KIND,
@@ -32,9 +33,12 @@ export interface CloneJobPayload {
 
 export class RepoService {
   private repo: RepoRepository;
+  /** Read-only, for the ownership guard on body-supplied token ids — see `probeToken`. */
+  private tokens: GitHubTokenRepository;
 
   constructor(private container: Container) {
     this.repo = new RepoRepository(container.db);
+    this.tokens = new GitHubTokenRepository(container.db);
   }
 
   /**
@@ -122,7 +126,7 @@ export class RepoService {
 
     // Fail here, not in the clone job minutes later: a PAT can authenticate
     // fine and still 404 on a private repo it cannot see.
-    if (githubTokenId) await this.probeToken(githubTokenId, fullName);
+    if (githubTokenId) await this.probeToken(workspaceId, githubTokenId, fullName);
 
     const row = await this.repo.insert({
       workspaceId,
@@ -161,7 +165,7 @@ export class RepoService {
   ): Promise<RepoWithToken> {
     const repo = await this.repo.getById(workspaceId, repoId);
     if (!repo) throw new NotFoundError('Repo not found');
-    if (githubTokenId) await this.probeToken(githubTokenId, repo.fullName);
+    if (githubTokenId) await this.probeToken(workspaceId, githubTokenId, repo.fullName);
 
     const updated = await this.repo.assignToken(workspaceId, repoId, githubTokenId);
     if (!updated) throw new NotFoundError('Repo not found');
@@ -190,11 +194,28 @@ export class RepoService {
   }
 
   /**
-   * Resolve a token id and prove it can read `fullName`. Throws
-   * MissingTokenError (422) when the id has no stored value, ValidationError
-   * (422) when the token cannot read the repo. Never returns the value.
+   * Gate for a token id that arrived in a REQUEST BODY: prove the caller's
+   * workspace owns it, then prove it can read `fullName`.
+   *
+   * The ownership check is the authorization step and belongs here, not in
+   * `resolveGitHubToken` — that function takes no Db on purpose and maps
+   * `GITHUB_TOKEN:<id>` by id alone, so an id from another workspace would
+   * otherwise resolve that workspace's PAT and clone/probe with it. `Container
+   * .github(repo.githubTokenId)` needs no such guard: that id comes off a
+   * workspace-scoped repo row and is already trustworthy.
+   *
+   * 404, not 422: a token owned by someone else must be indistinguishable from
+   * one that does not exist, so the response never confirms the id is real.
+   * Then ValidationError (422) if the token cannot read the repo. The value is
+   * never returned.
    */
-  private async probeToken(githubTokenId: string, fullName: string): Promise<void> {
+  private async probeToken(
+    workspaceId: string,
+    githubTokenId: string,
+    fullName: string,
+  ): Promise<void> {
+    const owned = await this.tokens.getById(workspaceId, githubTokenId);
+    if (!owned) throw new NotFoundError('Token not found');
     const token = await resolveGitHubToken(this.container.secrets, githubTokenId);
     await new GitHubTokenService(this.container).probeAccess(token, fullName);
   }
