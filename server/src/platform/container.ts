@@ -153,6 +153,17 @@ export class Container {
   }
 
   /**
+   * The injected GitHub client (tests only), if any — exposed narrowly so
+   * `GitHubTokenService` can validate a RAW token value against the same mock
+   * the rest of the container uses, instead of a real Octokit/network call.
+   * Deliberately NOT a general `overrides` getter: that would leak every other
+   * override (secrets, git, llm, ...) to callers that only need this one.
+   */
+  get overriddenGithub(): GitHubClient | undefined {
+    return this.overrides.github;
+  }
+
+  /**
    * GitHub client for ONE token id. The argument is required and has no
    * default so TypeScript flags any call site that has not been taught which
    * repo it is acting for — a silent fallback to a global token is exactly
