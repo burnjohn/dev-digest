@@ -25,6 +25,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Tool & Library Notes
 
+- `2026-08-06` — vi.fn(async () => new Response(...)) infers a zero-arg mock; capturing fetchMock.mock.calls[0] then fails typecheck with TS2493 ("Tuple type [] has no element at index 0") even though the test runs fine — give the mock factory explicit params, e.g. vi.fn(async (_url: string, _init?: RequestInit) => …), to type mock.calls correctly → client/src/lib/hooks/github-tokens.test.ts (PR feat/per-repo-github-tokens Task 9)
+
 ## Recurring Errors & Fixes
 
 ## Session Notes

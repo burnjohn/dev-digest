@@ -11,6 +11,7 @@ import type {
   GitHubToken,
   GitHubTokenInput,
   GitHubTokenPatch,
+  GitHubTokenTestInput,
   GitHubTokenTestResult,
   RepoWithToken,
 } from "@devdigest/shared";
@@ -35,13 +36,27 @@ export function useCreateGitHubToken() {
   });
 }
 
-/** PATCH /github-tokens/:id — rename, replace the value, or both. */
+/**
+ * PATCH /github-tokens/:id — rename, replace the value, or both.
+ *
+ * `RepoWithToken.github_token_label` is computed server-side per repo from the
+ * live token row (`server/src/modules/repos/helpers.ts:69`) rather than
+ * denormalized onto the repo — so a rename leaves every dependent repo's
+ * cached label stale until `["repos"]` is invalidated too. Replacing the
+ * value alone only flips `configured`, which no repo field depends on, but
+ * one invalidation covering both cases is simpler than branching on which
+ * fields the patch touched and costs nothing extra (an unaffected `["repos"]`
+ * refetch just returns the same data).
+ */
 export function usePatchGitHubToken() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...patch }: GitHubTokenPatch & { id: string }) =>
       api.patch<GitHubToken>(`/github-tokens/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: TOKENS_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: TOKENS_KEY });
+      qc.invalidateQueries({ queryKey: ["repos"] });
+    },
   });
 }
 
@@ -70,7 +85,7 @@ export function useDeleteGitHubToken() {
  */
 export function useTestGitHubToken() {
   return useMutation({
-    mutationFn: (input: { token: string; full_name?: string }) =>
+    mutationFn: (input: GitHubTokenTestInput) =>
       api.post<GitHubTokenTestResult>("/github-tokens/test", input),
   });
 }
