@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
-import { MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockLLMProvider } from '../src/adapters/mocks.js';
 
 /**
  * No-DB route smoke tests via app.inject(). `/health` and the validation/error
@@ -20,10 +20,7 @@ describe('routes (no DB)', () => {
   });
 
   it('POST /settings/test-connection (github) is rejected — use /github-tokens/test instead', async () => {
-    const app = await buildApp({
-      config,
-      overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
-    });
+    const app = await buildApp({ config });
     const res = await app.inject({
       method: 'POST',
       url: '/settings/test-connection',

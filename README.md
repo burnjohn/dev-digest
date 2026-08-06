@@ -112,7 +112,9 @@ Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 
 > Add your LLM keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)
 > or via the Settings UI at runtime. GitHub tokens are per-repo and are added
-> in the app under Settings → GitHub Tokens — there is no env var for them.
+> in the app under Settings → GitHub Tokens (no env var for those) — though a
+> legacy code path still falls back to a bare `GITHUB_TOKEN` in `server/.env`
+> for git clone auth until that's replaced with per-repo tokens too.
 
 ## Manual steps (what the script does)
 
