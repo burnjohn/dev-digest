@@ -14,7 +14,6 @@ import type {
   ConnTestProvider,
   ConnTestResult,
   SecretsStatus,
-  Repo,
   PrMeta,
   PrDetail,
   SpecFile,
@@ -67,10 +66,17 @@ export function useSecretsStatus() {
 }
 
 // ---- Repos (F1: GET/POST /repos, refresh, delete) ----
+/**
+ * `GET /repos` returns `RepoWithToken[]` — every row carries `github_token_id`
+ * and `github_token_label` (server: Task 8). Typed as such here so consumers
+ * (the repo settings page, the PR-list "no token" badge) can read those
+ * fields directly; `RepoWithToken` is a strict superset of the old `Repo`
+ * shape, so nothing that only used base `Repo` fields breaks.
+ */
 export function useRepos() {
   return useQuery({
     queryKey: ["repos"],
-    queryFn: () => api.get<Repo[]>("/repos"),
+    queryFn: () => api.get<RepoWithToken[]>("/repos"),
   });
 }
 

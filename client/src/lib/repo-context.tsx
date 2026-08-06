@@ -5,13 +5,13 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import { useRepos } from "./hooks";
-import type { Repo } from "./types";
+import type { RepoWithToken } from "@devdigest/shared";
 
 const RepoCtx = React.createContext<{
   repoId: string | null;
   setRepoId: (id: string) => void;
-  repos: Repo[];
-  activeRepo: Repo | null;
+  repos: RepoWithToken[];
+  activeRepo: RepoWithToken | null;
   reposLoaded: boolean;
 }>({ repoId: null, setRepoId: () => {}, repos: [], activeRepo: null, reposLoaded: false });
 

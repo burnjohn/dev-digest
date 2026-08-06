@@ -3,6 +3,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -10,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   AutoTriggerStatus,
+  Icon,
 } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
@@ -26,6 +28,7 @@ const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
 
 export default function PullsPage() {
   const t = useTranslations("prReview");
+  const tTokens = useTranslations("github-tokens");
   const params = useParams<{ repoId: string }>();
   const repoId = params.repoId;
   const search = useSearchParams();
@@ -81,6 +84,25 @@ export default function PullsPage() {
           </p>
         </div>
         <div style={s.headerActions}>
+          {activeRepo && !activeRepo.github_token_id && (
+            <Link href={`/repos/${repoId}/settings`}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 9px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "var(--warn)",
+                  border: "1px solid var(--warn)",
+                }}
+              >
+                <Icon.AlertTriangle size={12} />
+                {tTokens("repo.badge")}
+              </span>
+            </Link>
+          )}
           <AutoTriggerStatus on={false} />
         </div>
       </div>

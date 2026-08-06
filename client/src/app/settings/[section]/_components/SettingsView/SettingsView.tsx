@@ -11,7 +11,8 @@ import { useTranslations } from "next-intl";
 import { AppShell } from "../../../../../components/app-shell";
 import { SettingsApiKeys } from "./_components/SettingsApiKeys";
 import { SettingsModels } from "./_components/SettingsModels";
-import { DEFAULT_SECTION, SECTION_API_KEYS, SECTION_MODELS } from "./constants";
+import { SettingsGitHubTokens } from "./_components/SettingsGitHubTokens";
+import { DEFAULT_SECTION, SECTION_API_KEYS, SECTION_MODELS, SECTION_GITHUB_TOKENS } from "./constants";
 import { s } from "./styles";
 
 export function SettingsView() {
@@ -39,6 +40,8 @@ export function SettingsView() {
             <SettingsApiKeys />
           ) : section === SECTION_MODELS ? (
             <SettingsModels />
+          ) : section === SECTION_GITHUB_TOKENS ? (
+            <SettingsGitHubTokens />
           ) : (
             <EmptyState
               icon="Settings"

@@ -1,7 +1,9 @@
-/* AddRepoView — add-repository screen body. URL only. API keys (OpenAI /
-   Anthropic / GitHub PAT) are NOT entered here; they live in Settings → API
-   Keys and don't change per repo. Escapable: Esc or the close button returns
-   to the app. */
+/* AddRepoView — add-repository screen body. URL, plus which GitHub token this
+   repo authenticates with (optional — same picker RepoSettingsView uses, so
+   the two don't diverge). Model/LLM API keys (OpenAI / Anthropic /
+   OpenRouter) are NOT entered here; they live in Settings → API Keys and
+   don't change per repo. Escapable: Esc or the close button returns to the
+   app. */
 "use client";
 
 import React from "react";
@@ -9,10 +11,12 @@ import { useRouter } from "next/navigation";
 import { Button, Icon, IconBtn, Kbd, TextInput, FormField } from "@devdigest/ui";
 import { useAddRepo } from "@/lib/hooks";
 import { ApiError } from "@/lib/api";
+import { GitHubTokenPicker } from "@/components/github-token-picker";
 
 export function AddRepoView() {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = React.useState("");
+  const [githubTokenId, setGithubTokenId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const addRepo = useAddRepo();
 
@@ -31,7 +35,7 @@ export function AddRepoView() {
     if (!repoUrl.trim()) return;
     setError(null);
     try {
-      const repo = await addRepo.mutateAsync({ url: repoUrl.trim(), githubTokenId: null });
+      const repo = await addRepo.mutateAsync({ url: repoUrl.trim(), githubTokenId });
       router.push(`/repos/${repo.id}/pulls`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add repository");
@@ -77,7 +81,7 @@ export function AddRepoView() {
         <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Add a repository</h1>
         <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
           Paste a GitHub repository URL — DevDigest clones it locally and imports open PRs.
-          API keys aren’t needed here; set them once in{" "}
+          Model API keys (OpenAI / Anthropic / OpenRouter) aren’t needed here; set them once in{" "}
           <a
             href="/settings/api-keys"
             onClick={(e) => {
@@ -101,6 +105,13 @@ export function AddRepoView() {
               if (e.key === "Enter") submit();
             }}
           />
+        </FormField>
+
+        <FormField
+          label="GitHub token"
+          hint="Which saved token DevDigest uses to read this repo. Optional — pick one later from the repo's settings."
+        >
+          <GitHubTokenPicker value={githubTokenId} onChange={setGithubTokenId} />
         </FormField>
 
         {error && (
