@@ -1,13 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import { type Repo } from '@devdigest/shared';
-import { NotFoundError } from '../../platform/errors.js';
+import { type GitHubTokenTestResult, type RepoWithToken } from '@devdigest/shared';
+import { MissingTokenError, NotFoundError } from '../../platform/errors.js';
 import { RepoRepository } from './repository.js';
-import { parseRepoUrl, withGitHubToken, toRepoDto } from './helpers.js';
-import {
-  CLONE_JOB_KIND,
-  CLONE_DEPTH,
-  GITHUB_TOKEN_SECRET,
-} from './constants.js';
+import { parseRepoUrl, withGitHubToken, toRepoWithTokenDto } from './helpers.js';
+import { resolveGitHubToken } from '../github-tokens/resolver.js';
+import { GitHubTokenService } from '../github-tokens/service.js';
+import { GitHubTokenRepository } from '../github-tokens/repository.js';
+import { CLONE_JOB_KIND, CLONE_DEPTH } from './constants.js';
 import {
   INDEX_JOB_KIND,
   REFRESH_JOB_KIND,
@@ -28,19 +27,24 @@ export interface CloneJobPayload {
   owner: string;
   name: string;
   url: string;
+  /** The repo's own token, carried so the job never guesses which one to use. */
+  githubTokenId?: string | null;
 }
 
 export class RepoService {
   private repo: RepoRepository;
+  /** Read-only, for the ownership guard on body-supplied token ids — see `probeToken`. */
+  private tokens: GitHubTokenRepository;
 
   constructor(private container: Container) {
     this.repo = new RepoRepository(container.db);
+    this.tokens = new GitHubTokenRepository(container.db);
   }
 
   /**
    * Register the `clone` job handler once. Authenticates the clone with the
-   * stored GitHub PAT (so private repos work), clones via the GitClient adapter,
-   * then persists the resulting path + last_polled_at.
+   * PAT of the repo's OWN token (so private repos work), clones via the
+   * GitClient adapter, then persists the resulting path + last_polled_at.
    */
   registerCloneJobHandler(): void {
     this.container.jobs.register(CLONE_JOB_KIND, async (payload) => {
@@ -49,12 +53,41 @@ export class RepoService {
   }
 
   async runCloneJob(payload: CloneJobPayload): Promise<void> {
-    const { repoId, owner, name, url } = payload;
-    const token = await this.container.secrets.get(GITHUB_TOKEN_SECRET);
+    const { repoId, owner, name, url, githubTokenId } = payload;
+    // The repo's own token, or none — there is deliberately no fallback to a
+    // bare GITHUB_TOKEN in the environment. Anonymous clones stay supported
+    // because public repos need no token at all; when one of THOSE fails, the
+    // error below names the missing token instead of leaving a raw git auth
+    // error as the only clue.
+    let token: string | null = null;
+    try {
+      token = await resolveGitHubToken(this.container.secrets, githubTokenId ?? null);
+    } catch (err) {
+      if (!(err instanceof MissingTokenError)) throw err;
+    }
     const cloneUrl = token ? withGitHubToken(url, token) : url;
-    const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
-      depth: CLONE_DEPTH,
-    });
+    let path: string;
+    try {
+      ({ path } = await this.container.git.clone({ owner, name }, cloneUrl, {
+        depth: CLONE_DEPTH,
+      }));
+    } catch (err) {
+      // `cloneUrl` is never interpolated here: with no token it carries no
+      // credentials, and with a token the original error is rethrown untouched
+      // for JobRunner's redaction to handle.
+      //
+      // `token` is null here for TWO distinct reasons — githubTokenId was
+      // never assigned, OR it was assigned but its stored value is absent
+      // (deleted, or never given a PAT, like the seeded `demo` token). The
+      // message must stay true in both: "no token is assigned" is false in
+      // the second case.
+      if (!token) {
+        throw new Error(
+          `Clone of ${owner}/${name} failed: no usable GitHub token for this repository — assign or replace one in repo settings. Underlying error: ${(err as Error).message}`,
+        );
+      }
+      throw err;
+    }
     await this.repo.updateClonePath(repoId, path);
 
     // T2.2 — kick off the indexer in the background. ENQUEUE (not call) so the
@@ -87,27 +120,156 @@ export class RepoService {
     workspaceId: string,
     userId: string,
     url: string,
-  ): Promise<{ repo: Repo; created: boolean }> {
+    githubTokenId: string | null = null,
+  ): Promise<{ repo: RepoWithToken; created: boolean }> {
     const { owner, name } = parseRepoUrl(url);
     const fullName = `${owner}/${name}`;
 
-    const existing = await this.repo.findByFullName(workspaceId, fullName);
-    if (existing) return { repo: toRepoDto(existing), created: false };
+    const existing = await this.repo.getWithTokenByFullName(workspaceId, fullName);
+    if (existing) {
+      // A re-post with a DIFFERENT token id is a deliberate pick, not a no-op:
+      // `assignToken` probes it against this repo first, same as a fresh add.
+      if (githubTokenId && existing.githubTokenId !== githubTokenId) {
+        return { repo: await this.assignToken(workspaceId, existing.id, githubTokenId), created: false };
+      }
+      return {
+        repo: toRepoWithTokenDto(
+          existing,
+          existing.githubTokenLabel,
+          await this.isTokenConfigured(existing.githubTokenId),
+        ),
+        created: false,
+      };
+    }
 
-    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId });
+    // Fail here, not in the clone job minutes later: a PAT can authenticate
+    // fine and still 404 on a private repo it cannot see.
+    if (githubTokenId) await this.probeToken(workspaceId, githubTokenId, fullName);
+
+    const row = await this.repo.insert({
+      workspaceId,
+      owner,
+      name,
+      fullName,
+      createdBy: userId,
+      githubTokenId,
+    });
     await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: row.id,
       owner,
       name,
       url,
+      githubTokenId,
     } satisfies CloneJobPayload);
 
-    return { repo: toRepoDto(row), created: true };
+    const created = await this.repo.getWithToken(workspaceId, row.id);
+    return {
+      repo: toRepoWithTokenDto(
+        row,
+        created?.githubTokenLabel ?? null,
+        await this.isTokenConfigured(row.githubTokenId),
+      ),
+      created: true,
+    };
   }
 
-  async list(workspaceId: string): Promise<Repo[]> {
-    const rows = await this.repo.list(workspaceId);
-    return rows.map(toRepoDto);
+  async list(workspaceId: string): Promise<RepoWithToken[]> {
+    const rows = await this.repo.listWithToken(workspaceId);
+    return Promise.all(
+      rows.map(async (r) =>
+        toRepoWithTokenDto(r, r.githubTokenLabel, await this.isTokenConfigured(r.githubTokenId)),
+      ),
+    );
+  }
+
+  /**
+   * Point a repo at a different token (or at none, with null). The new token is
+   * probed against THIS repo first, for the same reason `add` probes: a token
+   * that cannot read the repo must fail now, not in the next clone job.
+   */
+  async assignToken(
+    workspaceId: string,
+    repoId: string,
+    githubTokenId: string | null,
+  ): Promise<RepoWithToken> {
+    const repo = await this.repo.getById(workspaceId, repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+    if (githubTokenId) await this.probeToken(workspaceId, githubTokenId, repo.fullName);
+
+    const updated = await this.repo.assignToken(workspaceId, repoId, githubTokenId);
+    if (!updated) throw new NotFoundError('Repo not found');
+    const withToken = await this.repo.getWithToken(workspaceId, repoId);
+    const row = withToken ?? updated;
+    return toRepoWithTokenDto(
+      row,
+      withToken?.githubTokenLabel ?? null,
+      await this.isTokenConfigured(row.githubTokenId),
+    );
+  }
+
+  /**
+   * Whether a repo's assigned token actually has a usable stored value —
+   * distinct from merely being assigned. `resolveGitHubToken` is the single
+   * source of truth for "usable" (absent id, or a tombstoned/never-set value,
+   * both throw `MissingTokenError`); this just turns that into a boolean for
+   * the DTO instead of duplicating the absent/empty check.
+   */
+  private async isTokenConfigured(githubTokenId: string | null): Promise<boolean> {
+    if (!githubTokenId) return false;
+    try {
+      await resolveGitHubToken(this.container.secrets, githubTokenId);
+      return true;
+    } catch (err) {
+      if (err instanceof MissingTokenError) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Probe a repo's OWN stored token, server-side. The raw value is resolved
+   * here and never crosses the HTTP boundary in either direction — the client
+   * sends only the repo id and gets back a pass/fail message.
+   */
+  async testAccess(workspaceId: string, repoId: string): Promise<GitHubTokenTestResult> {
+    const repo = await this.repo.getById(workspaceId, repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+    let token: string;
+    try {
+      token = await resolveGitHubToken(this.container.secrets, repo.githubTokenId);
+    } catch (err) {
+      // A missing token is a RESULT here, not a request failure: the client
+      // renders it in the same place as "GitHub rejected that token".
+      if (!(err instanceof MissingTokenError)) throw err;
+      return { ok: false, login: null, message: err.message };
+    }
+    return new GitHubTokenService(this.container).test({ token, full_name: repo.fullName });
+  }
+
+  /**
+   * Gate for a token id that arrived in a REQUEST BODY: prove the caller's
+   * workspace owns it, then prove it can read `fullName`.
+   *
+   * The ownership check is the authorization step and belongs here, not in
+   * `resolveGitHubToken` — that function takes no Db on purpose and maps
+   * `GITHUB_TOKEN:<id>` by id alone, so an id from another workspace would
+   * otherwise resolve that workspace's PAT and clone/probe with it. `Container
+   * .github(repo.githubTokenId)` needs no such guard: that id comes off a
+   * workspace-scoped repo row and is already trustworthy.
+   *
+   * 404, not 422: a token owned by someone else must be indistinguishable from
+   * one that does not exist, so the response never confirms the id is real.
+   * Then ValidationError (422) if the token cannot read the repo. The value is
+   * never returned.
+   */
+  private async probeToken(
+    workspaceId: string,
+    githubTokenId: string,
+    fullName: string,
+  ): Promise<void> {
+    const owned = await this.tokens.getById(workspaceId, githubTokenId);
+    if (!owned) throw new NotFoundError('Token not found');
+    const token = await resolveGitHubToken(this.container.secrets, githubTokenId);
+    await new GitHubTokenService(this.container).probeAccess(token, fullName);
   }
 
   /** Re-fetch the clone for an existing repo (enqueues a fresh `clone` job). */
@@ -161,6 +323,7 @@ export class RepoService {
       owner: repo.owner,
       name: repo.name,
       url: `https://github.com/${repo.fullName}.git`,
+      githubTokenId: repo.githubTokenId,
     } satisfies CloneJobPayload);
     // T2.2 — also enqueue an incremental refresh. The two queue positions are
     // independent (p-queue doesn't FIFO across kinds), but `runIncremental` is

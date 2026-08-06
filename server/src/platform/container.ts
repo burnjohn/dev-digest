@@ -22,7 +22,8 @@ import { OpenAIEmbedder } from '../adapters/embedder/openai.js';
 import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
-import { ConfigError } from './errors.js';
+import { ConfigError, MissingTokenError } from './errors.js';
+import { resolveGitHubToken } from '../modules/github-tokens/resolver.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
@@ -62,7 +63,8 @@ export class Container {
   readonly runBus: RunBus;
 
   private _git?: GitClient;
-  private _github?: GitHubClient;
+  /** One cached GitHub client per token id (see `github()`). */
+  private githubClients = new Map<string, GitHubClient>();
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -150,13 +152,32 @@ export class Container {
     return this._priceBook;
   }
 
-  async github(): Promise<GitHubClient> {
+  /**
+   * The injected GitHub client (tests only), if any — exposed narrowly so
+   * `GitHubTokenService` can validate a RAW token value against the same mock
+   * the rest of the container uses, instead of a real Octokit/network call.
+   * Deliberately NOT a general `overrides` getter: that would leak every other
+   * override (secrets, git, llm, ...) to callers that only need this one.
+   */
+  get overriddenGithub(): GitHubClient | undefined {
+    return this.overrides.github;
+  }
+
+  /**
+   * GitHub client for ONE token id. The argument is required and has no
+   * default so TypeScript flags any call site that has not been taught which
+   * repo it is acting for — a silent fallback to a global token is exactly
+   * what this feature removes. One cached client per id.
+   */
+  async github(githubTokenId: string | null): Promise<GitHubClient> {
     if (this.overrides.github) return this.overrides.github;
-    if (this._github) return this._github;
-    const token = await this.secrets.get('GITHUB_TOKEN');
-    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
-    return this._github;
+    if (!githubTokenId) throw new MissingTokenError();
+    const cached = this.githubClients.get(githubTokenId);
+    if (cached) return cached;
+    const token = await resolveGitHubToken(this.secrets, githubTokenId);
+    const client = new OctokitGitHubClient(token);
+    this.githubClients.set(githubTokenId, client);
+    return client;
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
@@ -214,7 +235,7 @@ export class Container {
    */
   invalidateSecretCaches(): void {
     this.llmCache.clear();
-    this._github = undefined;
+    this.githubClients.clear();
     this._embedder = undefined;
   }
 }

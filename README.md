@@ -110,8 +110,10 @@ Postgres keeps running (`docker compose down` to stop it).
 
 Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 
-> Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
-> `GITHUB_TOKEN`) or via the Settings UI at runtime.
+> Add your LLM keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)
+> or via the Settings UI at runtime. GitHub tokens are per-repo and are added
+> in the app under Settings → GitHub Tokens (no env var for those) — a bare
+> `GITHUB_TOKEN` in `server/.env` is ignored, including for git clone auth.
 
 ## Manual steps (what the script does)
 

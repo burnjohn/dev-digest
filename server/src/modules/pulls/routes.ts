@@ -6,7 +6,7 @@ import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { AppError, NotFoundError } from '../../platform/errors.js';
+import { AppError, MissingTokenError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 
 /**
@@ -33,7 +33,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     let gh: GitHubClient | null = null;
     try {
-      gh = await container.github();
+      gh = await container.github(repo.githubTokenId);
     } catch (err) {
       app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
     }
@@ -201,7 +201,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
     try {
-      const gh = await container.github();
+      const gh = await container.github(repo.githubTokenId);
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -299,7 +299,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
       let gh: GitHubClient;
       try {
-        gh = await container.github();
+        gh = await container.github(repo.githubTokenId);
       } catch (err) {
         app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
         return [];
@@ -322,8 +322,14 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const input = req.body;
       let gh: GitHubClient;
       try {
-        gh = await container.github();
-      } catch {
+        gh = await container.github(repo.githubTokenId);
+      } catch (err) {
+        // MissingTokenError (422, token_missing) is a distinct, user-fixable
+        // state from "GitHub is unreachable" — rethrow it as-is so the client
+        // can render an "assign a token" CTA instead of a generic failure.
+        // Unlike :302/:308 (read paths that degrade to persisted data), this
+        // is a WRITE with nothing local to fall back to, so it must fail loud.
+        if (err instanceof MissingTokenError) throw err;
         throw new AppError(
           'github_unavailable',
           'Connect a GitHub token to post comments.',

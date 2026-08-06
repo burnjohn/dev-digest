@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
-import { MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockLLMProvider } from '../src/adapters/mocks.js';
 
 /**
  * No-DB route smoke tests via app.inject(). `/health` and the validation/error
@@ -19,21 +19,17 @@ describe('routes (no DB)', () => {
     await app.close();
   });
 
-  it('POST /settings/test-connection (github) returns structured ConnTestResult', async () => {
-    const app = await buildApp({
-      config,
-      overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
-    });
+  it('POST /settings/test-connection (github) is rejected — use /github-tokens/test instead', async () => {
+    const app = await buildApp({ config });
     const res = await app.inject({
       method: 'POST',
       url: '/settings/test-connection',
       payload: { provider: 'github' },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(422);
     const body = res.json();
-    expect(body.provider).toBe('github');
-    expect(body.ok).toBe(true);
-    expect(body.message).toContain('octocat');
+    expect(body.error.code).toBe('validation_error');
+    expect(body.error.message).toContain('/github-tokens/test');
     await app.close();
   });
 

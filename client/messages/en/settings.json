@@ -11,8 +11,6 @@
     "anthropicHint": "Used for Claude-backed agents.",
     "openrouterLabel": "OpenRouter API key",
     "openrouterHint": "One key, many cheap models (DeepSeek/GLM/MiniMax). Used by CI reviewers + openrouter agents.",
-    "githubLabel": "GitHub PAT (fine-grained)",
-    "githubHint": "Contents (read), Pull requests (read+write), Metadata (read), Actions (read).",
     "placeholder": "•••• stored via SecretsProvider (.env)",
     "testConnection": "Test connection",
     "testing": "Testing…",

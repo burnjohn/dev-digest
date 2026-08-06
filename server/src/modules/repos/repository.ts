@@ -1,13 +1,20 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
 /**
- * F1 — repos data-access layer. The ONLY place that touches the `repos`
- * table. Every query is scoped by `workspaceId` (tenancy guard).
+ * F1 — repos data-access layer. Owns every WRITE to the `repos` table and
+ * most reads — but not all: `github-tokens/repository.ts`'s `list()` and
+ * `repoCountFor()` also SELECT from `repos` (correlated subquery / count, to
+ * report `repo_count` per token), and `repoCountFor(id)` there is deliberately
+ * unscoped by workspace (see its docblock). Every query here is scoped by
+ * `workspaceId` (tenancy guard).
  */
 
 export type RepoRow = typeof t.repos.$inferSelect;
+
+/** A repo plus the LABEL of the token it authenticates with (null when none). */
+export type RepoWithTokenRow = RepoRow & { githubTokenLabel: string | null };
 
 export interface InsertRepo {
   workspaceId: string;
@@ -15,22 +22,64 @@ export interface InsertRepo {
   name: string;
   fullName: string;
   createdBy: string;
+  /** Omitted / null ⇒ the repo is created with no token (the broken state). */
+  githubTokenId?: string | null;
 }
 
 export class RepoRepository {
   constructor(private db: Db) {}
 
-  /** Find a repo in a workspace by its `owner/name` full name (dedupe on add). */
-  async findByFullName(workspaceId: string, fullName: string): Promise<RepoRow | undefined> {
-    const [row] = await this.db
-      .select()
+  /**
+   * Repos joined to their token's label. A LEFT join, so a repo with no token
+   * still comes back — that is the state the UI has to show, not one to filter
+   * out. One query for the list + its badge.
+   */
+  private withTokenWhere(where: SQL | undefined): Promise<RepoWithTokenRow[]> {
+    return this.db
+      .select({ repo: t.repos, githubTokenLabel: t.githubTokens.label })
       .from(t.repos)
-      .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, fullName)));
+      .leftJoin(t.githubTokens, eq(t.repos.githubTokenId, t.githubTokens.id))
+      .where(where)
+      .then((rows) =>
+        rows.map((r) => ({ ...r.repo, githubTokenLabel: r.githubTokenLabel ?? null })),
+      );
+  }
+
+  async listWithToken(workspaceId: string): Promise<RepoWithTokenRow[]> {
+    return this.withTokenWhere(eq(t.repos.workspaceId, workspaceId));
+  }
+
+  /** One repo with its token label — the shape every repo response uses. */
+  async getWithToken(workspaceId: string, id: string): Promise<RepoWithTokenRow | undefined> {
+    const [row] = await this.withTokenWhere(
+      and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, id)),
+    );
     return row;
   }
 
-  async list(workspaceId: string): Promise<RepoRow[]> {
-    return this.db.select().from(t.repos).where(eq(t.repos.workspaceId, workspaceId));
+  /** Same, by full name — the dedupe path of `add` answers with this shape too. */
+  async getWithTokenByFullName(
+    workspaceId: string,
+    fullName: string,
+  ): Promise<RepoWithTokenRow | undefined> {
+    const [row] = await this.withTokenWhere(
+      and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, fullName)),
+    );
+    return row;
+  }
+
+  /** Reassign (or clear with null) the token a repo authenticates with. */
+  async assignToken(
+    workspaceId: string,
+    repoId: string,
+    githubTokenId: string | null,
+  ): Promise<RepoRow | undefined> {
+    const [row] = await this.db
+      .update(t.repos)
+      .set({ githubTokenId })
+      .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, repoId)))
+      .returning();
+    return row;
   }
 
   async getById(workspaceId: string, id: string): Promise<RepoRow | undefined> {
@@ -50,6 +99,7 @@ export class RepoRepository {
         name: values.name,
         fullName: values.fullName,
         createdBy: values.createdBy,
+        githubTokenId: values.githubTokenId ?? null,
       })
       .returning();
     return row!;

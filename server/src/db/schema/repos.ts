@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces, users } from './core';
+import { githubTokens } from './github-tokens';
 
 export const repos = pgTable(
   'repos',
@@ -14,6 +15,11 @@ export const repos = pgTable(
     fullName: text('full_name').notNull(),
     defaultBranch: text('default_branch').notNull().default('main'),
     clonePath: text('clone_path'),
+    // NULL means "this repo has no usable token" — the broken state the UI
+    // surfaces. SET NULL (not cascade) keeps the repo when its token is deleted.
+    githubTokenId: uuid('github_token_id').references(() => githubTokens.id, {
+      onDelete: 'set null',
+    }),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: now(),

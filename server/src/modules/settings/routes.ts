@@ -9,6 +9,7 @@ import {
 } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
+import { ValidationError } from '../../platform/errors.js';
 import { GITHUB_PROVIDER, SECRET_KEY_BY_PROVIDER } from './constants.js';
 import { rowsToSettings } from './helpers.js';
 
@@ -16,10 +17,11 @@ import { rowsToSettings } from './helpers.js';
  * F1 — settings module.
  *   GET  /settings                 → current non-secret prefs
  *   PUT  /settings                 → upsert prefs (key/value rows)
- *   POST /settings/test-connection → test a provider key (OpenAI/Anthropic/GitHub)
+ *   POST /settings/test-connection → test an LLM provider key (OpenAI/Anthropic/OpenRouter);
+ *                                     GitHub is rejected here — see POST /github-tokens/test
  *
  * Secrets are NOT stored here — only non-secret prefs. test-connection reads
- * the key via SecretsProvider and does a cheap live call (listModels / GET user).
+ * the key via SecretsProvider and does a cheap live call (listModels).
  */
 export default async function settingsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -43,6 +45,14 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         async ([provider, key]) => [provider, Boolean(await container.secrets.get(key))] as const,
       ),
     );
+    // `SecretsStatus` (shared contract, extend-never-edit) still declares a
+    // required `github` field from before per-repo tokens existed; nothing
+    // populates it any more since `SECRET_KEY_BY_PROVIDER` has no `github`
+    // entry (see its comment). This cast hides that the actual JSON body
+    // omits `github` entirely — there is no response schema on this route to
+    // catch the gap. Not a live bug: the client's SettingsApiKeys panel no
+    // longer reads `secretsStatus.github` (removed from KEY_ROWS), so nothing
+    // consumes the missing key today.
     return Object.fromEntries(entries) as SecretsStatus;
   });
 
@@ -73,20 +83,22 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
     },
     async (req): Promise<ConnTestResult> => {
     const { provider, key } = req.body;
+    // GitHub PATs are per-repo tokens managed by the github-tokens module —
+    // there is no global GitHub secret left to test here.
+    if (provider === GITHUB_PROVIDER) {
+      throw new ValidationError('Use POST /github-tokens/test to validate a GitHub token');
+    }
     try {
+      const secretKey = SECRET_KEY_BY_PROVIDER[provider];
+      if (!secretKey) return { provider, ok: false, message: 'Unsupported provider' };
       // If the UI supplied a key, persist it (BYO key) before testing so the
       // test reflects — and the rest of the app can use — the new value.
       if (key) {
         if (!container.secrets.set) {
           return { provider, ok: false, message: 'Secrets backend is read-only' };
         }
-        await container.secrets.set(SECRET_KEY_BY_PROVIDER[provider], key);
+        await container.secrets.set(secretKey, key);
         container.invalidateSecretCaches();
-      }
-      if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
-        const login = await gh.currentLogin();
-        return { provider, ok: true, message: `Connected as @${login}` };
       }
       const llm = await container.llm(provider);
       const models = await llm.listModels();

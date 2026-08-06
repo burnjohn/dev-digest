@@ -1,4 +1,4 @@
-import { type Repo } from '@devdigest/shared';
+import { type Repo, type RepoWithToken } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { AppError } from '../../platform/errors.js';
 import {
@@ -52,5 +52,24 @@ export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {
     clone_path: row.clonePath,
     last_polled_at: row.lastPolledAt?.toISOString() ?? null,
     created_by: row.createdBy,
+  };
+}
+
+/**
+ * Map a repo row + its token's label + whether that token's value actually
+ * resolves to the API `RepoWithToken` DTO. Only the token's ID and LABEL
+ * travel — the value never leaves the SecretsProvider; `githubTokenConfigured`
+ * is a boolean the caller already resolved via `resolveGitHubToken`.
+ */
+export function toRepoWithTokenDto(
+  row: typeof t.repos.$inferSelect,
+  githubTokenLabel: string | null,
+  githubTokenConfigured: boolean,
+): RepoWithToken {
+  return {
+    ...toRepoDto(row),
+    github_token_id: row.githubTokenId,
+    github_token_label: githubTokenLabel,
+    github_token_configured: githubTokenConfigured,
   };
 }

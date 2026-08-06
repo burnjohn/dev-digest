@@ -7,8 +7,9 @@ import type { SecretsProvider, SecretKey } from '@devdigest/shared';
  *
  * Reads stored overrides from a JSON file on disk (BYO keys entered via the
  * UI), falling back to process.env when a key has not been set. Writes persist
- * to the same file (mode 0600) so keys survive restarts. GITHUB_TOKEN is the
- * canonical key; GITHUB_PAT is still read as a fallback for back-compat.
+ * to the same file (mode 0600) so keys survive restarts. GitHub PATs are
+ * stored per token id under `GITHUB_TOKEN:<id>`; there is no bare GITHUB_TOKEN
+ * and no env fallback for them.
  *
  * Stored values take precedence over env so a key entered in the UI wins.
  * Swap for a VaultSecretsProvider later without touching call sites.
@@ -37,7 +38,6 @@ export class LocalSecretsProvider implements SecretsProvider {
   async get(key: SecretKey): Promise<string | undefined> {
     const stored = (await this.load())[key as string];
     if (stored) return stored;
-    if (key === 'GITHUB_TOKEN') return this.env.GITHUB_TOKEN ?? this.env.GITHUB_PAT;
     return this.env[key as string];
   }
 

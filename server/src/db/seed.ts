@@ -16,10 +16,12 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * Seed the starter's demo data. Idempotent: re-running upserts the default
  * workspace/user and the demo fixtures.
  *
- * Seeds: default workspace + system user + membership, default settings,
- * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * Seeds: default workspace + system user + membership, default settings, a
+ * demo GitHub token (`demo`, metadata only — no PAT value, so it lists as
+ * `configured: false`), demo repo (acme/payments-api) pointed at that token,
+ * PR #482 with files/commits, a sample review with a few findings, and the
+ * three built-in agents (General + Security + Performance), all on the
+ * default openrouter/deepseek-v4-flash provider+model.
  *
  * Course lessons populate the other tables (skills, conventions, memory, eval,
  * …) once their features are built — they start empty here.
@@ -70,6 +72,20 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .onConflictDoNothing();
   }
 
+  // ---- demo GitHub token (metadata only — no PAT value, so it lists as
+  // `configured: false`; that's honest and keeps every e2e flow offline) ----
+  let [ghToken] = await db
+    .select()
+    .from(t.githubTokens)
+    .where(and(eq(t.githubTokens.workspaceId, workspaceId), eq(t.githubTokens.label, 'demo')));
+  if (!ghToken) {
+    [ghToken] = await db
+      .insert(t.githubTokens)
+      .values({ workspaceId, label: 'demo', githubLogin: 'demo-user' })
+      .returning();
+  }
+  const ghTokenId = ghToken!.id;
+
   // ---- demo repo (acme/payments-api) ----
   let [repo] = await db
     .select()
@@ -86,6 +102,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         defaultBranch: 'main',
         clonePath: null,
         createdBy: userId,
+        githubTokenId: ghTokenId,
       })
       .returning();
   }

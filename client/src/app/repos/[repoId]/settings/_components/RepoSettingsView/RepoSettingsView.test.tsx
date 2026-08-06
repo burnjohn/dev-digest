@@ -1,0 +1,175 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
+import React from "react";
+import messages from "../../../../../../../messages/en/github-tokens.json";
+import { RepoSettingsView } from "./RepoSettingsView";
+
+const repoNoToken = {
+  id: "r1",
+  workspace_id: "w",
+  owner: "acme",
+  name: "api",
+  full_name: "acme/api",
+  default_branch: "main",
+  clone_path: null,
+  last_polled_at: null,
+  created_by: null,
+  github_token_id: null,
+  github_token_label: null,
+  github_token_configured: false,
+};
+
+const repoWithToken = {
+  ...repoNoToken,
+  github_token_id: "t1",
+  github_token_label: "work",
+  github_token_configured: true,
+};
+
+/** The seeded `demo` token's exact shape: assigned, but no stored PAT. */
+const repoWithUnconfiguredToken = {
+  ...repoNoToken,
+  github_token_id: "t2",
+  github_token_label: "demo",
+  github_token_configured: false,
+};
+
+const tokens = [
+  {
+    id: "t1",
+    workspace_id: "w",
+    label: "work",
+    github_login: "octocat",
+    configured: true,
+    repo_count: 1,
+    created_at: "",
+    last_validated_at: null,
+  },
+  {
+    id: "t2",
+    workspace_id: "w",
+    label: "demo",
+    github_login: null,
+    configured: false,
+    repo_count: 1,
+    created_at: "",
+    last_validated_at: null,
+  },
+];
+
+function renderView(repoId = "r1") {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={{ "github-tokens": messages }}>
+        <RepoSettingsView repoId={repoId} />
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+afterEach(cleanup);
+
+function mockFetch(repos: unknown[]) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      new Response(JSON.stringify(String(url).includes("/github-tokens") ? tokens : repos), {
+        status: 200,
+      }),
+    ),
+  );
+}
+
+describe("RepoSettingsView", () => {
+  beforeEach(() => {
+    mockFetch([repoNoToken]);
+  });
+
+  it("shows the repo identity", async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+  });
+
+  it("warns when the repo has no token assigned", async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText(/no token assigned/i)).toBeInTheDocument());
+  });
+
+  it("does not show the warning once a token is assigned and configured (and does show a Test button)", async () => {
+    mockFetch([repoWithToken]);
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+    expect(screen.queryByText(/no token assigned/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/test access to this repo/i)).toBeInTheDocument();
+  });
+
+  /**
+   * MUST FIX 2 consequence: a repo can be ASSIGNED to a token that has no
+   * stored value (the seeded `demo` token's exact shape) — that must be just
+   * as broken as no assignment at all, not silently treated as healthy.
+   */
+  it("shows the warning when a token IS assigned but its value is not configured", async () => {
+    mockFetch([repoWithUnconfiguredToken]);
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+    expect(screen.getByText(/no token assigned/i)).toBeInTheDocument();
+  });
+
+  it("renders the assigned token's label and @login in the repo header", async () => {
+    mockFetch([repoWithToken]);
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+    expect(screen.getByText(/token: work/i)).toBeInTheDocument();
+    expect(screen.getByText(/@octocat/)).toBeInTheDocument();
+  });
+
+  it("probes access via POST /repos/:id/test-access with no body", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/test-access")) {
+        expect(init?.body).toBeUndefined();
+        return new Response(
+          JSON.stringify({ ok: true, login: "octocat", message: "Looks good, octocat" }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes("/github-tokens")) {
+        return new Response(JSON.stringify(tokens), { status: 200 });
+      }
+      return new Response(JSON.stringify([repoWithToken]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderView();
+    fireEvent.click(await screen.findByText(/test access to this repo/i));
+    await screen.findByText("Looks good, octocat");
+  });
+
+  it("surfaces the server's 422 message when the chosen token can't read this repo", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH" && String(url).includes("/github-token")) {
+        return new Response(
+          JSON.stringify({
+            error: { code: "token_access_denied", message: "This token cannot read acme/api." },
+          }),
+          { status: 422 },
+        );
+      }
+      if (String(url).includes("/github-tokens")) {
+        return new Response(JSON.stringify(tokens), { status: 200 });
+      }
+      return new Response(JSON.stringify([repoNoToken]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderView();
+    // Open the picker dropdown and choose the one saved token, which the
+    // mocked PATCH rejects with a 422 pointing at THIS repo specifically.
+    fireEvent.click(await screen.findByRole("button", { name: /choose a token/i }));
+    fireEvent.click(await screen.findByText("work"));
+
+    expect(await screen.findByText("This token cannot read acme/api.")).toBeInTheDocument();
+  });
+});

@@ -6,8 +6,9 @@ import { join, isAbsolute, resolve } from 'node:path';
 /**
  * Central, zod-validated environment config. Loaded once at startup.
  *
- * NOTE: secret keys (OPENAI/ANTHROPIC/OPENROUTER/GITHUB_TOKEN) are deliberately
- * NOT in this schema. Feature code must access secrets through SecretsProvider,
+ * NOTE: secret keys (OPENAI/ANTHROPIC/OPENROUTER, per-repo GITHUB_TOKEN:<id>)
+ * are deliberately NOT in this schema. Feature code must access secrets through
+ * SecretsProvider,
  * never via process.env or AppConfig — the SecretsProvider is the one chokepoint
  * that reads process.env directly (see adapters/secrets/local.ts). Listing them
  * here would be dead config that never reaches AppConfig.

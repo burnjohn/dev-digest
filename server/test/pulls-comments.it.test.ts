@@ -137,4 +137,23 @@ d('inline PR comments routes (Testcontainers pg)', () => {
     expect(res.statusCode).toBe(422);
     expect(gh.createdComments).toHaveLength(0);
   });
+
+  it('POST on a repo with no token answers 422 token_missing, not a downgraded 400', async () => {
+    // Deliberately NO `overrides.github`: an injected client wins over
+    // resolution for ANY id (container.github() short-circuits on the
+    // override before consulting githubTokenId at all), which would mask the
+    // very branch under test. Without it, container.github(null) throws
+    // MissingTokenError before any Octokit is constructed — the production
+    // path, and still hermetic since no network call is reachable.
+    const app = await buildApp({ config: config(), db: pg.handle.db });
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/pulls/${pr.id}/comments`,
+      payload: { path: 'src/config.ts', line: 11, body: 'Please move this to an env var.' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('token_missing');
+  });
 });

@@ -20,6 +20,7 @@ import { COLUMN_KEYS, RIGHT_ALIGNED_COLUMNS, SKELETON_ROWS } from "./constants";
 import { s } from "./styles";
 import { PRRow } from "./_components/PRRow";
 import { FilterBar } from "./_components/FilterBar";
+import { RepoTokenBadge } from "./_components/RepoTokenBadge";
 
 /** Open PRs carry a derived review status; everything else is merged/closed. */
 const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
@@ -81,6 +82,13 @@ export default function PullsPage() {
           </p>
         </div>
         <div style={s.headerActions}>
+          {activeRepo && (
+            <RepoTokenBadge
+              repoId={repoId}
+              githubTokenId={activeRepo.github_token_id}
+              githubTokenConfigured={activeRepo.github_token_configured}
+            />
+          )}
           <AutoTriggerStatus on={false} />
         </div>
       </div>

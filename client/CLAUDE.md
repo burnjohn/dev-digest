@@ -26,7 +26,7 @@ pnpm build       # production build
 - `src/lib/api.ts` — API client (base URL from `NEXT_PUBLIC_API_BASE`)
 - `src/lib/hooks/` — TanStack Query hooks (one per API resource)
 - `src/components/app-shell/` — nav, breadcrumbs, keyboard shortcuts (`g`-then-key)
-- `src/vendor/shared/` — `@devdigest/shared` Zod contracts (symlinked from server)
+- `src/vendor/shared/` — `@devdigest/shared` Zod contracts (a hand-maintained copy of the server's, NOT a symlink — see Gotchas)
 - `src/vendor/ui/` — `@devdigest/ui` vendored components
 - `messages/en/*.json` — i18n strings per feature
 

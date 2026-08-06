@@ -14,12 +14,12 @@ import type {
   ConnTestProvider,
   ConnTestResult,
   SecretsStatus,
-  Repo,
   PrMeta,
   PrDetail,
   SpecFile,
   IndexStatus,
 } from "../types";
+import type { RepoWithToken } from "@devdigest/shared";
 
 // ---- Settings (F1: GET/PUT /settings, POST /settings/test-connection) ----
 export function useSettings() {
@@ -66,18 +66,45 @@ export function useSecretsStatus() {
 }
 
 // ---- Repos (F1: GET/POST /repos, refresh, delete) ----
+/**
+ * `GET /repos` returns `RepoWithToken[]` — every row carries `github_token_id`
+ * and `github_token_label` (server: Task 8). Typed as such here so consumers
+ * (the repo settings page, the PR-list "no token" badge) can read those
+ * fields directly; `RepoWithToken` is a strict superset of the old `Repo`
+ * shape, so nothing that only used base `Repo` fields breaks.
+ */
 export function useRepos() {
   return useQuery({
     queryKey: ["repos"],
-    queryFn: () => api.get<Repo[]>("/repos"),
+    queryFn: () => api.get<RepoWithToken[]>("/repos"),
   });
 }
 
+/**
+ * Body carries an optional `githubTokenId` so a repo can be bound to a token
+ * at creation time. `null`/undefined omits `github_token_id` entirely — the
+ * server then creates the repo with no token, same as before this field
+ * existed. The response is `RepoWithToken` (server now joins the token label
+ * into every repo row), a strict superset of the old `Repo` shape.
+ *
+ * Invalidates `["github-tokens"]` too, alongside `["repos"]`: binding a token
+ * at creation (or re-adding an already-tracked repo with a NEW token, which
+ * `RepoService.add`'s dedupe path now also assigns) changes that token's
+ * `repo_count`, same as every sibling mutation that reassigns a token
+ * (`useAssignRepoToken`, `useDeleteGitHubToken`, `usePatchGitHubToken`).
+ */
 export function useAddRepo() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (url: string) => api.post<Repo>("/repos", { url }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["repos"] }),
+    mutationFn: (input: { url: string; githubTokenId: string | null }) =>
+      api.post<RepoWithToken>("/repos", {
+        url: input.url,
+        ...(input.githubTokenId ? { github_token_id: input.githubTokenId } : {}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["repos"] });
+      qc.invalidateQueries({ queryKey: ["github-tokens"] });
+    },
   });
 }
 

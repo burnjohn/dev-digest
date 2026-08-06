@@ -43,7 +43,7 @@ settings · repos · pulls · polling · workspace · agents · reviews · repo-
 
 ## Gotchas
 
-- `GITHUB_TOKEN` is canonical; `GITHUB_PAT` accepted as fallback (both checked)
+- GitHub PATs are per-repo: `repos.github_token_id` → secrets key `GITHUB_TOKEN:<id>`; there is no env fallback and a bare `GITHUB_TOKEN` in `server/.env` is ignored entirely. Clone auth resolves `CloneJobPayload.githubTokenId`; `test/no-env-github-token.test.ts` fails if any source asks for the bare key again
 - repo-intel facade returns degraded-but-valid results when no index exists — never throws
 - Grounding gate is mandatory: findings without valid diff line citations are dropped
 - `EMBEDDINGS_ENABLED=false` (default) → zero OpenAI calls; set true only if you need memory/RAG

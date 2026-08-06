@@ -125,6 +125,20 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /**
+   * Opt-in only — every existing caller omits this and keeps today's
+   * unconditional-success behaviour. Set to simulate GitHub rejecting the
+   * token (bad/expired PAT) so `currentLogin()` rejects instead of returning
+   * a canned login.
+   */
+  rejectAuth?: boolean;
+  /**
+   * Opt-in only, same style as `rejectAuth` — every existing caller omits it.
+   * Set to simulate a repo the token cannot SEE: GitHub answers 404 on
+   * `listPullRequests` for a private repo outside the PAT's scope, which is
+   * the probe `GitHubTokenService.probeAccess` relies on.
+   */
+  rejectRepoAccess?: boolean;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -136,6 +150,7 @@ export class MockGitHubClient implements GitHubClient {
   constructor(private opts: MockGitHubOptions = {}) {}
 
   async listPullRequests(_repo: RepoRef): Promise<PrMeta[]> {
+    if (this.opts.rejectRepoAccess) throw new Error('Not Found');
     return (
       this.opts.pulls ?? [
         {
@@ -235,6 +250,7 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async currentLogin(): Promise<string> {
+    if (this.opts.rejectAuth) throw new Error('Bad credentials');
     return this.opts.login ?? 'mock-user';
   }
 }
