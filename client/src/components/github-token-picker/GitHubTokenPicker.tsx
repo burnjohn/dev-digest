@@ -118,22 +118,36 @@ export function GitHubTokenPicker({
             >
               {create.isPending ? t("picker.saving") : t("picker.save")}
             </Button>
-            <Button kind="ghost" size="md" onClick={() => setCreating(false)}>
+            <Button
+              kind="ghost"
+              size="md"
+              onClick={() => {
+                // Clear everything, not just `creating` — a token value must
+                // not outlive the form the user abandoned, and a stale Test
+                // result must not render once the form it described is gone.
+                setCreating(false);
+                setLabel("");
+                setToken("");
+                setResult(null);
+              }}
+            >
               {t("picker.cancel")}
             </Button>
           </div>
-        </div>
-      )}
 
-      {result && (
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: result.ok ? "var(--ok)" : "var(--crit)",
-          }}
-        >
-          {result.message}
+          {/* Nested inside `creating` so a Test result structurally cannot
+              outlive the form it belongs to, even if a future edit forgets
+              to clear `result` on cancel/save. */}
+          {result && (
+            <div
+              style={{
+                fontSize: 12,
+                color: result.ok ? "var(--ok)" : "var(--crit)",
+              }}
+            >
+              {result.message}
+            </div>
+          )}
         </div>
       )}
     </div>

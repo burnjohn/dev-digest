@@ -121,4 +121,74 @@ describe("GitHubTokenPicker", () => {
       token: "ghp_secret",
     });
   });
+
+  it("clears the form and any Test result on Cancel", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(url).endsWith("/github-tokens/test")) {
+        return new Response(
+          JSON.stringify({ ok: true, login: "octocat", message: "Looks good, octocat" }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(tokens), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPicker();
+    fireEvent.click(await screen.findByRole("button"));
+    await screen.findByText("work");
+    fireEvent.click(screen.getByText(/new token/i));
+
+    fireEvent.change(await screen.findByPlaceholderText(/label/i), {
+      target: { value: "temp label" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/ghp_/i), {
+      target: { value: "ghp_temp" },
+    });
+    fireEvent.click(screen.getByText(/^test$/i));
+    await screen.findByText("Looks good, octocat");
+
+    fireEvent.click(screen.getByText(/cancel/i));
+    expect(screen.queryByPlaceholderText(/label/i)).not.toBeInTheDocument();
+
+    // Reopen — the form and its Test banner must not have survived Cancel.
+    fireEvent.click(screen.getByRole("button"));
+    await screen.findByText("work");
+    fireEvent.click(screen.getByText(/new token/i));
+    expect(await screen.findByPlaceholderText(/label/i)).toHaveValue("");
+    expect(screen.getByPlaceholderText(/ghp_/i)).toHaveValue("");
+    expect(screen.queryByText("Looks good, octocat")).not.toBeInTheDocument();
+  });
+
+  it("surfaces the server's 422 message verbatim on a duplicate label", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(url).endsWith("/github-tokens")) {
+        return new Response(
+          JSON.stringify({
+            error: { code: "duplicate_label", message: 'A token named "ci" already exists.' },
+          }),
+          { status: 422 },
+        );
+      }
+      return new Response(JSON.stringify(tokens), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onChange = vi.fn();
+    renderPicker({ onChange });
+    fireEvent.click(await screen.findByRole("button"));
+    await screen.findByText("work");
+    fireEvent.click(screen.getByText(/new token/i));
+
+    fireEvent.change(await screen.findByPlaceholderText(/label/i), {
+      target: { value: "ci" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/ghp_/i), {
+      target: { value: "ghp_secret" },
+    });
+    fireEvent.click(screen.getByText(/save token/i));
+
+    expect(await screen.findByText('A token named "ci" already exists.')).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
