@@ -159,10 +159,12 @@ export class GitHubTokenService {
    * can still tell a rejected PAT apart from a secrets-backend fault.
    */
   private async writeSecret(id: string, token: string): Promise<void> {
-    const set = this.container.secrets.set;
-    if (!set) throw new ValidationError('Secrets backend is read-only');
+    // Called through the provider, NOT as a detached `const set = ...`: a class
+    // -based backend (LocalSecretsProvider) loses `this` that way and every
+    // write fails with "Failed to store the token value".
+    if (!this.container.secrets.set) throw new ValidationError('Secrets backend is read-only');
     try {
-      await set(tokenSecretKey(id), token);
+      await this.container.secrets.set(tokenSecretKey(id), token);
     } catch {
       throw new ExternalServiceError('Failed to store the token value');
     }
