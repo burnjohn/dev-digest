@@ -33,7 +33,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     let gh: GitHubClient | null = null;
     try {
-      gh = await container.github();
+      gh = await container.github(repo.githubTokenId);
     } catch (err) {
       app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
     }
@@ -201,7 +201,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
     try {
-      const gh = await container.github();
+      const gh = await container.github(repo.githubTokenId);
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -299,7 +299,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
       let gh: GitHubClient;
       try {
-        gh = await container.github();
+        gh = await container.github(repo.githubTokenId);
       } catch (err) {
         app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
         return [];
@@ -322,7 +322,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const input = req.body;
       let gh: GitHubClient;
       try {
-        gh = await container.github();
+        gh = await container.github(repo.githubTokenId);
       } catch {
         throw new AppError(
           'github_unavailable',

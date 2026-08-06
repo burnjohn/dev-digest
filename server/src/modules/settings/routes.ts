@@ -84,7 +84,11 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         container.invalidateSecretCaches();
       }
       if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
+        // Ad hoc key test, not tied to any repo — no per-repo token id exists
+        // here. `container.github` still honors an injected override (tests);
+        // in real use with no override this now reports "no token" via
+        // MissingTokenError rather than reading a bare env/global PAT.
+        const gh = await container.github(null);
         const login = await gh.currentLogin();
         return { provider, ok: true, message: `Connected as @${login}` };
       }
