@@ -31,7 +31,7 @@ export function AddRepoView() {
     if (!repoUrl.trim()) return;
     setError(null);
     try {
-      const repo = await addRepo.mutateAsync(repoUrl.trim());
+      const repo = await addRepo.mutateAsync({ url: repoUrl.trim(), githubTokenId: null });
       router.push(`/repos/${repo.id}/pulls`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add repository");

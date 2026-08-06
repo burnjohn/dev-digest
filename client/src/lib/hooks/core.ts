@@ -20,6 +20,7 @@ import type {
   SpecFile,
   IndexStatus,
 } from "../types";
+import type { RepoWithToken } from "@devdigest/shared";
 
 // ---- Settings (F1: GET/PUT /settings, POST /settings/test-connection) ----
 export function useSettings() {
@@ -73,10 +74,21 @@ export function useRepos() {
   });
 }
 
+/**
+ * Body carries an optional `githubTokenId` so a repo can be bound to a token
+ * at creation time. `null`/undefined omits `github_token_id` entirely — the
+ * server then creates the repo with no token, same as before this field
+ * existed. The response is `RepoWithToken` (server now joins the token label
+ * into every repo row), a strict superset of the old `Repo` shape.
+ */
 export function useAddRepo() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (url: string) => api.post<Repo>("/repos", { url }),
+    mutationFn: (input: { url: string; githubTokenId: string | null }) =>
+      api.post<RepoWithToken>("/repos", {
+        url: input.url,
+        ...(input.githubTokenId ? { github_token_id: input.githubTokenId } : {}),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["repos"] }),
   });
 }
