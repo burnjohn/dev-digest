@@ -106,4 +106,30 @@ describe("RepoSettingsView", () => {
     fireEvent.click(await screen.findByText(/test access to this repo/i));
     await screen.findByText("Looks good, octocat");
   });
+
+  it("surfaces the server's 422 message when the chosen token can't read this repo", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH" && String(url).includes("/github-token")) {
+        return new Response(
+          JSON.stringify({
+            error: { code: "token_access_denied", message: "This token cannot read acme/api." },
+          }),
+          { status: 422 },
+        );
+      }
+      if (String(url).includes("/github-tokens")) {
+        return new Response(JSON.stringify(tokens), { status: 200 });
+      }
+      return new Response(JSON.stringify([repoNoToken]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderView();
+    // Open the picker dropdown and choose the one saved token, which the
+    // mocked PATCH rejects with a 422 pointing at THIS repo specifically.
+    fireEvent.click(await screen.findByRole("button", { name: /choose a token/i }));
+    fireEvent.click(await screen.findByText("work"));
+
+    expect(await screen.findByText("This token cannot read acme/api.")).toBeInTheDocument();
+  });
 });

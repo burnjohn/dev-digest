@@ -146,4 +146,28 @@ describe("SettingsGitHubTokens", () => {
       });
     });
   });
+
+  it("surfaces the server's 422 message verbatim on a duplicate label", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            error: { code: "duplicate_label", message: 'A token named "work" already exists.' },
+          }),
+          { status: 422 },
+        );
+      }
+      return new Response(JSON.stringify(tokens), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderView();
+    await screen.findByText("work");
+
+    fireEvent.click(screen.getByText(/new token/i));
+    fireEvent.change(await screen.findByPlaceholderText(/label/i), { target: { value: "work" } });
+    fireEvent.change(screen.getByPlaceholderText(/ghp_/i), { target: { value: "ghp_secret" } });
+    fireEvent.click(screen.getByText(/^save token$/i));
+
+    expect(await screen.findByText('A token named "work" already exists.')).toBeInTheDocument();
+  });
 });
