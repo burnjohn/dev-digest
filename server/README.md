@@ -25,8 +25,9 @@ swapped for mocks in tests.
 - **Where keys live:** secrets are stored in `~/.devdigest/secrets.json` (mode
   `0600`, written when you enter a key in Settings) with `process.env` as a
   fallback — never in git or the database. The one read chokepoint is
-  `LocalSecretsProvider` (`src/adapters/secrets/local.ts`); `GITHUB_TOKEN` is
-  canonical and `GITHUB_PAT` is accepted as a fallback.
+  `LocalSecretsProvider` (`src/adapters/secrets/local.ts`). GitHub PATs are
+  per-repo tokens stored under `GITHUB_TOKEN:<id>` via the UI — there is no
+  global `GITHUB_TOKEN` and no env fallback for GitHub.
 
 ## Request & DI flow
 
@@ -93,16 +94,18 @@ flowchart TB
 | `DATABASE_URL` | `postgres://devdigest:devdigest@localhost:5432/devdigest` | required to migrate/serve |
 | `API_PORT` / `WEB_PORT` | `3001` / `3000` | API port; `WEB_PORT` also sets the allowed CORS origin |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | — | optional, per-provider; also settable via Settings UI |
-| `GITHUB_TOKEN` | — | optional; PAT with repo scope (`GITHUB_PAT` accepted as a fallback) |
+| ~~`GITHUB_TOKEN`~~ | — | removed; GitHub PATs are per-repo tokens set via Settings → GitHub Tokens, stored under `GITHUB_TOKEN:<id>` — a value in `server/.env` is ignored |
 | `EMBEDDINGS_ENABLED` | `false` | memory/RAG embeddings (OpenAI); off → **zero** OpenAI calls |
 | `REPO_INTEL_ENABLED` | `true` | repo skeleton + callers in the prompt; `false` → ripgrep-only |
 | `DEVDIGEST_CLONE_DIR` | `./clones` | imported-repo checkouts (git-ignored) |
 | `LOG_LEVEL` | `info` (`silent` in test) | pino level |
 | `NODE_ENV` | `development` | `test` → silent logs + global rate-limit disabled |
 
-Secrets (API keys, `GITHUB_TOKEN`) are **not** part of `AppConfig` — they go
-through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
-`process.env` as a fallback), per the **Where keys live** note at the top.
+Secrets (API keys, per-repo GitHub tokens under `GITHUB_TOKEN:<id>`) are
+**not** part of `AppConfig` — they go through `SecretsProvider`
+(`~/.devdigest/secrets.json`, mode `0600`, with `process.env` as a fallback
+for the LLM provider keys only — GitHub tokens have no env fallback), per
+the **Where keys live** note at the top.
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data

@@ -19,7 +19,7 @@ describe('routes (no DB)', () => {
     await app.close();
   });
 
-  it('POST /settings/test-connection (github) returns structured ConnTestResult', async () => {
+  it('POST /settings/test-connection (github) is rejected — use /github-tokens/test instead', async () => {
     const app = await buildApp({
       config,
       overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
@@ -29,11 +29,10 @@ describe('routes (no DB)', () => {
       url: '/settings/test-connection',
       payload: { provider: 'github' },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(422);
     const body = res.json();
-    expect(body.provider).toBe('github');
-    expect(body.ok).toBe(true);
-    expect(body.message).toContain('octocat');
+    expect(body.error.code).toBe('validation_error');
+    expect(body.error.message).toContain('/github-tokens/test');
     await app.close();
   });
 
