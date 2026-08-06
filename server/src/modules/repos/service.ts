@@ -75,9 +75,15 @@ export class RepoService {
       // `cloneUrl` is never interpolated here: with no token it carries no
       // credentials, and with a token the original error is rethrown untouched
       // for JobRunner's redaction to handle.
+      //
+      // `token` is null here for TWO distinct reasons — githubTokenId was
+      // never assigned, OR it was assigned but its stored value is absent
+      // (deleted, or never given a PAT, like the seeded `demo` token). The
+      // message must stay true in both: "no token is assigned" is false in
+      // the second case.
       if (!token) {
         throw new Error(
-          `Clone of ${owner}/${name} failed and no GitHub token is assigned to this repository — assign one in repo settings. Underlying error: ${(err as Error).message}`,
+          `Clone of ${owner}/${name} failed: no usable GitHub token for this repository — assign or replace one in repo settings. Underlying error: ${(err as Error).message}`,
         );
       }
       throw err;
@@ -121,7 +127,19 @@ export class RepoService {
 
     const existing = await this.repo.getWithTokenByFullName(workspaceId, fullName);
     if (existing) {
-      return { repo: toRepoWithTokenDto(existing, existing.githubTokenLabel), created: false };
+      // A re-post with a DIFFERENT token id is a deliberate pick, not a no-op:
+      // `assignToken` probes it against this repo first, same as a fresh add.
+      if (githubTokenId && existing.githubTokenId !== githubTokenId) {
+        return { repo: await this.assignToken(workspaceId, existing.id, githubTokenId), created: false };
+      }
+      return {
+        repo: toRepoWithTokenDto(
+          existing,
+          existing.githubTokenLabel,
+          await this.isTokenConfigured(existing.githubTokenId),
+        ),
+        created: false,
+      };
     }
 
     // Fail here, not in the clone job minutes later: a PAT can authenticate
@@ -145,12 +163,23 @@ export class RepoService {
     } satisfies CloneJobPayload);
 
     const created = await this.repo.getWithToken(workspaceId, row.id);
-    return { repo: toRepoWithTokenDto(row, created?.githubTokenLabel ?? null), created: true };
+    return {
+      repo: toRepoWithTokenDto(
+        row,
+        created?.githubTokenLabel ?? null,
+        await this.isTokenConfigured(row.githubTokenId),
+      ),
+      created: true,
+    };
   }
 
   async list(workspaceId: string): Promise<RepoWithToken[]> {
     const rows = await this.repo.listWithToken(workspaceId);
-    return rows.map((r) => toRepoWithTokenDto(r, r.githubTokenLabel));
+    return Promise.all(
+      rows.map(async (r) =>
+        toRepoWithTokenDto(r, r.githubTokenLabel, await this.isTokenConfigured(r.githubTokenId)),
+      ),
+    );
   }
 
   /**
@@ -170,7 +199,30 @@ export class RepoService {
     const updated = await this.repo.assignToken(workspaceId, repoId, githubTokenId);
     if (!updated) throw new NotFoundError('Repo not found');
     const withToken = await this.repo.getWithToken(workspaceId, repoId);
-    return toRepoWithTokenDto(withToken ?? updated, withToken?.githubTokenLabel ?? null);
+    const row = withToken ?? updated;
+    return toRepoWithTokenDto(
+      row,
+      withToken?.githubTokenLabel ?? null,
+      await this.isTokenConfigured(row.githubTokenId),
+    );
+  }
+
+  /**
+   * Whether a repo's assigned token actually has a usable stored value —
+   * distinct from merely being assigned. `resolveGitHubToken` is the single
+   * source of truth for "usable" (absent id, or a tombstoned/never-set value,
+   * both throw `MissingTokenError`); this just turns that into a boolean for
+   * the DTO instead of duplicating the absent/empty check.
+   */
+  private async isTokenConfigured(githubTokenId: string | null): Promise<boolean> {
+    if (!githubTokenId) return false;
+    try {
+      await resolveGitHubToken(this.container.secrets, githubTokenId);
+      return true;
+    } catch (err) {
+      if (err instanceof MissingTokenError) return false;
+      throw err;
+    }
   }
 
   /**

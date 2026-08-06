@@ -86,6 +86,12 @@ export function useRepos() {
  * server then creates the repo with no token, same as before this field
  * existed. The response is `RepoWithToken` (server now joins the token label
  * into every repo row), a strict superset of the old `Repo` shape.
+ *
+ * Invalidates `["github-tokens"]` too, alongside `["repos"]`: binding a token
+ * at creation (or re-adding an already-tracked repo with a NEW token, which
+ * `RepoService.add`'s dedupe path now also assigns) changes that token's
+ * `repo_count`, same as every sibling mutation that reassigns a token
+ * (`useAssignRepoToken`, `useDeleteGitHubToken`, `usePatchGitHubToken`).
  */
 export function useAddRepo() {
   const qc = useQueryClient();
@@ -95,7 +101,10 @@ export function useAddRepo() {
         url: input.url,
         ...(input.githubTokenId ? { github_token_id: input.githubTokenId } : {}),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["repos"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["repos"] });
+      qc.invalidateQueries({ queryKey: ["github-tokens"] });
+    },
   });
 }
 

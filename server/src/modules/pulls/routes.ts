@@ -6,7 +6,7 @@ import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { AppError, NotFoundError } from '../../platform/errors.js';
+import { AppError, MissingTokenError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 
 /**
@@ -323,7 +323,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       let gh: GitHubClient;
       try {
         gh = await container.github(repo.githubTokenId);
-      } catch {
+      } catch (err) {
+        // MissingTokenError (422, token_missing) is a distinct, user-fixable
+        // state from "GitHub is unreachable" — rethrow it as-is so the client
+        // can render an "assign a token" CTA instead of a generic failure.
+        // Unlike :302/:308 (read paths that degrade to persisted data), this
+        // is a WRITE with nothing local to fall back to, so it must fail loud.
+        if (err instanceof MissingTokenError) throw err;
         throw new AppError(
           'github_unavailable',
           'Connect a GitHub token to post comments.',

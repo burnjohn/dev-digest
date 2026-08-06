@@ -103,7 +103,7 @@ export class GitHubTokenService {
       ...(input.token ? { lastValidatedAt: new Date() } : {}),
     });
     this.container.invalidateSecretCaches();
-    const repoCount = await this.repo.repoCountFor(id);
+    const repoCount = await this.repo.repoCountFor(workspaceId, id);
     return this.toDto(updated ?? existing, repoCount);
   }
 

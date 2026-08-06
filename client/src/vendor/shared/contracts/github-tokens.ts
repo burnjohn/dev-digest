@@ -63,5 +63,14 @@ export type AssignRepoTokenInput = z.infer<typeof AssignRepoTokenInput>;
 export const RepoWithToken = Repo.extend({
   github_token_id: z.string().nullable(),
   github_token_label: z.string().nullable(),
+  /**
+   * True iff `github_token_id` is set AND its stored value resolves — i.e.
+   * `resolveGitHubToken` would succeed. A repo can be ASSIGNED to a token with
+   * no stored value (deleted, or never given a PAT — e.g. the seeded `demo`
+   * token), which is a distinct broken state from `github_token_id: null`:
+   * both need to gate the same "no token" UI signals, so both need a single
+   * boolean rather than making every consumer re-derive it from two fields.
+   */
+  github_token_configured: z.boolean(),
 });
 export type RepoWithToken = z.infer<typeof RepoWithToken>;

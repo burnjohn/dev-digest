@@ -45,6 +45,14 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         async ([provider, key]) => [provider, Boolean(await container.secrets.get(key))] as const,
       ),
     );
+    // `SecretsStatus` (shared contract, extend-never-edit) still declares a
+    // required `github` field from before per-repo tokens existed; nothing
+    // populates it any more since `SECRET_KEY_BY_PROVIDER` has no `github`
+    // entry (see its comment). This cast hides that the actual JSON body
+    // omits `github` entirely — there is no response schema on this route to
+    // catch the gap. Not a live bug: the client's SettingsApiKeys panel no
+    // longer reads `secretsStatus.github` (removed from KEY_ROWS), so nothing
+    // consumes the missing key today.
     return Object.fromEntries(entries) as SecretsStatus;
   });
 

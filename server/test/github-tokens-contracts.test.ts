@@ -45,7 +45,28 @@ describe('github token contracts', () => {
       created_by: null,
       github_token_id: null,
       github_token_label: null,
+      github_token_configured: false,
     });
     expect(r.github_token_id).toBeNull();
+    expect(r.github_token_configured).toBe(false);
+  });
+
+  it('RepoWithToken requires github_token_configured — a repo can be ASSIGNED to a token with no stored value (the seeded `demo` token), which is a distinct broken state from no assignment at all', () => {
+    const assignedButUnconfigured = RepoWithToken.parse({
+      id: 'r1',
+      workspace_id: 'ws',
+      owner: 'acme',
+      name: 'api',
+      full_name: 'acme/api',
+      default_branch: 'main',
+      clone_path: null,
+      last_polled_at: null,
+      created_by: null,
+      github_token_id: 't1',
+      github_token_label: 'demo',
+      github_token_configured: false,
+    });
+    expect(assignedButUnconfigured.github_token_id).toBe('t1');
+    expect(assignedButUnconfigured.github_token_configured).toBe(false);
   });
 });

@@ -41,12 +41,19 @@ export class ConfigError extends AppError {
 }
 
 /**
- * No usable GitHub token for this repo — either none was ever assigned or the
- * assigned one was deleted. 422, not ConfigError's 500: this is user-fixable
- * state, and the client renders an "assign a token" CTA off the code.
+ * No usable GitHub token for this repo — covers BOTH `github_token_id: null`
+ * (nothing assigned) AND a repo assigned to a token whose stored value is
+ * absent/tombstoned (deleted, or never given a PAT — e.g. the seeded `demo`
+ * token). The default message must stay true in both states: it must not say
+ * "no token is assigned" when one plainly is, just unusable. 422, not
+ * ConfigError's 500: this is user-fixable state, and the client renders an
+ * "assign a token" CTA off the code.
  */
 export class MissingTokenError extends AppError {
-  constructor(message = 'No GitHub token is assigned to this repository', details?: unknown) {
+  constructor(
+    message = 'No usable GitHub token for this repository — assign or replace one in repo settings',
+    details?: unknown,
+  ) {
     super('token_missing', message, 422, details);
   }
 }

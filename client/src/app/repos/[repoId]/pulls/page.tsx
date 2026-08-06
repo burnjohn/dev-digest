@@ -82,7 +82,13 @@ export default function PullsPage() {
           </p>
         </div>
         <div style={s.headerActions}>
-          {activeRepo && <RepoTokenBadge repoId={repoId} githubTokenId={activeRepo.github_token_id} />}
+          {activeRepo && (
+            <RepoTokenBadge
+              repoId={repoId}
+              githubTokenId={activeRepo.github_token_id}
+              githubTokenConfigured={activeRepo.github_token_configured}
+            />
+          )}
           <AutoTriggerStatus on={false} />
         </div>
       </div>

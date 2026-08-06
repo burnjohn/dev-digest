@@ -24,6 +24,7 @@
     "notConfigured": "No value stored"
   },
   "repo": {
+    "tokenLine": "token: {label}",
     "sectionTitle": "GitHub access",
     "sectionBody": "Which token DevDigest uses for this repository.",
     "brokenTitle": "No token assigned",

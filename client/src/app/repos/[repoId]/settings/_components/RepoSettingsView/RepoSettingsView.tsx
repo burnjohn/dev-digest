@@ -7,13 +7,18 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Card, Icon } from "@devdigest/ui";
-import { useRepos, useAssignRepoToken, useTestRepoAccess } from "@/lib/hooks";
+import { useRepos, useGitHubTokens, useAssignRepoToken, useTestRepoAccess } from "@/lib/hooks";
 import { GitHubTokenPicker } from "@/components/github-token-picker";
 import { ApiError } from "@/lib/api";
 
 export function RepoSettingsView({ repoId }: { repoId: string }) {
   const t = useTranslations("github-tokens");
   const { data: repos } = useRepos();
+  // Only fetched here for the selected token's @login on the header line
+  // below (server: github_token_label already travels on the repo row; the
+  // login does not, since GitHubToken is a separate resource — GitHubTokenPicker
+  // fetches this same list independently for its dropdown).
+  const { data: tokens } = useGitHubTokens();
   const assign = useAssignRepoToken();
   // Resolves the repo's OWN stored token server-side — a value never
   // originates in the browser for this probe (see useTestRepoAccess's docblock).
@@ -22,6 +27,13 @@ export function RepoSettingsView({ repoId }: { repoId: string }) {
   const [probe, setProbe] = React.useState<{ ok: boolean; message: string } | null>(null);
 
   if (!repo) return null;
+
+  const selectedToken = tokens?.find((tk) => tk.id === repo.github_token_id) ?? null;
+  // Assigned to a token AND that token's value actually resolves — both are
+  // needed, because a repo can be assigned to a token with no stored PAT
+  // (deleted, or never given one — e.g. the seeded `demo` token), which is
+  // exactly as broken as no assignment at all.
+  const isBroken = !repo.github_token_id || !repo.github_token_configured;
 
   return (
     <div style={{ display: "grid", gap: 20, maxWidth: 720 }}>
@@ -33,10 +45,14 @@ export function RepoSettingsView({ repoId }: { repoId: string }) {
           {repo.default_branch}
           {repo.clone_path ? ` · ${repo.clone_path}` : " · not cloned"}
           {repo.last_polled_at ? ` · synced ${repo.last_polled_at}` : " · never synced"}
+          {repo.github_token_label
+            ? ` · ${t("repo.tokenLine", { label: repo.github_token_label })}`
+            : ""}
+          {selectedToken?.github_login ? ` (@${selectedToken.github_login})` : ""}
         </div>
       </div>
 
-      {!repo.github_token_id && (
+      {isBroken && (
         <Card>
           <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <Icon.AlertTriangle size={16} style={{ color: "var(--warn)", flexShrink: 0 }} />

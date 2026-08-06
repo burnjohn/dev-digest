@@ -1,14 +1,15 @@
 {
-  "name": "Deleting a repo's only GitHub token warns first, then leaves it broken but readable",
-  "description": "Modeled on 02/04/07: navigate to the seeded repo's settings page and confirm the seeded `demo` token's label is shown; go to Settings → GitHub Tokens and confirm it lists with a repo count of 1; delete it and confirm the orphan warning names 1 repository before the second click actually deletes; back on the repo's PR list, confirm the amber 'no token' badge appears and the seeded PR #482 stays visible — the local-first guarantee. Scoped to what is reachable offline: reassigning a token would call POST /repos/:id/github-token → probeToken → listPullRequests, which needs a resolvable PAT and live GitHub access that e2e/ deliberately has neither of (see e2e/INSIGHTS.md), so that half of the flow is verified manually against real GitHub instead. Assumes a freshly-seeded DB where acme/payments-api is the only repo and its github_token_id points at the seeded `demo` token — guaranteed by the e2e-web.yml workflow's fresh seed; run locally against a clean DB (see e2e/README.md).",
+  "name": "Deleting a repo's only GitHub token clears the assignment; the repo stays broken-but-readable throughout",
+  "description": "Modeled on 02/04/07: navigate to the seeded repo's settings page, go to Settings → GitHub Tokens, delete the seeded token, and confirm the PATCH that follows actually clears the repo's assignment. Originally this flow asserted the amber 'no token' badge only APPEARS after deletion — but the seeded `demo` token has no stored PAT value (server/db/seed.ts), and per the final-review fix a repo ASSIGNED to a valueless token is exactly as broken as one with no token at all (RepoWithToken.github_token_configured gates the badge/banner together with github_token_id). So the badge is present from the very first load, before any deletion, making 'badge appears' vacuously true. What deletion actually changes is the ASSIGNMENT itself: the repo settings picker shows the selected label 'demo' beforehand and reverts to its unselected placeholder afterward, once the FK really nulls github_token_id server-side. This flow asserts THAT transition instead. Scoped to what is reachable offline: reassigning a token would call POST /repos/:id/github-token → probeToken → listPullRequests, which needs a resolvable PAT and live GitHub access that e2e/ deliberately has neither of (see e2e/INSIGHTS.md), so that half of the flow is verified manually against real GitHub instead. Assumes a freshly-seeded DB where acme/payments-api is the only repo and its github_token_id points at the seeded `demo` token — guaranteed by the e2e-web.yml workflow's fresh seed; run locally against a clean DB (see e2e/README.md).",
   "steps": [
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "initial data fetch settles" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--text", "no token"], "label": "the amber badge is ALREADY showing on first load — the seeded demo token has no stored value, which is exactly as broken as no assignment at all" },
     { "cmd": ["find", "text", "Repository", "click"], "label": "open the repo settings page via the sidebar nav" },
     { "cmd": ["wait", "--url", "/settings"], "label": "navigate to /repos/:repoId/settings" },
     { "cmd": ["wait", "--text", "GitHub access"], "label": "repo settings page renders the token section" },
-    { "cmd": ["wait", "--text", "demo"], "label": "the seeded token's label is shown on the repo settings page" },
+    { "cmd": ["wait", "--text", "demo"], "label": "the picker shows the seeded token 'demo' selected (assigned, though not configured)" },
     { "cmd": ["open", "{BASE}/settings/github-tokens"], "label": "load Settings → GitHub Tokens" },
     { "cmd": ["wait", "--url", "/settings/github-tokens"], "label": "github-tokens settings route reached" },
     { "cmd": ["wait", "--text", "GitHub Tokens"], "label": "the GitHub Tokens section renders" },
@@ -20,7 +21,10 @@
     { "cmd": ["wait", "--load", "networkidle"], "label": "the delete mutation settles" },
     { "cmd": ["find", "text", "Pull Requests", "click"], "label": "return to the repo's PR list via the sidebar nav" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "navigate to /repos/:repoId/pulls" },
-    { "cmd": ["wait", "--text", "no token"], "label": "the amber 'no token' badge appears now that the repo has no token" },
-    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR stays readable despite the broken token (local-first)" }
+    { "cmd": ["wait", "--text", "no token"], "label": "the amber badge is still showing — unchanged from before deletion, now for the other reason (no assignment at all instead of an unconfigured one)" },
+    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR stays readable despite the broken token (local-first)" },
+    { "cmd": ["find", "text", "Repository", "click"], "label": "return to the repo settings page" },
+    { "cmd": ["wait", "--url", "/settings"], "label": "navigate to /repos/:repoId/settings" },
+    { "cmd": ["wait", "--text", "Choose a token"], "label": "the picker reverts to its unselected placeholder — proves the FK actually nulled github_token_id server-side, the real effect of deletion" }
   ]
 }

@@ -63,6 +63,20 @@ describe("GitHubTokenPicker", () => {
     await waitFor(() => expect(screen.getByText("work")).toBeInTheDocument());
   });
 
+  /**
+   * Before this, `onChange(null)` was unreachable from the picker itself —
+   * AssignRepoTokenInput's null arm existed and was tested server-side, but
+   * nothing in the UI ever called it, so a repo could be assigned but never
+   * explicitly cleared back to "no token" from here.
+   */
+  it("offers a 'No token' item that clears an existing assignment", async () => {
+    const onChange = vi.fn();
+    renderPicker({ value: "t1", onChange });
+    fireEvent.click(await screen.findByRole("button", { name: /work/i }));
+    fireEvent.click(await screen.findByText(messages.picker.none));
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
   it("reveals the inline create form and posts a new token", async () => {
     renderPicker();
     fireEvent.click(await screen.findByRole("button"));

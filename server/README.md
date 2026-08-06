@@ -26,10 +26,13 @@ swapped for mocks in tests.
   `0600`, written when you enter a key in Settings) with `process.env` as a
   fallback — never in git or the database. The one read chokepoint is
   `LocalSecretsProvider` (`src/adapters/secrets/local.ts`). GitHub PATs are
-  per-repo tokens stored under `GITHUB_TOKEN:<id>` via the UI, and those keys
-  have no env fallback. A bare `GITHUB_TOKEN` in `server/.env` is ignored: clone
-  auth resolves the repo's own `CloneJobPayload.githubTokenId`, and nothing asks
-  the SecretsProvider for that key.
+  per-repo tokens stored under `GITHUB_TOKEN:<id>` via the UI. The generic
+  `process.env` fallback above still exists in `LocalSecretsProvider.get`, but
+  it is closed for these keys by absence of a lookup, not by a guard: no env
+  var name can contain a `:`, so nothing in `server/.env` can ever match
+  `GITHUB_TOKEN:<id>`, and clone auth resolves the repo's own
+  `CloneJobPayload.githubTokenId` rather than asking the SecretsProvider for a
+  bare key at all. A bare `GITHUB_TOKEN` in `server/.env` is therefore ignored.
 
 ## Request & DI flow
 
@@ -96,7 +99,7 @@ flowchart TB
 | `DATABASE_URL` | `postgres://devdigest:devdigest@localhost:5432/devdigest` | required to migrate/serve |
 | `API_PORT` / `WEB_PORT` | `3001` / `3000` | API port; `WEB_PORT` also sets the allowed CORS origin |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | — | optional, per-provider; also settable via Settings UI |
-| ~~`GITHUB_TOKEN`~~ | — | not an input at all — a value here is ignored. GitHub PATs are per-repo tokens set via Settings → GitHub Tokens, stored under `GITHUB_TOKEN:<id>` (no env fallback) |
+| ~~`GITHUB_TOKEN`~~ | — | not an input at all — a value here is ignored. GitHub PATs are per-repo tokens set via Settings → GitHub Tokens, stored under `GITHUB_TOKEN:<id>` (no env var name can contain `:`, so the generic env fallback can never match these keys) |
 | `EMBEDDINGS_ENABLED` | `false` | memory/RAG embeddings (OpenAI); off → **zero** OpenAI calls |
 | `REPO_INTEL_ENABLED` | `true` | repo skeleton + callers in the prompt; `false` → ripgrep-only |
 | `DEVDIGEST_CLONE_DIR` | `./clones` | imported-repo checkouts (git-ignored) |
@@ -106,11 +109,13 @@ flowchart TB
 Secrets (API keys, per-repo GitHub tokens under `GITHUB_TOKEN:<id>`) are
 **not** part of `AppConfig` — they go through `SecretsProvider`
 (`~/.devdigest/secrets.json`, mode `0600`, with `process.env` as a fallback).
-The per-repo `GITHUB_TOKEN:<id>` keys have no env fallback, and no code path
-reads a bare `GITHUB_TOKEN` — clone auth resolves the repo's own
-`CloneJobPayload.githubTokenId`, so a value in `server/.env` never authenticates
-anything (`test/no-env-github-token.test.ts` enforces it). See the **Where keys
-live** note at the top.
+The per-repo `GITHUB_TOKEN:<id>` keys are closed off from that env fallback by
+absence of a lookup, not by a guard: no env var name can contain a `:`, so no
+`server/.env` entry can ever match one of these keys, and no code path even
+asks the SecretsProvider for a bare `GITHUB_TOKEN` — clone auth resolves the
+repo's own `CloneJobPayload.githubTokenId` instead. So a value in
+`server/.env` never authenticates anything (`test/no-env-github-token.test.ts`
+enforces it). See the **Where keys live** note at the top.
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data

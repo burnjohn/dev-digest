@@ -90,6 +90,30 @@ d('repos ↔ github token', () => {
     expect(none.github_token_label).toBeNull();
   });
 
+  /**
+   * `github_token_configured` must distinguish "assigned to a token with a
+   * stored value" from BOTH `github_token_id: null` AND "assigned to a token
+   * with no stored value" (the seeded `demo` token's exact shape — see
+   * server/db/seed.ts). All three states currently exist across this suite's
+   * fixtures: `acme/api` (real value via `newToken`), `acme/no-token`
+   * (nothing assigned), and the seeded `acme/payments-api` (assigned to
+   * `demo`, which has no PAT).
+   */
+  it('github_token_configured is true only when the assigned token actually resolves', async () => {
+    const api = await repoNamed('acme/api');
+    expect(api.github_token_id).toBeTruthy();
+    expect(api.github_token_configured).toBe(true);
+
+    const none = await repoNamed('acme/no-token');
+    expect(none.github_token_id).toBeNull();
+    expect(none.github_token_configured).toBe(false);
+
+    const demo = await repoNamed('acme/payments-api');
+    expect(demo.github_token_id).toBeTruthy();
+    expect(demo.github_token_label).toBe('demo');
+    expect(demo.github_token_configured).toBe(false);
+  });
+
   it('PATCH /repos/:id/github-token reassigns, and null clears', async () => {
     const other = await newToken('personal');
     const api = await repoNamed('acme/api');
@@ -186,6 +210,37 @@ d('repos ↔ github token', () => {
     expect(after).toBeTruthy();
     expect(after.github_token_id).toBeNull();
     expect(after.github_token_label).toBeNull();
+  });
+
+  /**
+   * `add`'s existing-repo dedupe used to return the row unchanged whenever the
+   * caller re-posted an already-tracked full name — even with a DIFFERENT
+   * token id in the body, silently discarding the user's pick (Task 8 deferred
+   * finding, closed in the final review pass).
+   */
+  it('re-adding an already-tracked repo with a NEW token id assigns it, rather than silently keeping the old one', async () => {
+    const first = await newToken('re-add-first');
+    const added = await app.inject({
+      method: 'POST',
+      url: '/repos',
+      payload: { url: 'https://github.com/acme/re-add-me', github_token_id: first.id },
+    });
+    expect(added.statusCode).toBe(201);
+    expect(added.json().github_token_id).toBe(first.id);
+
+    const second = await newToken('re-add-second');
+    const readded = await app.inject({
+      method: 'POST',
+      url: '/repos',
+      payload: { url: 'https://github.com/acme/re-add-me', github_token_id: second.id },
+    });
+    expect(readded.statusCode).toBe(200); // not created — the dedupe path
+    expect(readded.json().github_token_id).toBe(second.id);
+    expect(readded.json().github_token_label).toBe('re-add-second');
+
+    // Persisted, not just in the response.
+    const persisted = await repoNamed('acme/re-add-me');
+    expect(persisted.github_token_id).toBe(second.id);
   });
 
   it('POST /repos with a token that cannot read the repo answers 422 at add time', async () => {
@@ -407,7 +462,7 @@ d('clone job token resolution', () => {
           (e: Error) => e,
         );
       expect(err).toBeTruthy();
-      expect(err!.message).toMatch(/no GitHub token is assigned/i);
+      expect(err!.message).toMatch(/no usable GitHub token/i);
       expect(err!.message).not.toContain('ghp_');
       expect(err!.message).not.toMatch(/https:\/\/[^@\s]+@/);
     } finally {

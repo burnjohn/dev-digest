@@ -6,9 +6,12 @@ export type GitHubTokenRow = typeof t.githubTokens.$inferSelect;
 export type GitHubTokenRowWithCount = GitHubTokenRow & { repoCount: number };
 
 /**
- * The ONLY place that touches `github_tokens`. Every query scopes by
- * workspace. Token VALUES never appear here — this table is metadata only,
- * the value lives in SecretsProvider under `GITHUB_TOKEN:<id>`.
+ * Owns every WRITE to `github_tokens` and most reads — but not all:
+ * `repos/repository.ts`'s `withTokenWhere` also SELECTs from `github_tokens`
+ * (a `leftJoin` to report each repo's token label). Every query HERE scopes
+ * by workspace, including `repoCountFor`. Token VALUES never appear in this
+ * table — it is metadata only, the value lives in SecretsProvider under
+ * `GITHUB_TOKEN:<id>`.
  */
 export class GitHubTokenRepository {
   constructor(private db: Db) {}
@@ -80,12 +83,12 @@ export class GitHubTokenRepository {
     return row;
   }
 
-  /** How many repos currently point at this token id. */
-  async repoCountFor(id: string): Promise<number> {
+  /** How many repos currently point at this token id, scoped to its workspace. */
+  async repoCountFor(workspaceId: string, id: string): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(t.repos)
-      .where(eq(t.repos.githubTokenId, id));
+      .where(and(eq(t.repos.githubTokenId, id), eq(t.repos.workspaceId, workspaceId)));
     return row?.count ?? 0;
   }
 
@@ -94,7 +97,7 @@ export class GitHubTokenRepository {
    * `ON DELETE SET NULL` — those repos survive, just with no usable token.
    */
   async remove(workspaceId: string, id: string): Promise<{ deleted: boolean; orphaned: number }> {
-    const orphaned = await this.repoCountFor(id);
+    const orphaned = await this.repoCountFor(workspaceId, id);
     const gone = await this.db
       .delete(t.githubTokens)
       .where(and(eq(t.githubTokens.workspaceId, workspaceId), eq(t.githubTokens.id, id)))

@@ -34,6 +34,17 @@ export function GitHubTokenPicker({
   const selected = tokens?.find((tk) => tk.id === value) ?? null;
 
   const items: DropdownItemDef[] = [
+    // The only way `onChange(null)` is reachable from this component — without
+    // it, a repo can be ASSIGNED but never explicitly CLEARED back to no
+    // token from the picker (AssignRepoTokenInput's null arm exists and is
+    // tested, but nothing in the UI called it).
+    {
+      label: t("picker.none"),
+      icon: "X" as const,
+      muted: true,
+      onClick: () => onChange(null),
+    },
+    { divider: true },
     ...(tokens ?? []).map((tk) => ({
       label: tk.label,
       icon: "Lock" as const,

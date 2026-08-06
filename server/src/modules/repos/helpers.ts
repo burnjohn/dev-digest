@@ -56,16 +56,20 @@ export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {
 }
 
 /**
- * Map a repo row + its token's label to the API `RepoWithToken` DTO. Only the
- * token's ID and LABEL travel — the value never leaves the SecretsProvider.
+ * Map a repo row + its token's label + whether that token's value actually
+ * resolves to the API `RepoWithToken` DTO. Only the token's ID and LABEL
+ * travel — the value never leaves the SecretsProvider; `githubTokenConfigured`
+ * is a boolean the caller already resolved via `resolveGitHubToken`.
  */
 export function toRepoWithTokenDto(
   row: typeof t.repos.$inferSelect,
   githubTokenLabel: string | null,
+  githubTokenConfigured: boolean,
 ): RepoWithToken {
   return {
     ...toRepoDto(row),
     github_token_id: row.githubTokenId,
     github_token_label: githubTokenLabel,
+    github_token_configured: githubTokenConfigured,
   };
 }

@@ -127,6 +127,12 @@ export const SecretsStatus = z.object({
   openai: z.boolean(),
   anthropic: z.boolean(),
   openrouter: z.boolean(),
+  // `github` is no longer populated by GET /settings/secrets-status: GitHub
+  // PATs became per-repo tokens (github-tokens module), so there is no single
+  // global GitHub secret left to report here. Left in place rather than
+  // edited out — this file is extend-never-edit — and the route return value
+  // is cast past the gap it leaves; see the cast site's comment in
+  // settings/routes.ts.
   github: z.boolean(),
 });
 export type SecretsStatus = z.infer<typeof SecretsStatus>;

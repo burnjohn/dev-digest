@@ -3,8 +3,12 @@ import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
 /**
- * F1 — repos data-access layer. The ONLY place that touches the `repos`
- * table. Every query is scoped by `workspaceId` (tenancy guard).
+ * F1 — repos data-access layer. Owns every WRITE to the `repos` table and
+ * most reads — but not all: `github-tokens/repository.ts`'s `list()` and
+ * `repoCountFor()` also SELECT from `repos` (correlated subquery / count, to
+ * report `repo_count` per token), and `repoCountFor(id)` there is deliberately
+ * unscoped by workspace (see its docblock). Every query here is scoped by
+ * `workspaceId` (tenancy guard).
  */
 
 export type RepoRow = typeof t.repos.$inferSelect;

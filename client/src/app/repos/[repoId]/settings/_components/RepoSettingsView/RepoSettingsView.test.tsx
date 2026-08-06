@@ -18,12 +18,22 @@ const repoNoToken = {
   created_by: null,
   github_token_id: null,
   github_token_label: null,
+  github_token_configured: false,
 };
 
 const repoWithToken = {
   ...repoNoToken,
   github_token_id: "t1",
   github_token_label: "work",
+  github_token_configured: true,
+};
+
+/** The seeded `demo` token's exact shape: assigned, but no stored PAT. */
+const repoWithUnconfiguredToken = {
+  ...repoNoToken,
+  github_token_id: "t2",
+  github_token_label: "demo",
+  github_token_configured: false,
 };
 
 const tokens = [
@@ -33,6 +43,16 @@ const tokens = [
     label: "work",
     github_login: "octocat",
     configured: true,
+    repo_count: 1,
+    created_at: "",
+    last_validated_at: null,
+  },
+  {
+    id: "t2",
+    workspace_id: "w",
+    label: "demo",
+    github_login: null,
+    configured: false,
     repo_count: 1,
     created_at: "",
     last_validated_at: null,
@@ -78,12 +98,32 @@ describe("RepoSettingsView", () => {
     await waitFor(() => expect(screen.getByText(/no token assigned/i)).toBeInTheDocument());
   });
 
-  it("does not show the warning or a Test button once a token is assigned", async () => {
+  it("does not show the warning once a token is assigned and configured (and does show a Test button)", async () => {
     mockFetch([repoWithToken]);
     renderView();
     await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
     expect(screen.queryByText(/no token assigned/i)).not.toBeInTheDocument();
     expect(screen.getByText(/test access to this repo/i)).toBeInTheDocument();
+  });
+
+  /**
+   * MUST FIX 2 consequence: a repo can be ASSIGNED to a token that has no
+   * stored value (the seeded `demo` token's exact shape) — that must be just
+   * as broken as no assignment at all, not silently treated as healthy.
+   */
+  it("shows the warning when a token IS assigned but its value is not configured", async () => {
+    mockFetch([repoWithUnconfiguredToken]);
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+    expect(screen.getByText(/no token assigned/i)).toBeInTheDocument();
+  });
+
+  it("renders the assigned token's label and @login in the repo header", async () => {
+    mockFetch([repoWithToken]);
+    renderView();
+    await waitFor(() => expect(screen.getByText("acme/api")).toBeInTheDocument());
+    expect(screen.getByText(/token: work/i)).toBeInTheDocument();
+    expect(screen.getByText(/@octocat/)).toBeInTheDocument();
   });
 
   it("probes access via POST /repos/:id/test-access with no body", async () => {
