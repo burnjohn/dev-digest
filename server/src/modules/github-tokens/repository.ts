@@ -24,9 +24,19 @@ export class GitHubTokenRepository {
         lastValidatedAt: t.githubTokens.lastValidatedAt,
         // Deliberately no index on repos.github_token_id for this subquery —
         // a single-user local app holds a handful of repos (YAGNI).
+        //
+        // The right side is a literal `github_tokens.id`, not an interpolated
+        // Column — drizzle renders an interpolated Column as a BARE column
+        // name with no table qualifier, and `repos` has its own `id` column,
+        // so `${t.githubTokens.id}` here rendered as unqualified "id" and
+        // Postgres bound it to the subquery's own `repos.id` (inner scope
+        // shadows outer), comparing repos.github_token_id to its own id and
+        // always returning 0. Qualifying by the outer table's actual SQL name
+        // (`.from(t.githubTokens)` is unaliased, so it IS "github_tokens")
+        // fixes the correlation.
         repoCount: sql<number>`(
           SELECT count(*)::int FROM ${t.repos}
-          WHERE ${t.repos.githubTokenId} = ${t.githubTokens.id}
+          WHERE ${t.repos.githubTokenId} = github_tokens.id
         )`,
       })
       .from(t.githubTokens)

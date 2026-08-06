@@ -17,6 +17,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 ## Codebase Patterns
 
 - `2026-08-05` — e2e/ never contacts GitHub — the specs run entirely on seeded data, so any flow that needs a live GitHub call (validating a PAT, importing PRs) cannot be covered here and belongs in server hermetic/DB-backed tests with a fake GitHubClient injected via ContainerOverrides → `grep -rn 'GITHUB_TOKEN|github' e2e/` returns no source hits, confirmed 2026-08-05
+- `2026-08-06` — Sidebar nav item labels (client/src/vendor/ui/nav.ts NAV array — 'Pull Requests', 'Repository', 'Agents') render as visible DOM text via a plain <span>{item.label}</span> in NavItem.tsx, so a flow can navigate with find text "Repository" click / find text "Pull Requests" click instead of needing a repo's UUID to construct a /repos/:repoId/... URL by hand → client/src/vendor/ui/shell/NavItem.tsx:54, used in e2e/specs/08-github-tokens.flow.json to reach and return from /repos/:repoId/settings, Task 12 2026-08-06
 
 ## Tool & Library Notes
 

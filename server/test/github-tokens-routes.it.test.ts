@@ -118,9 +118,20 @@ d('github-tokens routes', () => {
     const res = await app.inject({ method: 'GET', url: '/github-tokens' });
     expect(res.statusCode).toBe(200);
     const rows = res.json();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].repo_count).toBe(0);
-    expect(rows[0].github_login).toBeTruthy();
+    // The workspace also carries the seeded `demo` token (seed.ts), so assert
+    // by label rather than array position/length.
+    const work = rows.find((r: { label: string }) => r.label === 'work');
+    expect(work).toBeTruthy();
+    expect(work.repo_count).toBe(0);
+    expect(work.github_login).toBeTruthy();
+
+    // Regression guard: the seeded demo repo points at the seeded `demo`
+    // token, so its repo_count must be 1. A correlated-subquery bug once made
+    // list() report 0 for every token regardless of how many repos actually
+    // pointed at it (see repository.ts `repoCount`'s comment).
+    const demo = rows.find((r: { label: string }) => r.label === 'demo');
+    expect(demo).toBeTruthy();
+    expect(demo.repo_count).toBe(1);
   });
 
   it('patch with only a label leaves the stored secret untouched', async () => {
@@ -178,7 +189,12 @@ d('github-tokens routes', () => {
   });
 
   it('deleting reports how many repos were orphaned and tombstones the value', async () => {
-    const [row] = (await app.inject({ method: 'GET', url: '/github-tokens' })).json();
+    // Target the 'work' token specifically (created in the first test above,
+    // never assigned to any repo) — the seeded `demo` token is now also in
+    // this workspace with the seeded repo pointed at it, so picking row[0] by
+    // position would delete whichever token happens to sort first instead.
+    const rows = (await app.inject({ method: 'GET', url: '/github-tokens' })).json();
+    const row = rows.find((r: { label: string }) => r.label === 'work');
     const res = await app.inject({ method: 'DELETE', url: `/github-tokens/${row.id}` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ deleted: row.id, orphaned_repos: 0 });
