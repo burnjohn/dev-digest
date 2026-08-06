@@ -1,0 +1,34 @@
+{
+  "picker": {
+    "none": "No token",
+    "placeholder": "Choose a token",
+    "newToken": "+ New token…",
+    "labelPlaceholder": "Label (e.g. work)",
+    "tokenPlaceholder": "ghp_… or github_pat_…",
+    "test": "Test",
+    "testing": "Testing…",
+    "save": "Save token",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "testFailed": "Test failed",
+    "saveFailed": "Could not save token"
+  },
+  "settings": {
+    "title": "GitHub Tokens",
+    "body": "Personal access tokens DevDigest uses to read your repositories. Each repository picks one.",
+    "repoCount": "{count, plural, =0 {no repos} one {# repo} other {# repos}}",
+    "rename": "Rename",
+    "replace": "Replace value",
+    "delete": "Delete",
+    "deleteOrphanWarning": "{count, plural, one {# repository} other {# repositories}} will be left without a token and stop syncing until you assign one.",
+    "notConfigured": "No value stored"
+  },
+  "repo": {
+    "sectionTitle": "GitHub access",
+    "sectionBody": "Which token DevDigest uses for this repository.",
+    "brokenTitle": "No token assigned",
+    "brokenBody": "This repository cannot reach GitHub. Existing pull requests stay readable; syncing and cloning fail until you pick a token.",
+    "testAccess": "Test access to this repo",
+    "badge": "no token"
+  }
+}
