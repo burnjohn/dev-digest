@@ -6,7 +6,7 @@ import type {
   GitHubTokenTestResult,
 } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
-import { NotFoundError, ValidationError } from '../../platform/errors.js';
+import { ExternalServiceError, NotFoundError, ValidationError } from '../../platform/errors.js';
 import { OctokitGitHubClient } from '../../adapters/github/octokit.js';
 import { GitHubTokenRepository, type GitHubTokenRow } from './repository.js';
 import { tokenSecretKey } from './resolver.js';
@@ -64,12 +64,17 @@ export class GitHubTokenService {
 
     const row = await this.repo.insert({ workspaceId, label: input.label });
     try {
-      await this.container.secrets.set(tokenSecretKey(row.id), input.token);
+      await this.writeSecret(row.id, input.token);
     } catch (err) {
-      await this.repo.remove(workspaceId, row.id);
+      // The row must not survive a failed secret write — but the cleanup
+      // itself must never mask WHY the write failed. Best-effort only: if
+      // cleanup also fails, the original secret-write error still reaches the
+      // caller (a stray row is the lesser problem — see `configured` in toDto,
+      // which requires the secret to resolve, so it never shows as usable).
+      await this.repo.remove(workspaceId, row.id).catch(() => undefined);
       throw err;
     }
-    const updated = await this.repo.updateMeta(row.id, {
+    const updated = await this.repo.updateMeta(workspaceId, row.id, {
       githubLogin: login,
       lastValidatedAt: new Date(),
     });
@@ -90,9 +95,9 @@ export class GitHubTokenService {
     if (input.token) {
       if (!this.container.secrets.set) throw new ValidationError('Secrets backend is read-only');
       login = await this.validate(input.token);
-      await this.container.secrets.set(tokenSecretKey(id), input.token);
+      await this.writeSecret(id, input.token);
     }
-    const updated = await this.repo.updateMeta(id, {
+    const updated = await this.repo.updateMeta(workspaceId, id, {
       ...(input.label ? { label: input.label } : {}),
       githubLogin: login,
       ...(input.token ? { lastValidatedAt: new Date() } : {}),
@@ -142,6 +147,24 @@ export class GitHubTokenService {
       return await this.clientFor(token).currentLogin();
     } catch {
       throw new ValidationError('GitHub rejected that token');
+    }
+  }
+
+  /**
+   * Persist a token value. Like `validate()`, this is deliberately defensive:
+   * SecretsProvider is pluggable, so a future backend's thrown error is not
+   * trusted to keep the raw token value out of its message — only a generic
+   * message ever reaches the caller. Kept distinguishable from `validate()`'s
+   * "GitHub rejected that token" so a caller (and `create`'s cleanup path)
+   * can still tell a rejected PAT apart from a secrets-backend fault.
+   */
+  private async writeSecret(id: string, token: string): Promise<void> {
+    const set = this.container.secrets.set;
+    if (!set) throw new ValidationError('Secrets backend is read-only');
+    try {
+      await set(tokenSecretKey(id), token);
+    } catch {
+      throw new ExternalServiceError('Failed to store the token value');
     }
   }
 

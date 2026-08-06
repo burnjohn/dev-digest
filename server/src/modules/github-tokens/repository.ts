@@ -58,13 +58,14 @@ export class GitHubTokenRepository {
   }
 
   async updateMeta(
+    workspaceId: string,
     id: string,
     values: { label?: string; githubLogin?: string | null; lastValidatedAt?: Date },
   ): Promise<GitHubTokenRow | undefined> {
     const [row] = await this.db
       .update(t.githubTokens)
       .set(values)
-      .where(eq(t.githubTokens.id, id))
+      .where(and(eq(t.githubTokens.workspaceId, workspaceId), eq(t.githubTokens.id, id)))
       .returning();
     return row;
   }

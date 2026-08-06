@@ -125,6 +125,13 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /**
+   * Opt-in only — every existing caller omits this and keeps today's
+   * unconditional-success behaviour. Set to simulate GitHub rejecting the
+   * token (bad/expired PAT) so `currentLogin()` rejects instead of returning
+   * a canned login.
+   */
+  rejectAuth?: boolean;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -235,6 +242,7 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async currentLogin(): Promise<string> {
+    if (this.opts.rejectAuth) throw new Error('Bad credentials');
     return this.opts.login ?? 'mock-user';
   }
 }
