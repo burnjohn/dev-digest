@@ -1,29 +1,42 @@
-/* RunFindingsHoverCard — read-only preview of a run's findings, shown on
-   hover over the severity-badge cluster in the Timeline. Reuses the same
-   presentational primitives as FindingCard (SeverityBadge, CategoryTag,
-   MonoLink, ConfidenceNum) but has no accept/dismiss actions of its own —
-   the deep-dive happens in the accordion below via `onSelect`. */
+/* FindingsHoverCard — read-only preview of a set of findings, shown on hover
+   over a severity-badge cluster. Used from two places: the PR timeline (one
+   run's findings, with `onSelect` to jump to the accordion below) and the PR
+   list's FINDINGS column (the latest review's findings, no `onSelect`).
+
+   Reuses the same presentational primitives as FindingCard (SeverityBadge,
+   CategoryTag, MonoLink, ConfidenceNum) but has no accept/dismiss actions.
+
+   The i18n keys stay under `prReview.timeline.*` even though this now lives
+   outside that route: next-intl merges every messages/en/*.json into one global
+   map, so the namespace costs nothing to keep and renaming it would churn
+   RunHistory for no user-visible gain. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, SeverityBadge, CategoryTag, ConfidenceNum, MonoLink, type Severity, type Category } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import type { PrListFinding } from "@devdigest/shared";
+import { githubBlobUrl } from "@/lib/github-urls";
 
 const SEV_RANK: Record<string, number> = { CRITICAL: 3, WARNING: 2, SUGGESTION: 1 };
 
-function lineLabel(f: Pick<FindingRecord, "start_line" | "end_line">): string {
+/** Fixed width of the card. Callers that position it themselves need this to
+    clamp it inside the viewport. */
+export const FINDINGS_HOVER_CARD_WIDTH = 380;
+
+function lineLabel(f: Pick<PrListFinding, "start_line" | "end_line">): string {
   return f.start_line === f.end_line ? `${f.start_line}` : `${f.start_line}-${f.end_line}`;
 }
 
-export function RunFindingsHoverCard({
+export function FindingsHoverCard({
   findings,
   repoFullName,
   headSha,
   onSelect,
 }: {
-  findings: FindingRecord[];
+  /* `PrListFinding` is the minimal shape this renders; `FindingRecord` is
+     structurally a superset, so the timeline keeps passing its own rows. */
+  findings: PrListFinding[];
   repoFullName?: string | null;
   headSha?: string | null;
   /** Jump to this run's full findings in the accordion below. */
@@ -46,7 +59,7 @@ export function RunFindingsHoverCard({
         position: "absolute",
         top: "calc(100% + 8px)",
         left: 0,
-        width: 380,
+        width: FINDINGS_HOVER_CARD_WIDTH,
         maxHeight: 420,
         overflowY: "auto",
         background: "var(--bg-elevated)",

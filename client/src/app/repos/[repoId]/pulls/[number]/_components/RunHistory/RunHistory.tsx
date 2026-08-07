@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, SeverityBadge, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/run-cost-badge";
-import { RunFindingsHoverCard } from "./RunFindingsHoverCard";
+import { FindingsHoverCard } from "@/components/findings-hover-card";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -94,7 +94,7 @@ const HOVER_DELAY_MS = 150;
  * The per-severity chip row for a settled run. When that run's full findings
  * are available (threaded down from the already-loaded review data — no
  * extra fetch), hovering or focusing the row previews all of them, combined
- * across severities, in a `RunFindingsHoverCard`.
+ * across severities, in a `FindingsHoverCard`.
  */
 function SeverityFindings({
   run,
@@ -154,7 +154,7 @@ function SeverityFindings({
       })}
       {blockersLabel && <span>{blockersLabel}</span>}
       {hasFindings && open && (
-        <RunFindingsHoverCard
+        <FindingsHoverCard
           findings={findings!}
           repoFullName={repoFullName}
           headSha={headSha}

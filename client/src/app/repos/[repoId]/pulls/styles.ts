@@ -40,6 +40,16 @@ export const s = {
   } satisfies CSSProperties,
   sizeBadgeBorder: (color: string): CSSProperties => ({ border: `1px solid ${color}` }),
   scoreCell: { display: "flex", alignItems: "center" } satisfies CSSProperties,
+  // No `position: relative` here on purpose — the hover popup is positioned
+  // `fixed` to escape tableCard's `overflow: hidden`, so a containing block
+  // would do nothing but invite someone to switch the popup back to absolute.
+  findingsCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
   costCell: { fontSize: 12, color: "var(--text-secondary)" } satisfies CSSProperties,
   updatedCell: {
     fontSize: 12,

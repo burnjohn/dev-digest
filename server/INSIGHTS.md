@@ -63,6 +63,18 @@ _None yet._
   `server/src/modules/reviews/run-executor.ts:238` (blockers/counts computed),
   `server/src/modules/reviews/repository/run.repo.ts:40` (read path, no
   aggregation query).
+  **Qualified 2026-08-07:** that rule is about *per-run* counters. The PR
+  **list**'s FINDINGS column deliberately does the opposite — a read-time
+  aggregation over `findings` filtered by `isNull(dismissedAt)`, scoped to the
+  latest `reviews` row. Three reasons the snapshot could not be reused: it is
+  frozen at completion so it still counts dismissed findings; `agent_runs` has
+  no FK to `reviews` (see `contracts/trace.ts`) so it cannot be scoped to the
+  latest review at all; and the list embeds the finding rows for a hover popup,
+  so a badge sourced from the snapshot would read "3" above a 2-row popup.
+  Consequence to expect, not to "fix": after a dismissal the list's counts and
+  the run timeline's counts legitimately disagree — live view vs. CI-gate
+  snapshot. `server/src/modules/pulls/routes.ts` (findings block),
+  `server/test/pulls-findings.it.test.ts`.
 
 - **2026-08-04** — `ReviewRepository` in `repository.ts` re-declares each repo
   function's params type inline instead of importing it from the

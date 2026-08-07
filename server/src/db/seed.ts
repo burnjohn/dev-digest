@@ -172,6 +172,35 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         suggestion: 'Use a single IN query and group in memory.',
         confidence: 0.86,
       },
+      {
+        reviewId: review!.id,
+        file: 'src/middleware/ratelimit.ts',
+        startLine: 63,
+        endLine: 71,
+        severity: 'SUGGESTION',
+        category: 'style',
+        title: 'Extract the bucket-refill math into a named helper',
+        rationale:
+          'The refill computation is inlined in the request path and repeated in the tests. A named helper would make the token-bucket semantics readable.',
+        suggestion: 'Extract `refillTokens(bucket, now)` and call it from both sites.',
+        confidence: 0.55,
+      },
+      {
+        reviewId: review!.id,
+        file: 'src/api/public/webhooks.ts',
+        startLine: 18,
+        endLine: 18,
+        severity: 'WARNING',
+        category: 'style',
+        title: 'Prefer const over let for the unmutated limiter handle',
+        rationale: 'Declared with `let` but never reassigned.',
+        suggestion: 'Change to `const`.',
+        confidence: 0.41,
+        // Seeded as DISMISSED on purpose: the PR-list FINDINGS column must
+        // exclude it from both the badge counts and the hover popup, so a
+        // regression in that filter is visible on seeded data with no setup.
+        dismissedAt: new Date('2026-06-01T12:00:00Z'),
+      },
     ]);
   }
 

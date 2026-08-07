@@ -38,7 +38,26 @@ _None yet._
 
 ## What Doesn't Work
 
-_None yet._
+- **2026-08-07** — An absolutely-positioned popover inside a PR **list row** is
+  clipped dead: `s.tableCard` sets `overflow: hidden` for its rounded corners,
+  so the card mounts but is invisible below and to the right of the row. It
+  works on the PR *detail* page only because nothing there clips. Flipping
+  `tableCard` to `overflow: visible` is **not** the fix — it also un-clips the
+  last row's `borderBottom` and hover background from the `borderRadius: 10`
+  corners, giving a visible squared-corner artifact. What works: render the card
+  into a **zero-sized `position: fixed` wrapper**. Not a portal — `createPortal`
+  appears nowhere in this codebase, and a portal breaks the `mouseleave`
+  DOM-containment the hover logic depends on. Zero-sized is the trick that keeps
+  the card byte-identical across both call sites: its own
+  `top: calc(100% + 8px)` resolves the percentage against a 0px height and lands
+  at the same 8px gap. Pair it with a `useLayoutEffect` that measures the
+  rendered card and flips it above the trigger when
+  `triggerBottom + 8 + height` overflows the viewport — without that, the
+  **last row** of a full table opens a 420px card straight off the fold.
+  jsdom has no layout, so no unit test can see either failure; both were caught
+  only by driving a real browser.
+  `client/src/app/repos/[repoId]/pulls/_components/FindingsCell/FindingsCell.tsx`,
+  `client/src/app/repos/[repoId]/pulls/styles.ts:89`
 
 ## Codebase Patterns
 
@@ -55,20 +74,28 @@ _None yet._
 
 ## Tool & Library Notes
 
-- **2026-08-04** — This dev environment's seeded Postgres has zero
-  `agent_runs` rows with `findings_count > 0` across all 3 seeded repos
-  (`acme/payments-api`, `myasoid/dev-digest`, `quarkusio/quarkus`) — every
-  seeded review is a clean 0-findings/100-score run. To visually verify any
-  findings-related UI change, either trigger a real (costly) LLM review run,
-  or temporarily `INSERT` rows into `findings` + bump the matching
-  `agent_runs.critical_count`/`warning_count`/`suggestion_count`/
-  `findings_count`, screenshot, then delete/revert immediately after —
-  confirmed safe and fully reversible on the local dev DB
-  (`postgres://devdigest:devdigest@localhost:5432/devdigest`). Separately, no
-  `chromium-cli` or `agent-browser` CLI was present in this sandbox; `npx
-  playwright install chromium` (no `--with-deps`, which needs sudo) downloads
-  a working headless Chromium fine, so a scratch `npm install playwright` +
-  a small driver script is the fallback for one-off browser verification here.
+- **2026-08-04, corrected 2026-08-07** — The seeded dev DB has zero `agent_runs`
+  rows with `findings_count > 0`, but that is a statement about the *run
+  counters* only — the `findings` **table is not empty**. `server/src/db/seed.ts`
+  inserts findings on `acme/payments-api` PR #482. The actual obstacle for any
+  UI scoped to a PR's **latest** review is that #482 carries ~6 *later* clean
+  score-100 reviews that shadow the one holding the findings, so the list
+  renders "—" and the feature looks broken when it is correct. Verify by
+  `INSERT`ing a review dated `now()` plus its findings (or attaching findings to
+  the newest `reviews.id`), screenshotting, then deleting — reversible on the
+  local dev DB (`postgres://devdigest:devdigest@localhost:5432/devdigest`).
+  Note `seed.ts` guards the findings block behind `if (!pr)`, so re-running
+  `pnpm db:seed` on an existing DB will **not** add newly-seeded findings.
+
+- **2026-08-07** — For one-off visual verification: the `claude-in-chrome` MCP
+  extension may be unreachable ("Claude in Chrome is not connected"), and no
+  `chromium-cli`/`agent-browser` CLI exists in this sandbox. The reliable
+  fallback is a scratch `npm install playwright` + a small driver script;
+  headless Chromium is already downloaded at `~/.cache/ms-playwright/`
+  (otherwise `npx playwright install chromium`, without `--with-deps`, which
+  needs sudo). Assert geometry rather than eyeballing a screenshot —
+  `locator.boundingBox()` against `page.viewportSize()` is what proves a popover
+  is on-screen and unclipped.
 
 ## Recurring Errors & Fixes
 

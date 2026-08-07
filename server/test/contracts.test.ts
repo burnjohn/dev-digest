@@ -15,6 +15,7 @@ import {
   Settings,
   Repo,
   PrDetail,
+  PrMeta,
 } from '@devdigest/shared';
 
 /**
@@ -213,5 +214,51 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+
+  it('PrMeta carries the list-only findings column, and stays valid without it', () => {
+    const base = {
+      number: 482,
+      title: 't',
+      author: 'a',
+      branch: 'b',
+      base: 'main',
+      head_sha: 'sha',
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'open' as const,
+    };
+
+    const withFindings = PrMeta.parse({
+      ...base,
+      score: 61,
+      critical_count: 1,
+      warning_count: 0,
+      suggestion_count: 2,
+      findings: [
+        {
+          id: 'f1',
+          severity: 'CRITICAL',
+          category: 'security',
+          title: 'Hardcoded Stripe secret key in commit',
+          file: 'src/config.ts',
+          start_line: 12,
+          end_line: 12,
+          rationale: 'Line 12 contains a literal `sk_live_` Stripe key.',
+          confidence: 0.97,
+        },
+      ],
+    });
+    expect(withFindings.findings).toHaveLength(1);
+    // The embedded projection drops the detail-only fields on purpose.
+    expect(withFindings.findings![0]).not.toHaveProperty('suggestion');
+
+    // Never-reviewed: null is distinct from 0/[] and must parse.
+    expect(() =>
+      PrMeta.parse({ ...base, critical_count: null, findings: null }),
+    ).not.toThrow();
+    // A pre-change payload with the fields absent entirely stays valid.
+    expect(() => PrMeta.parse(base)).not.toThrow();
   });
 });
