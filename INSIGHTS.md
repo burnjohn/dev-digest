@@ -16,6 +16,22 @@ move it into `docs/` and delete it here.
 
 ## Decisions
 
+### 2026-08-07 — CLAUDE.md → AGENTS.md via symlink, not the `@AGENTS.md` import
+
+**What:** all five `CLAUDE.md` files (root, `client/`, `e2e/`, `reviewer-core/`,
+`server/`) were moved to `AGENTS.md`, with `CLAUDE.md` kept as a same-directory
+symlink (`ln -s AGENTS.md CLAUDE.md`) so Claude Code keeps working unchanged.
+**Why:** explicit choice to keep one canonical file per directory, byte-identical
+regardless of which name is opened; the repo is developed on Linux/macOS only, so
+the symlink's Windows caveat doesn't apply here.
+**Rejected:** Anthropic's documented preference — a real `CLAUDE.md` containing
+only `@AGENTS.md` (Claude Code's file-import syntax, memory.md docs) — because it
+is cross-platform and survives copy steps that drop symlinks (Docker `COPY`, zip
+export), which a plain symlink does not. Claude Code reads `CLAUDE.md` only; it
+does not read `AGENTS.md` on its own. If this repo ever needs a Windows
+contributor or a symlink-unsafe build/copy step, swap to the import stub — it is
+a five-file, one-line-each change.
+
 ### 2026-07-31 — Standalone packages instead of a workspace
 
 **What:** four packages, each with its own `package.json` and lockfile; sharing
@@ -46,7 +62,7 @@ _None yet._
 - **2026-08-04** — `server/src/vendor/shared/contracts/*.ts` and
   `client/src/vendor/shared/contracts/*.ts` are two independent files with no
   sync script between them — a schema change must be hand-edited in both
-  (server first, per `CLAUDE.md`). Confirmed by a pre-existing comment-only
+  (server first, per `AGENTS.md`). Confirmed by a pre-existing comment-only
   diff between the two `trace.ts` copies before this session touched either.
   Forgetting the client copy compiles fine locally (client typecheck only sees
   its own copy) and fails invisibly until the two drift on a real field.

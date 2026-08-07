@@ -30,7 +30,7 @@ Before answering a question or touching code:
    sentence is what makes it real.
 
 If a curated file answers the question, cite it instead of re-deriving from
-code. This is the order root `CLAUDE.md` already sets out: `specs/` → `docs/` →
+code. This is the order root `AGENTS.md` already sets out: `specs/` → `docs/` →
 `INSIGHTS.md` → source.
 
 ## Module resolution
@@ -68,7 +68,7 @@ signal first:
    is; the repo was wrong or the agent's default was wrong.
 2. **Approaches that failed** — what was tried and abandoned, and why.
 3. **Repeated friction** — the same error or workaround hit more than once.
-4. **Conventions discovered by reading code** — things `CLAUDE.md` doesn't say.
+4. **Conventions discovered by reading code** — things `AGENTS.md` doesn't say.
 5. **Dependency and toolchain quirks.**
 
 **Cap at 3 entries per session**, even when more candidates exist. If everything
@@ -169,7 +169,7 @@ therefore useful nowhere.
   nothing. Write the claim, not the label.
 - Filing everything under `What Works`.
 - Appending a fifth variation of an entry that already exists.
-- Recording what `CLAUDE.md`, `README.md`, or `docs/` already says.
+- Recording what `AGENTS.md`, `README.md`, or `docs/` already says.
 
 ## What this skill does not do
 
