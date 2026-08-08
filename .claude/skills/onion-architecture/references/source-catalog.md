@@ -106,16 +106,16 @@ This skill-local catalog copies the 35 source IDs, authority classes, definition
   https://orm.drizzle.team/docs/migrations
   Use for the generate/apply migration workflow; DevDigest migrations remain generated rather than hand-edited.
 
-- **PG-01 · B — PostgreSQL 17, “Constraints”**
-  https://www.postgresql.org/docs/17/ddl-constraints.html
+- **PG-01 · B — PostgreSQL 16, “Constraints”**
+  https://www.postgresql.org/docs/16/ddl-constraints.html
   Use for database-enforced integrity as a persistence-layer complement to domain invariants.
 
 - **PG-02 · B — PostgreSQL, “Transaction Isolation”**
-  https://www.postgresql.org/docs/current/transaction-iso.html
+  https://www.postgresql.org/docs/16/transaction-iso.html
   Use when a use case's consistency guarantees depend on PostgreSQL isolation behavior.
 
 - **PG-03 · B — PostgreSQL, “Row Security Policies”**
-  https://www.postgresql.org/docs/current/ddl-rowsecurity.html
+  https://www.postgresql.org/docs/16/ddl-rowsecurity.html
   Use for optional tenant defense-in-depth, not as a replacement for application authorization or scoped port methods.
 
 ## TypeScript and automated architecture enforcement
