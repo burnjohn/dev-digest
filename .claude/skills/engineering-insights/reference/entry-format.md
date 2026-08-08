@@ -9,7 +9,7 @@
 - Pruning
 
 The examples below are drawn from facts this repo genuinely holds, so the form can be judged against
-real material. Several of them already live in a `CLAUDE.md` — they are shown here to illustrate
+real material. Several of them already live in an `AGENTS.md` — they are shown here to illustrate
 shape, not as things to go and write. When a fact is already documented, capture only the part that
 is missing, which is usually the observable symptom.
 
@@ -121,7 +121,7 @@ Good — recognisable from the symptom, and the fix follows:
 - `2026-08-01` — A route 500 with `relation "..." does not exist` underneath means migrations never ran against this database, not a bug in the route; `pnpm db:migrate` is never automatic, including for a brand-new endpoint → `cd server && pnpm db:migrate`
 ```
 
-Note this earns its place even though root `CLAUDE.md` already says migrations are not auto-applied:
+Note this earns its place even though root `AGENTS.md` already says migrations are not auto-applied:
 the existing line states the rule, this one makes the rule reachable from the error text.
 
 ### Session Notes
@@ -176,13 +176,13 @@ Never delete or reword the original:
 ```
 
 **Graduated** — re-confirmed, or hardened into a rule everyone must follow. Extend the package's
-`CLAUDE.md` and mark the entry. The `INSIGHTS.md` line stays where it is:
+`AGENTS.md` and mark the entry. The `INSIGHTS.md` line stays where it is:
 
 ```
-- `2026-08-01` — `err instanceof ZodError` is always false … → `src/app.ts:138` → CLAUDE.md
+- `2026-08-01` — `err instanceof ZodError` is always false … → `src/app.ts:138` → AGENTS.md
 ```
 
-and in `server/CLAUDE.md` under `## Gotchas`, the existing line gains the symptom rather than being
+and in `server/AGENTS.md` under `## Gotchas`, the existing line gains the symptom rather than being
 replaced:
 
 ```
@@ -191,7 +191,8 @@ replaced:
 
 ## Pruning
 
-`status` warns past 60 entries in one file. Prune in this order: entries marked `→ CLAUDE.md` (the
-rule now lives in the handbook), then `~~superseded~~` entries older than a quarter, then
+`status` warns past 60 entries in one file. Prune in this order: entries marked `→ AGENTS.md`, or the
+older `→ CLAUDE.md`, which mean the same thing (the rule now lives in the handbook), then
+`~~superseded~~` entries older than a quarter, then
 `Session Notes` groups older than a quarter. Never prune an unresolved `Open Questions` entry — answer
 it or leave it.
