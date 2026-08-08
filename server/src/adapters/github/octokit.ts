@@ -369,4 +369,21 @@ export class OctokitGitHubClient implements GitHubClient {
     );
     return res.data.login;
   }
+
+  async readFile(repo: RepoRef, path: string): Promise<string> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const { data } = await this.octokit.rest.repos.getContent({
+            owner: repo.owner,
+            repo: repo.name,
+            path,
+          });
+          if (Array.isArray(data) || data.type !== 'file') throw new Error('not a file');
+          return Buffer.from(data.content, 'base64').toString('utf-8');
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
 }
