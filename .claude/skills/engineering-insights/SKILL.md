@@ -73,22 +73,25 @@ dated entry that corrects it, and the old one is marked `~~superseded~~ see YYYY
 of what was believed and when is the point; a file that is silently edited into agreement with the
 present teaches nothing about which beliefs are fragile.
 
-## The boundary with CLAUDE.md
+## The boundary with AGENTS.md
 
-`CLAUDE.md` is the stable handbook — stack, commands, conventions, and the `## Gotchas` rules that
+`AGENTS.md` is the stable handbook — stack, commands, conventions, and the `## Gotchas` rules that
 hold today. `INSIGHTS.md` is the dated log of what sessions actually discovered, with evidence.
+(Each `AGENTS.md` has a `CLAUDE.md` symlink beside it, because Claude Code loads only `CLAUDE.md`.
+They are the same file — edit `AGENTS.md`.)
 
 Findings go to `INSIGHTS.md` first, always. When one has been re-confirmed, or has hardened into a
-rule everyone must follow, **graduate** it: add or extend the line in that package's `CLAUDE.md`
-under `## Gotchas` or `## Conventions`, and append `→ CLAUDE.md` to the `INSIGHTS.md` entry so it is
-not graduated twice. Graduating extends a `CLAUDE.md` line; it never replaces one.
+rule everyone must follow, **graduate** it: add or extend the line in that package's `AGENTS.md`
+under `## Gotchas` or `## Conventions`, and append `→ AGENTS.md` to the `INSIGHTS.md` entry so it is
+not graduated twice. Graduating extends an `AGENTS.md` line; it never replaces one. Entries written
+before the rename carry `→ CLAUDE.md` and mean the same thing — leave them as they are.
 
 ## Rationalizations
 
 | Thought | Reality |
 |---|---|
-| "A separate file nobody loads wouldn't have saved those 40 minutes — put it in CLAUDE.md" | `INSIGHTS.md` is read on purpose: the Session Protocol in `CLAUDE.md` names it, and `status` above lists it every time this skill loads. Raw dated findings in `CLAUDE.md` are how the handbook stops being stable — it grows without bound and every session pays for every past debugging trip. `INSIGHTS.md` costs nothing until a session works in that scope. |
-| "The existing Gotchas line is incomplete — I'll rewrite it" | Rewriting is not capture. The missing part is a new dated entry. A `CLAUDE.md` line changes only when a finding graduates, and then it gains the new fact rather than being replaced by it. |
+| "A separate file nobody loads wouldn't have saved those 40 minutes — put it in AGENTS.md" | `INSIGHTS.md` is read on purpose: the Session Protocol in `AGENTS.md` names it, and `status` above lists it every time this skill loads. Raw dated findings in `AGENTS.md` are how the handbook stops being stable — it grows without bound and every session pays for every past debugging trip. `INSIGHTS.md` costs nothing until a session works in that scope. |
+| "The existing Gotchas line is incomplete — I'll rewrite it" | Rewriting is not capture. The missing part is a new dated entry. An `AGENTS.md` line changes only when a finding graduates, and then it gains the new fact rather than being replaced by it. |
 | "It's one line, I'll just Edit the file" | Then it has no date, may duplicate an existing entry, may lack evidence, and may land in the wrong section. `append` refuses all four. |
 | "Nothing this session was interesting enough" | A legitimate outcome — say so explicitly and write nothing. Inventing an entry to have written one is worse than an empty section. |
 | "I'll collect everything and write it at the end" | The end is where the specifics are already gone. Capture at confirmation; wrap-up only sweeps up what was missed. |
@@ -98,7 +101,7 @@ not graduated twice. Graduating extends a `CLAUDE.md` line; it never replaces on
 1. `node $S status` — see what already exists for the scopes touched.
 2. For each candidate finding: `check` it, then `append` it to the routed scope.
 3. Any entry re-confirmed this session: append `×2 (DATE)` to it. Any that has hardened into a rule:
-   graduate it to `CLAUDE.md` and mark it `→ CLAUDE.md`.
+   graduate it to `AGENTS.md` and mark it `→ AGENTS.md`.
 4. If `status` reports a file over its entry ceiling, prune graduated and superseded entries before
    adding more.
 5. Report what was captured and where — or state plainly that nothing was worth capturing.
