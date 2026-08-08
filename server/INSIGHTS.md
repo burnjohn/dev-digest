@@ -83,6 +83,11 @@ _None yet._
   `node:` prefix, and `@devdigest/shared` resolves under `src/vendor/shared/`.
   `server/.dependency-cruiser.cjs`
 
+- **2026-08-08** — dependency-cruiser's JSON reporter exits zero even when
+  `summary.violations` contains error-severity findings. Semantic gate tests
+  must parse and compare that array instead of treating process status as the
+  violation signal. `server/test/architecture-gate.test.ts`
+
 - **2026-08-08** — A server-only dependency-cruiser target must be anchored as
   `^src/`; a generic `(?:^|/)src/` also matches `../reviewer-core/src/` and
   creates false cross-package violations. `server/.dependency-cruiser.cjs`
