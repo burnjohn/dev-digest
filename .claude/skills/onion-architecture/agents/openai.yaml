@@ -1,0 +1,4 @@
+interface:
+  display_name: "Onion Architecture"
+  short_description: "Enforce backend Onion Architecture boundaries"
+  default_prompt: "Use $onion-architecture to design or review this backend module with explicit domain, application, port, adapter, and composition boundaries."
