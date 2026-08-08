@@ -76,7 +76,16 @@ _None yet._
 
 ## Tool & Library Notes
 
-_None yet._
+- **2026-08-08** — dependency-cruiser 17.4.3 matches forbidden-rule
+  `to.path` against `dependency.resolved`, not the unresolved module specifier.
+  Package rules therefore need resolved `node_modules/<package>` patterns,
+  `preserveSymlinks: true` stabilizes pnpm paths, builtins appear without the
+  `node:` prefix, and `@devdigest/shared` resolves under `src/vendor/shared/`.
+  `server/.dependency-cruiser.cjs`
+
+- **2026-08-08** — A server-only dependency-cruiser target must be anchored as
+  `^src/`; a generic `(?:^|/)src/` also matches `../reviewer-core/src/` and
+  creates false cross-package violations. `server/.dependency-cruiser.cjs`
 
 ## Recurring Errors & Fixes
 
