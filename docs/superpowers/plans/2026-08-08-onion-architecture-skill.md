@@ -42,11 +42,8 @@
 | `.claude/skills/README.md` | repository skill catalog entry |
 | `server/.dependency-cruiser.cjs` | executable architecture rules for current flat modules and future layered modules |
 | `server/.dependency-cruiser-known-violations.json` | reviewed snapshot of existing violations only |
-| `server/test/architecture-gate.test.ts` | proves one valid inward dependency passes and three outward/private-boundary imports fail with the expected rules |
-| `server/test/fixtures/architecture/valid/**` | minimal compliant application-to-domain dependency fixture |
-| `server/test/fixtures/architecture/invalid/**` | minimal application-to-adapter violation fixture |
-| `server/test/fixtures/architecture/npm-invalid/**` | application-to-resolved npm boundary violation fixture |
-| `server/test/fixtures/architecture/cross-feature-invalid/**` | feature-root-to-another-feature-private-adapter violation fixture |
+| `server/test/architecture-gate.test.ts` | 18 behavioral checks for every emitted rule family, type-only imports, valid public contracts, and exact raw-to-baseline equality |
+| `server/test/fixtures/architecture/**` | 15 static scenario roots / 44 files covering compliant and forbidden dependency shapes |
 | `server/package.json` | `architecture` command; dependency-cruiser is already installed |
 | `.github/workflows/server-unit.yml` | blocking architecture command in the existing server typecheck job |
 
@@ -683,11 +680,13 @@ Expected from-scratch RED: one file with four failing tests because `.dependency
 - Create by reviewed command: `server/.dependency-cruiser-known-violations.json`
 - Modify: `server/package.json`
 - Modify: `.github/workflows/server-unit.yml`
+- Extend after broad review: `server/test/architecture-gate.test.ts`
+- Extend after broad review: `server/test/fixtures/architecture/**` to 15 scenario roots / 44 static files
 
 **Interfaces:**
 
-- Consumes: the four fixture contracts and rule names from Task 6.
-- Produces: `pnpm architecture`, a reviewed legacy baseline, and a blocking CI step.
+- Consumes: the four initial fixture contracts from Task 6, then the complete behavioral matrix required by broad review.
+- Produces: `pnpm architecture`, a semantically exact reviewed legacy baseline, an 18-test regression suite, and a blocking CI step.
 
 - [ ] **Step 1: Implement `server/.dependency-cruiser.cjs`**
 
@@ -702,7 +701,7 @@ const modules = `${source}/modules`;
 const reviewerCore = String.raw`(?:^|/)reviewer-core/src`;
 const nodeModules = String.raw`(?:^|/)node_modules`;
 const externalModules = `${nodeModules}/(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
-const databaseModules = `${nodeModules}/(?:drizzle-orm|postgres)(?:/|$)`;
+const drivenModules = `${nodeModules}/(?:drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
 const infrastructureCore = String.raw`^(?:node:)?(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
 const boundaryModules = [
   externalModules,
@@ -734,24 +733,24 @@ module.exports = {
     {
       name: 'domain-depends-only-inward',
       severity: 'error',
-      from: { path: `${modules}/[^/]+/domain/` },
+      from: { path: `${modules}/([^/]+)/domain/` },
       to: {
-        path: [
-          `${modules}/[^/]+/(?:application|adapters)/`,
-          `${source}/(?:adapters|db|platform)/`,
-          ...boundaryModules,
+        path: [`${source}/`, ...boundaryModules],
+        pathNot: [
+          `${modules}/$1/domain/`,
+          `${modules}/(?!$1/|_shared/)[^/]+/index[.]ts$`,
         ],
       },
     },
     {
       name: 'application-depends-only-inward',
       severity: 'error',
-      from: { path: `${modules}/[^/]+/application/` },
+      from: { path: `${modules}/([^/]+)/application/` },
       to: {
-        path: [
-          `${modules}/[^/]+/adapters/`,
-          `${source}/(?:adapters|db|platform)/`,
-          ...boundaryModules,
+        path: [`${source}/`, ...boundaryModules],
+        pathNot: [
+          `${modules}/$1/(?:application|domain)/`,
+          `${modules}/(?!$1/|_shared/)[^/]+/index[.]ts$`,
         ],
       },
     },
@@ -759,7 +758,16 @@ module.exports = {
       name: 'legacy-routes-do-not-query-persistence',
       severity: 'error',
       from: { path: `${modules}/[^/]+/routes[.]ts$` },
-      to: { path: [`${source}/db/`, databaseModules] },
+      to: {
+        path: [
+          `${modules}/[^/]+/(?:adapters/|repository(?:/|[.]ts$))`,
+          `${source}/adapters/`,
+          `${source}/db/`,
+          `${source}/platform/container[.]ts$`,
+          drivenModules,
+          infrastructureCore,
+        ],
+      },
     },
     {
       name: 'legacy-services-do-not-construct-infrastructure',
@@ -826,7 +834,24 @@ Run:
 cd server && pnpm test architecture-gate
 ```
 
-Expected: one file with four passing tests. The valid fixture reports no dependency violations; the application-to-persistence and application-to-npm fixtures report `application-depends-only-inward`; the feature-root cross-feature fixture reports `no-cross-feature-imports-into-reviews-adapters`.
+Expected for the initial Task 7 GREEN: one file with four passing tests. The valid fixture reports no dependency violations; the application-to-persistence and application-to-npm fixtures report `application-depends-only-inward`; the feature-root cross-feature fixture reports `no-cross-feature-imports-into-reviews-adapters`.
+
+- [ ] **Step 2a: Close broad-review bypasses with a complete behavioral matrix**
+
+Extend the suite to **18 tests across 15 scenario roots / 44 static files**. Keep the initial four fixtures and add behavior checks for:
+
+- cycles;
+- both domain-rule shapes, including `src/app.ts`, `_shared`, flat outer files, and the `_shared` barrel;
+- application-to-composition, `_shared`, routes, services, repositories, and a type-only infrastructure edge;
+- legacy routes reaching repositories, `Container`, global adapters, driven packages, and Node infrastructure while allowing Fastify, Zod, and shared wire contracts;
+- legacy services constructing repositories, `Container`, global adapters, and vendors;
+- feature public APIs exporting adapters;
+- `reviewer-core` reaching server/vendor dependencies;
+- all four adapter-category isolation rules;
+- whole-feature cross-feature imports into private adapters;
+- exact semantic equality between the raw production violations and the checked-in baseline.
+
+The broad-review RED must remain in the evidence: 12 passed / 4 failed before the capture-based inward allowlists and strengthened legacy-route rule. The JSON reporter exits zero even when violations exist, so parse `summary.violations`; do not use JSON process status as the violation signal. The `_shared` barrel regression was separately RED before excluding `_shared` from the public-contract exception. Final expected result: **18/18**.
 
 - [ ] **Step 3: Inspect current violations before writing the baseline**
 
@@ -848,7 +873,7 @@ cd server
 pnpm exec depcruise-baseline --config .dependency-cruiser.cjs src ../reviewer-core/src
 ```
 
-Review `.dependency-cruiser-known-violations.json` and assert exactly **37** entries. Confirm every entry points to a pre-existing source/import and that the baseline contains no fixture path, config path, or file created by this plan.
+Review `.dependency-cruiser-known-violations.json` and assert exactly **37** entries. Confirm every entry points to a pre-existing source/import and that the baseline contains no fixture path, config path, or file created by this plan. The behavioral suite must normalize and compare raw and known violations by type, `from`, `to`, cycle legs, and rule severity/name so both new raw violations and stale baseline records fail.
 
 - [ ] **Step 5: Add the routine package command**
 
@@ -870,7 +895,7 @@ pnpm architecture
 pnpm test architecture-gate
 ```
 
-Expected: both commands exit zero. `pnpm architecture` cruises 153 modules and 487 dependencies, reports no unbaselined violations, and ignores exactly 37 known violations. The fixture test does not pass `--ignore-known` and still proves all four behaviors.
+Expected: both commands exit zero. `pnpm architecture` cruises 153 modules and 487 dependencies, reports no unbaselined violations, and ignores exactly 37 known violations. The fixture test does not pass `--ignore-known`; final verification is **18/18**, including exact raw-to-baseline equality.
 
 - [ ] **Step 7: Add the CI step**
 
@@ -986,7 +1011,7 @@ pnpm typecheck
 pnpm test --exclude '**/*.it.test.ts'
 ```
 
-Expected: architecture fixture tests pass, production architecture gate passes with only the reviewed baseline softened, typecheck passes, and all hermetic server tests pass. If the known timing-sensitive cancellation test appears despite the exclusion and the task did not touch it, follow `server/INSIGHTS.md`: rerun its file in isolation before attributing it to this change.
+Expected: **18/18** architecture fixture/gate tests pass across 15 scenario roots / 44 fixture files; the production architecture gate cruises 153 modules / 487 dependencies with exactly 37 reviewed violations ignored; typecheck passes; and the hermetic suite passes 24 files / 152 tests. If the known timing-sensitive cancellation test appears despite the exclusion and the task did not touch it, follow `server/INSIGHTS.md`: rerun its file in isolation before attributing it to this change.
 
 - [ ] **Step 4: Verify discovery and worktree integrity**
 
