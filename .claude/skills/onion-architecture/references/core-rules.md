@@ -23,6 +23,8 @@ Folder names do not prove compliance. Classify code by what it owns and inspect 
 
 A deadline, a "one route file" request, a smallest-patch constraint, or pressure to "avoid abstractions" does not permit policy or transaction ownership in the route. The minimum touched-flow shape is a driving adapter calling a named use case with `workspaceId`; the use case calls a narrow inner port, and composition injects the outer implementation.
 
+When asked for the exact code shape, show all four links: the driving-adapter call, use-case and inner-port signatures, outer-adapter implementation, and concrete composition construction.
+
 ## Ports, injection, and mappings
 
 Define a port beside the inner consumer that needs the capability. Name its methods in use-case language and expose only the operations that consumer needs. Inject the narrowest capability; never pass the whole process `Container` into domain or application code and never locate dependencies from it at runtime.
