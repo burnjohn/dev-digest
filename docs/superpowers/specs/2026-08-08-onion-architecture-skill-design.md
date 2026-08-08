@@ -1,6 +1,6 @@
 # Onion Architecture backend skill design
 
-Status: implemented, formally reviewed, corrected, and final-validated on 2026-08-08
+Status: implemented, broad-review remediated, and final-revalidated on 2026-08-08
 Canonical research ledger: [`docs/research/onion-architecture-backend-sources.md`](../../research/onion-architecture-backend-sources.md)
 
 ## Goal
@@ -192,7 +192,7 @@ The baseline is migration debt, not an allowlist for copied patterns. Re-baselin
 | Drizzle persistence adapter | `*.it.test.ts` | real PostgreSQL through the repository Testcontainers fixture |
 | External adapter | focused contract/integration test | fake remote server/client only at the actual external boundary |
 | Composition root | smoke or wiring test | verify `route → use case → adapter` paths that type checking cannot prove |
-| Architecture rules | dependency-cruiser fixture/gate test | include at least one forbidden-import negative fixture or config-level regression check |
+| Architecture rules | dependency-cruiser fixture/gate test | exercise every emitted rule family, type-only edges, valid public contracts, and exact raw-to-baseline inventory equality |
 
 Fakes should implement inner ports rather than mock Drizzle/Fastify internals. A use case test must not instantiate `Container`. Persistence behavior that depends on SQL semantics belongs in a database-backed integration test.
 
