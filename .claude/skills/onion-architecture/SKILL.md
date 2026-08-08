@@ -1,85 +1,42 @@
 ---
 name: onion-architecture
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: Use when designing, implementing, reviewing, or refactoring backend modules involving Fastify routes, Zod boundaries, use cases, business rules, Drizzle/PostgreSQL persistence, jobs, streams, external SDKs, dependency injection, or module boundaries.
 ---
 
 # Onion Architecture
 
-## Overview
+## Core rule
 
-[TODO: 1-2 sentences explaining what this skill enables]
+Point every source dependency inward: adapters → application → domain. Let runtime control call outward only through a port owned by the inner consumer. Folder names never override this rule.
 
-## Structuring This Skill
+## Mandatory workflow
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+1. Read the relevant `AGENTS.md`, package `INSIGHTS.md`, and existing module wiring.
+2. Classify each changed artifact as domain, application, adapter, or composition.
+3. Name the use case and define inbound/outbound ports beside their inner consumer.
+4. Inspect imports, runtime parsing, DTO/row mapping, transaction ownership, `workspaceId`, and cross-feature calls before editing.
+5. Keep every new dependency compliant. When changing a baselined path, do not expand it and remove the violation when the task safely permits.
+6. Verify the owning layer's tests, critical runtime wiring, typecheck, and `cd server && pnpm architecture`.
 
-**1. Workflow-Based** (best for sequential processes)
-- Works well when there are clear step-by-step procedures
-- Example: DOCX skill with "Workflow Decision Tree" -> "Reading" -> "Creating" -> "Editing"
-- Structure: ## Overview -> ## Workflow Decision Tree -> ## Step 1 -> ## Step 2...
+## Non-negotiable boundaries
 
-**2. Task-Based** (best for tool collections)
-- Works well when the skill offers different operations/capabilities
-- Example: PDF skill with "Quick Start" -> "Merge PDFs" -> "Split PDFs" -> "Extract Text"
-- Structure: ## Overview -> ## Quick Start -> ## Task Category 1 -> ## Task Category 2...
+- Keep domain independent of Fastify, Zod wire schemas, shared transport DTOs, Drizzle/Postgres, SDKs, database rows, and `Container`.
+- Keep application dependent on domain and application-owned ports, never concrete adapters, Drizzle types, request/reply objects, SDK clients, or the whole container.
+- Keep Fastify/Zod, persistence, external tools, jobs/SSE, and process lifecycle in adapters; map their values and errors before returning inward.
+- Carry `workspaceId` through every tenant-owned use case and persistence port.
+- Wire concrete implementations in `server/src/app.ts` or narrow composition modules.
+- Do not regenerate the known-violations baseline to hide a new violation.
 
-**3. Reference/Guidelines** (best for standards or specifications)
-- Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" -> "Colors" -> "Typography" -> "Features"
-- Structure: ## Overview -> ## Guidelines -> ## Specifications -> ## Usage...
+## Reference routing
 
-**4. Capabilities-Based** (best for integrated systems)
-- Works well when the skill provides multiple interrelated features
-- Example: Product Management with "Core Capabilities" -> numbered capability list
-- Structure: ## Overview -> ## Core Capabilities -> ### 1. Feature -> ### 2. Feature...
+| Task | Read |
+|---|---|
+| Layering, ports, DI, DTOs, transactions | [core-rules.md](references/core-rules.md) |
+| DevDigest placement, packages, jobs/SSE, external tools | [project-mapping.md](references/project-mapping.md) |
+| Fastify routes, Zod, HTTP/SSE, `app.inject()` | [fastify-zod-adapters.md](references/fastify-zod-adapters.md) |
+| Drizzle/Postgres, mapping, transactions, tenant scope | [drizzle-postgres-adapters.md](references/drizzle-postgres-adapters.md) |
+| Tests, dependency-cruiser, baseline, CI | [testing-and-enforcement.md](references/testing-and-enforcement.md) |
+| Existing-module migration or shortcut pressure | [migration-playbook.md](references/migration-playbook.md) |
+| Rationale and provenance | [source-catalog.md](references/source-catalog.md) |
 
-Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
-
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
-
-## [TODO: Replace with the first main section based on chosen structure]
-
-[TODO: Add content here. See examples in existing skills:
-- Code samples for technical skills
-- Decision trees for complex workflows
-- Concrete examples with realistic user requests
-- References to scripts/templates/references as needed]
-
-## Resources (optional)
-
-Create only the resource directories this skill actually needs. Delete this section if no resources are required.
-
-### scripts/
-Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
-
-**Examples from other skills:**
-- PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
-- DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
-
-**Appropriate for:** Python scripts, shell scripts, or any executable code that performs automation, data processing, or specific operations.
-
-**Note:** Scripts may be executed without loading into context, but can still be read by Codex for patching or environment adjustments.
-
-### references/
-Documentation and reference material intended to be loaded into context to inform Codex's process and thinking.
-
-**Examples from other skills:**
-- Product management: `communication.md`, `context_building.md` - detailed workflow guides
-- BigQuery: API reference documentation and query examples
-- Finance: Schema documentation, company policies
-
-**Appropriate for:** In-depth documentation, API references, database schemas, comprehensive guides, or any detailed information that Codex should reference while working.
-
-### assets/
-Files not intended to be loaded into context, but rather used within the output Codex produces.
-
-**Examples from other skills:**
-- Brand styling: PowerPoint template files (.pptx), logo files
-- Frontend builder: HTML/React boilerplate project directories
-- Typography: Font files (.ttf, .woff2)
-
-**Appropriate for:** Templates, boilerplate code, document templates, images, icons, fonts, or any files meant to be copied or used in the final output.
-
----
-
-**Not every skill requires all three types of resources.**
+For implementation or review, read `core-rules.md`, `project-mapping.md`, and only the technology/migration references the task actually touches.
