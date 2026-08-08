@@ -36,7 +36,6 @@ type ReviewRow = typeof reviewRecords.$inferSelect;
 type ReviewTransaction = Parameters<
   Parameters<Db['transaction']>[0]
 >[0];
-type ReviewExecutor = Db | ReviewTransaction;
 
 class PersistenceCorruptionError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -63,8 +62,8 @@ function toReviewUpdate(review: Review) {
   return { status: review.status };
 }
 
-export class DrizzleReviewStore implements ReviewStore {
-  constructor(private readonly db: ReviewExecutor) {}
+class DrizzleReviewStore implements ReviewStore {
+  constructor(private readonly db: ReviewTransaction) {}
 
   async findForWorkspace(input: {
     workspaceId: string;
@@ -78,7 +77,8 @@ export class DrizzleReviewStore implements ReviewStore {
           eq(reviewRecords.workspaceId, input.workspaceId),
           eq(reviewRecords.id, input.reviewId),
         ),
-      );
+      )
+      .for('update');
 
     return row ? toReview(row) : null;
   }
@@ -102,7 +102,7 @@ export class DrizzleReviewStore implements ReviewStore {
 }
 ```
 
-The `reviewRecords` declaration is self-contained illustrative schema for the teaching `Review` from `core-rules.md`; it is not the production table in `server/src/db/schema/reviews.ts`, which has no `status` column. In production, import the actual feature table and adapt the private mapper to fields that table really defines. The important shape is invariant: the adapter-private `ReviewRow` is checked and converted to an inner `Review`, and both lookup and update include `workspaceId`. Apply the same predicate rule to lists, joins, aggregates, counts, bulk operations, soft deletes, and hard deletes. A route-level ownership check does not make an unscoped query safe, and a prior scoped lookup does not excuse a later unscoped write.
+The `reviewRecords` declaration is self-contained illustrative schema for the teaching `Review` from `core-rules.md`; it is not the production table in `server/src/db/schema/reviews.ts`, which has no `status` column. In production, import the actual feature table and adapt the private mapper to fields that table really defines. The important shape is invariant: the adapter-private `ReviewRow` is checked and converted to an inner `Review`, and both lookup and update include `workspaceId`. `DrizzleReviewStore` accepts only the transaction handle created by `ReviewUnitOfWork`; its `FOR UPDATE` lookup keeps the loaded-state decision and save in one lock scope, so a second Read Committed transaction waits and then observes `completed`. Apply the same predicate rule to lists, joins, aggregates, counts, bulk operations, soft deletes, and hard deletes. A route-level ownership check does not make an unscoped query safe, and a prior scoped lookup does not excuse a later unscoped write.
 
 If a mapper detects corruption, stop before returning inward. Translate the failure to a stable application-facing failure at the adapter boundary where the flow requires one, retain the original cause for logs, and never expose row contents, SQL, or a PostgreSQL error to HTTP/SSE output.
 
@@ -184,6 +184,7 @@ Use `db` for typed Drizzle setup and assertions and `sql` when the test must ins
 - a missing record returning the port's defined absence value rather than a fabricated row;
 - unique, foreign-key, and check constraints relevant to the adapter, including the adapter's error translation;
 - unit-of-work commit on success and rollback when any callback step throws;
+- concurrent attempts to perform the same loaded-state transition: exactly one succeeds and the waiter observes the committed state or a typed expected-state conflict;
 - two-workspace isolation for every relevant read/write/count/delete shape: create matching-looking resources in workspaces A and B, operate as A, and prove B is neither observed nor mutated.
 
 Do not mock Drizzle query builders or a transaction object for these claims. Unit tests can cover a pure mapper, but SQL predicates, constraints, isolation, commit/rollback, and driver error translation need PostgreSQL.

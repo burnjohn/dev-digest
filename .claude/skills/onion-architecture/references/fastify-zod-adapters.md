@@ -34,6 +34,7 @@ const ReviewResponse = z.object({
   id: z.string().uuid(),
   status: z.enum(['running', 'completed']),
 });
+type ReviewResponseBody = z.infer<typeof ReviewResponse>;
 
 const ErrorResponse = z.object({
   error: z.object({
@@ -47,7 +48,7 @@ interface CompleteReviewRoutesOptions {
   completeReview: CompleteReview;
 }
 
-function toReviewResponse(review: Review) {
+function toReviewResponse(review: Review): ReviewResponseBody {
   return { id: review.id, status: review.status };
 }
 
