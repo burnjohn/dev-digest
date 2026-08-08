@@ -2,10 +2,38 @@
   {
     "type": "dependency",
     "from": "src/modules/polling/routes.ts",
+    "to": "node_modules/drizzle-orm/index.cjs",
+    "unresolvedTo": "drizzle-orm",
+    "dependencyTypes": [
+      "npm",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-routes-do-not-query-persistence"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/polling/routes.ts",
     "to": "src/db/schema.ts",
     "unresolvedTo": "../../db/schema.js",
     "dependencyTypes": [
       "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-routes-do-not-query-persistence"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/pulls/routes.ts",
+    "to": "node_modules/drizzle-orm/index.cjs",
+    "unresolvedTo": "drizzle-orm",
+    "dependencyTypes": [
+      "npm",
       "import"
     ],
     "rule": {
@@ -30,10 +58,38 @@
   {
     "type": "dependency",
     "from": "src/modules/settings/routes.ts",
+    "to": "node_modules/drizzle-orm/index.cjs",
+    "unresolvedTo": "drizzle-orm",
+    "dependencyTypes": [
+      "npm",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-routes-do-not-query-persistence"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/settings/routes.ts",
     "to": "src/db/schema.ts",
     "unresolvedTo": "../../db/schema.js",
     "dependencyTypes": [
       "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-routes-do-not-query-persistence"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/workspace/routes.ts",
+    "to": "node_modules/drizzle-orm/index.cjs",
+    "unresolvedTo": "drizzle-orm",
+    "dependencyTypes": [
+      "npm",
       "import"
     ],
     "rule": {
@@ -495,6 +551,21 @@
   {
     "type": "dependency",
     "from": "../reviewer-core/src/llm/openrouter.ts",
+    "to": "../reviewer-core/node_modules/openai/index.js",
+    "unresolvedTo": "openai",
+    "dependencyTypes": [
+      "npm",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "reviewer-core-does-not-depend-on-server-or-vendors"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "../reviewer-core/src/llm/openrouter.ts",
     "to": "src/vendor/shared/index.ts",
     "unresolvedTo": "@devdigest/shared",
     "dependencyTypes": [
@@ -505,6 +576,20 @@
       "type-only",
       "import",
       "pre-compilation-only"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "reviewer-core-does-not-depend-on-server-or-vendors"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "../reviewer-core/src/llm/structured.ts",
+    "to": "../reviewer-core/node_modules/openai/helpers/zod.js",
+    "unresolvedTo": "openai/helpers/zod",
+    "dependencyTypes": [
+      "npm",
+      "import"
     ],
     "rule": {
       "severity": "error",

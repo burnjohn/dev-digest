@@ -4,13 +4,15 @@ const path = require('node:path');
 const source = String.raw`(?:^|/)src`;
 const modules = `${source}/modules`;
 const reviewerCore = String.raw`(?:^|/)reviewer-core/src`;
-const externalModules = String.raw`^(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
-const infrastructureCore = String.raw`^node:(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
+const nodeModules = String.raw`(?:^|/)node_modules`;
+const externalModules = `${nodeModules}/(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
+const databaseModules = `${nodeModules}/(?:drizzle-orm|postgres)(?:/|$)`;
+const infrastructureCore = String.raw`^(?:node:)?(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
 const boundaryModules = [
   externalModules,
   infrastructureCore,
-  String.raw`^zod(?:/|$)`,
-  String.raw`^@devdigest/shared$`,
+  `${nodeModules}/zod(?:/|$)`,
+  String.raw`^src/vendor/shared/`,
 ];
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const featureNames = readdirSync(path.join(__dirname, 'src', 'modules'), {
@@ -57,7 +59,7 @@ module.exports = {
       name: 'legacy-routes-do-not-query-persistence',
       severity: 'error',
       from: { path: `${modules}/[^/]+/routes[.]ts$` },
-      to: { path: [`${source}/db/`, String.raw`^(?:drizzle-orm|postgres)(?:/|$)`] },
+      to: { path: [`${source}/db/`, databaseModules] },
     },
     {
       name: 'legacy-services-do-not-construct-infrastructure',
@@ -94,12 +96,13 @@ module.exports = {
     ...featureNames.map((feature) => ({
       name: `no-cross-feature-imports-into-${feature}-adapters`,
       severity: 'error',
-      from: { path: `${modules}/(?!${feature}/)[^/]+/adapters/` },
+      from: { path: `${modules}/(?!${feature}/)[^/]+/` },
       to: { path: `${modules}/${feature}/adapters/` },
     })),
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
+    preserveSymlinks: true,
     tsConfig: { fileName: 'tsconfig.json' },
     tsPreCompilationDeps: 'specify',
     exclude: { path: '(?:^|/)(?:dist|coverage)/' },

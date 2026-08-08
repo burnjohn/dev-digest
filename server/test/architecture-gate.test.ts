@@ -6,7 +6,9 @@ import { describe, expect, test } from 'vitest';
 const serverRoot = fileURLToPath(new URL('../', import.meta.url));
 const depcruise = path.join(serverRoot, 'node_modules', '.bin', 'depcruise');
 
-function cruiseFixture(name: 'valid' | 'invalid') {
+function cruiseFixture(
+  name: 'valid' | 'invalid' | 'npm-invalid' | 'cross-feature-invalid',
+) {
   return spawnSync(
     depcruise,
     [
@@ -33,5 +35,19 @@ describe('backend architecture dependency gate', () => {
     const output = `${result.stdout}${result.stderr}`;
     expect(result.status).not.toBe(0);
     expect(output).toContain('application-depends-only-inward');
+  });
+
+  test('rejects application code that imports an npm-backed boundary dependency', () => {
+    const result = cruiseFixture('npm-invalid');
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toContain('application-depends-only-inward');
+  });
+
+  test("rejects a feature-root import of another feature's private adapter", () => {
+    const result = cruiseFixture('cross-feature-invalid');
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toContain('no-cross-feature-imports-into-reviews-adapters');
   });
 });
