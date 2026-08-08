@@ -20,11 +20,19 @@ Keep inferred row types private to the adapter and map every row before it trave
 
 ```ts
 import { and, eq } from 'drizzle-orm';
+import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import type { Db } from '../../../../db/client.js';
-import { reviews } from '../../../../db/schema.js';
 import type { Review, ReviewStore } from '../../application/complete-review.js';
 
-type ReviewRow = typeof reviews.$inferSelect;
+// Illustrative adapter-owned schema for the core-rules teaching example.
+// This is not DevDigest's production `reviews` table.
+const reviewRecords = pgTable('review_records_example', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  status: text('status', { enum: ['running', 'completed'] }).notNull(),
+});
+
+type ReviewRow = typeof reviewRecords.$inferSelect;
 type ReviewTransaction = Parameters<
   Parameters<Db['transaction']>[0]
 >[0];
@@ -64,11 +72,11 @@ export class DrizzleReviewStore implements ReviewStore {
   }): Promise<Review | null> {
     const [row] = await this.db
       .select()
-      .from(reviews)
+      .from(reviewRecords)
       .where(
         and(
-          eq(reviews.workspaceId, input.workspaceId),
-          eq(reviews.id, input.reviewId),
+          eq(reviewRecords.workspaceId, input.workspaceId),
+          eq(reviewRecords.id, input.reviewId),
         ),
       );
 
@@ -77,15 +85,15 @@ export class DrizzleReviewStore implements ReviewStore {
 
   async save(review: Review): Promise<void> {
     const [updated] = await this.db
-      .update(reviews)
+      .update(reviewRecords)
       .set(toReviewUpdate(review))
       .where(
         and(
-          eq(reviews.workspaceId, review.workspaceId),
-          eq(reviews.id, review.id),
+          eq(reviewRecords.workspaceId, review.workspaceId),
+          eq(reviewRecords.id, review.id),
         ),
       )
-      .returning({ id: reviews.id });
+      .returning({ id: reviewRecords.id });
 
     if (!updated) {
       throw new Error('scoped review update matched no row');
@@ -94,7 +102,7 @@ export class DrizzleReviewStore implements ReviewStore {
 }
 ```
 
-The table and `status` column above follow the teaching `Review` from `core-rules.md`; adapt the private row mapping to the actual feature schema. The important shape is invariant: the adapter-private `ReviewRow` is checked and converted to an inner `Review`, and both lookup and update include `workspaceId`. Apply the same predicate rule to lists, joins, aggregates, counts, bulk operations, soft deletes, and hard deletes. A route-level ownership check does not make an unscoped query safe, and a prior scoped lookup does not excuse a later unscoped write.
+The `reviewRecords` declaration is self-contained illustrative schema for the teaching `Review` from `core-rules.md`; it is not the production table in `server/src/db/schema/reviews.ts`, which has no `status` column. In production, import the actual feature table and adapt the private mapper to fields that table really defines. The important shape is invariant: the adapter-private `ReviewRow` is checked and converted to an inner `Review`, and both lookup and update include `workspaceId`. Apply the same predicate rule to lists, joins, aggregates, counts, bulk operations, soft deletes, and hard deletes. A route-level ownership check does not make an unscoped query safe, and a prior scoped lookup does not excuse a later unscoped write.
 
 If a mapper detects corruption, stop before returning inward. Translate the failure to a stable application-facing failure at the adapter boundary where the flow requires one, retain the original cause for logs, and never expose row contents, SQL, or a PostgreSQL error to HTTP/SSE output.
 
