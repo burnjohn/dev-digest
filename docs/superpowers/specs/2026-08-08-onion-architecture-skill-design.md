@@ -1,6 +1,6 @@
 # Onion Architecture backend skill design
 
-Status: approved in conversation on 2026-08-08; written review pending before implementation planning
+Status: implemented, formally reviewed, corrected, and final-validated on 2026-08-08
 Canonical research ledger: [`docs/research/onion-architecture-backend-sources.md`](../../research/onion-architecture-backend-sources.md)
 
 ## Goal

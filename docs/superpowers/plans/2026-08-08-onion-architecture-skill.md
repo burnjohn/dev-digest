@@ -42,9 +42,11 @@
 | `.claude/skills/README.md` | repository skill catalog entry |
 | `server/.dependency-cruiser.cjs` | executable architecture rules for current flat modules and future layered modules |
 | `server/.dependency-cruiser-known-violations.json` | reviewed snapshot of existing violations only |
-| `server/test/architecture-gate.test.ts` | proves a valid inward fixture passes and an outward import fails with the expected rule |
+| `server/test/architecture-gate.test.ts` | proves one valid inward dependency passes and three outward/private-boundary imports fail with the expected rules |
 | `server/test/fixtures/architecture/valid/**` | minimal compliant application-to-domain dependency fixture |
 | `server/test/fixtures/architecture/invalid/**` | minimal application-to-adapter violation fixture |
+| `server/test/fixtures/architecture/npm-invalid/**` | application-to-resolved npm boundary violation fixture |
+| `server/test/fixtures/architecture/cross-feature-invalid/**` | feature-root-to-another-feature-private-adapter violation fixture |
 | `server/package.json` | `architecture` command; dependency-cruiser is already installed |
 | `.github/workflows/server-unit.yml` | blocking architecture command in the existing server typecheck job |
 
@@ -533,11 +535,14 @@ Expected: validator success and fewer than 500 words.
 - Create: `server/test/fixtures/architecture/valid/src/modules/reviews/application/complete-review.ts`
 - Create: `server/test/fixtures/architecture/invalid/src/modules/reviews/application/complete-review.ts`
 - Create: `server/test/fixtures/architecture/invalid/src/modules/reviews/adapters/persistence/review-repository.ts`
+- Create: `server/test/fixtures/architecture/npm-invalid/src/modules/reviews/application/parse-review.ts`
+- Create: `server/test/fixtures/architecture/cross-feature-invalid/src/modules/repos/service.ts`
+- Create: `server/test/fixtures/architecture/cross-feature-invalid/src/modules/reviews/adapters/persistence/review-repository.ts`
 
 **Interfaces:**
 
-- Consumes: future CLI config path `server/.dependency-cruiser.cjs` and rule name `application-depends-only-inward`.
-- Produces: a hermetic regression test that distinguishes an inward dependency from an outward application-to-adapter import.
+- Consumes: future CLI config path `server/.dependency-cruiser.cjs` and rule names `application-depends-only-inward` and `no-cross-feature-imports-into-reviews-adapters`.
+- Produces: a hermetic regression test that distinguishes a valid inward dependency from application-to-adapter, application-to-resolved-npm, and feature-root-to-another-feature-private-adapter imports.
 
 - [ ] **Step 1: Add the valid fixture**
 
@@ -560,7 +565,9 @@ export function completeReview(review: Review): Review {
 }
 ```
 
-- [ ] **Step 2: Add the invalid fixture**
+- [ ] **Step 2: Add the three invalid fixtures**
+
+Application-to-persistence fixture:
 
 `adapters/persistence/review-repository.ts`:
 
@@ -576,6 +583,30 @@ import { reviewRows } from '../adapters/persistence/review-repository.js';
 export const completedReviewId = reviewRows[0]?.id;
 ```
 
+Resolved npm-boundary fixture, `npm-invalid/src/modules/reviews/application/parse-review.ts`:
+
+```ts
+import { z } from 'zod';
+
+export const reviewSchema = z.object({ id: z.string() });
+```
+
+Cross-feature fixture, `cross-feature-invalid/src/modules/reviews/adapters/persistence/review-repository.ts`:
+
+```ts
+export function loadReview() {
+  return { id: 'review-1' };
+}
+```
+
+`cross-feature-invalid/src/modules/repos/service.ts`:
+
+```ts
+import { loadReview } from '../reviews/adapters/persistence/review-repository.js';
+
+export const loadRepoReview = loadReview;
+```
+
 - [ ] **Step 3: Write the gate behavior test**
 
 ```ts
@@ -587,7 +618,9 @@ import { describe, expect, test } from 'vitest';
 const serverRoot = fileURLToPath(new URL('../', import.meta.url));
 const depcruise = path.join(serverRoot, 'node_modules', '.bin', 'depcruise');
 
-function cruiseFixture(name: 'valid' | 'invalid') {
+function cruiseFixture(
+  name: 'valid' | 'invalid' | 'npm-invalid' | 'cross-feature-invalid',
+) {
   return spawnSync(
     depcruise,
     [
@@ -615,6 +648,20 @@ describe('backend architecture dependency gate', () => {
     expect(result.status).not.toBe(0);
     expect(output).toContain('application-depends-only-inward');
   });
+
+  test('rejects application code that imports an npm-backed boundary dependency', () => {
+    const result = cruiseFixture('npm-invalid');
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toContain('application-depends-only-inward');
+  });
+
+  test("rejects a feature-root import of another feature's private adapter", () => {
+    const result = cruiseFixture('cross-feature-invalid');
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toContain('no-cross-feature-imports-into-reviews-adapters');
+  });
 });
 ```
 
@@ -626,7 +673,7 @@ Run:
 cd server && pnpm test architecture-gate
 ```
 
-Expected: FAIL because `.dependency-cruiser.cjs` does not exist and the output does not contain `application-depends-only-inward`; the test is now waiting for the actual rule, not merely asserting that any process error is acceptable.
+Expected from-scratch RED: one file with four failing tests because `.dependency-cruiser.cjs` does not exist. The valid fixture receives a non-zero process status, while each invalid fixture's output lacks its required rule name. These assertions preserve the original RED intent: they wait for the actual rules, and a generic process error cannot satisfy them. In the implementation history, the original two fixtures established this absence-of-config RED; the npm and cross-feature fixtures later reproduced two focused RED failures against the first config before the resolved-path correction.
 
 ### Task 7: Implement the dependency rules, baseline, package command, and CI gate
 
@@ -639,12 +686,12 @@ Expected: FAIL because `.dependency-cruiser.cjs` does not exist and the output d
 
 **Interfaces:**
 
-- Consumes: fixture contract and rule name from Task 6.
+- Consumes: the four fixture contracts and rule names from Task 6.
 - Produces: `pnpm architecture`, a reviewed legacy baseline, and a blocking CI step.
 
 - [ ] **Step 1: Implement `server/.dependency-cruiser.cjs`**
 
-Use a CommonJS config because `server/package.json` declares ESM. Start with these shared expressions and dynamically discover feature names so future features receive cross-feature adapter rules automatically:
+Use a CommonJS config because `server/package.json` declares ESM. In dependency-cruiser 17.4.3, forbidden-rule `to.path` matches `dependency.resolved`, not the unresolved import specifier. Match packages through stable resolved `node_modules/<package>` paths, enable `preserveSymlinks` for pnpm, and dynamically discover feature names so future features receive cross-feature adapter rules automatically:
 
 ```js
 const { readdirSync } = require('node:fs');
@@ -653,13 +700,15 @@ const path = require('node:path');
 const source = String.raw`(?:^|/)src`;
 const modules = `${source}/modules`;
 const reviewerCore = String.raw`(?:^|/)reviewer-core/src`;
-const externalModules = String.raw`^(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
-const infrastructureCore = String.raw`^node:(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
+const nodeModules = String.raw`(?:^|/)node_modules`;
+const externalModules = `${nodeModules}/(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
+const databaseModules = `${nodeModules}/(?:drizzle-orm|postgres)(?:/|$)`;
+const infrastructureCore = String.raw`^(?:node:)?(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
 const boundaryModules = [
   externalModules,
   infrastructureCore,
-  String.raw`^zod(?:/|$)`,
-  String.raw`^@devdigest/shared$`,
+  `${nodeModules}/zod(?:/|$)`,
+  String.raw`^src/vendor/shared/`,
 ];
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const featureNames = readdirSync(path.join(__dirname, 'src', 'modules'), {
@@ -710,7 +759,7 @@ module.exports = {
       name: 'legacy-routes-do-not-query-persistence',
       severity: 'error',
       from: { path: `${modules}/[^/]+/routes[.]ts$` },
-      to: { path: [`${source}/db/`, String.raw`^(?:drizzle-orm|postgres)(?:/|$)`] },
+      to: { path: [`${source}/db/`, databaseModules] },
     },
     {
       name: 'legacy-services-do-not-construct-infrastructure',
@@ -736,7 +785,7 @@ module.exports = {
       name: 'reviewer-core-does-not-depend-on-server-or-vendors',
       severity: 'error',
       from: { path: `${reviewerCore}/` },
-      to: { path: [`${source}/`, externalModules, infrastructureCore] },
+      to: { path: [String.raw`^src/`, externalModules, infrastructureCore] },
     },
     ...adapterKinds.map((kind) => ({
       name: `no-${kind}-adapter-to-other-adapter-kinds`,
@@ -747,12 +796,13 @@ module.exports = {
     ...featureNames.map((feature) => ({
       name: `no-cross-feature-imports-into-${feature}-adapters`,
       severity: 'error',
-      from: { path: `${modules}/(?!${feature}/)[^/]+/adapters/` },
+      from: { path: `${modules}/(?!${feature}/)[^/]+/` },
       to: { path: `${modules}/${feature}/adapters/` },
     })),
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
+    preserveSymlinks: true,
     tsConfig: { fileName: 'tsconfig.json' },
     tsPreCompilationDeps: 'specify',
     exclude: { path: '(?:^|/)(?:dist|coverage)/' },
@@ -760,7 +810,13 @@ module.exports = {
 };
 ```
 
-Keep rules pointed at module specifiers such as `drizzle-orm` and source paths such as `src/db`; dependency-cruiser stores pnpm paths only in `resolved`, not the `module` field matched by `to.path`.
+The resolved-path details are deliberate:
+
+- scoped and unscoped packages match beneath `(?:^|/)node_modules/`;
+- Node builtins match both bare and `node:` forms;
+- the `@devdigest/shared` alias resolves to `^src/vendor/shared/`;
+- the reviewer-core-to-server target uses `^src/` so it does not mistake sibling `../reviewer-core/src/` paths for server source;
+- each generated cross-feature rule starts from the entire other feature, not only its adapters.
 
 - [ ] **Step 2: Run GREEN for the fixture test**
 
@@ -770,7 +826,7 @@ Run:
 cd server && pnpm test architecture-gate
 ```
 
-Expected: two passing tests; the invalid fixture reports `application-depends-only-inward` and the valid fixture reports that no dependency violations were found.
+Expected: one file with four passing tests. The valid fixture reports no dependency violations; the application-to-persistence and application-to-npm fixtures report `application-depends-only-inward`; the feature-root cross-feature fixture reports `no-cross-feature-imports-into-reviews-adapters`.
 
 - [ ] **Step 3: Inspect current violations before writing the baseline**
 
@@ -781,7 +837,7 @@ cd server
 pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err src ../reviewer-core/src
 ```
 
-Expected: non-zero with only real existing violations. Inspect every rule/path pair. Fix false positives in the config before generating a baseline; do not weaken a correct rule because current code violates it.
+Expected against the planned base: exit 37 with **37 errors, 0 warnings, 153 modules, and 487 dependencies cruised**. Inspect every rule/path pair. The reviewed set is 9 reviewer-core server/vendor edges, 5 cycle reports, 15 legacy-service infrastructure edges, and 8 legacy-route persistence edges. Fix false positives in the config before generating a baseline; do not weaken a correct rule because current code violates it.
 
 - [ ] **Step 4: Generate and review the legacy baseline once**
 
@@ -792,7 +848,7 @@ cd server
 pnpm exec depcruise-baseline --config .dependency-cruiser.cjs src ../reviewer-core/src
 ```
 
-Review `.dependency-cruiser-known-violations.json` and confirm every entry points to a pre-existing file. The baseline must contain no fixture path and no file created by this plan.
+Review `.dependency-cruiser-known-violations.json` and assert exactly **37** entries. Confirm every entry points to a pre-existing source/import and that the baseline contains no fixture path, config path, or file created by this plan.
 
 - [ ] **Step 5: Add the routine package command**
 
@@ -814,7 +870,7 @@ pnpm architecture
 pnpm test architecture-gate
 ```
 
-Expected: both commands exit zero. `pnpm architecture` softens only entries recorded in the baseline; the fixture test does not pass `--ignore-known` and still rejects its deliberate violation.
+Expected: both commands exit zero. `pnpm architecture` cruises 153 modules and 487 dependencies, reports no unbaselined violations, and ignores exactly 37 known violations. The fixture test does not pass `--ignore-known` and still proves all four behaviors.
 
 - [ ] **Step 7: Add the CI step**
 
