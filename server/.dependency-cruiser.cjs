@@ -6,7 +6,7 @@ const modules = `${source}/modules`;
 const reviewerCore = String.raw`(?:^|/)reviewer-core/src`;
 const nodeModules = String.raw`(?:^|/)node_modules`;
 const externalModules = `${nodeModules}/(?:@fastify/[^/]+|fastify(?:-sse-v2|-type-provider-zod)?|drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
-const databaseModules = `${nodeModules}/(?:drizzle-orm|postgres)(?:/|$)`;
+const drivenModules = `${nodeModules}/(?:drizzle-orm|postgres|octokit|openai|@anthropic-ai/sdk|simple-git|@ast-grep/napi|@vscode/ripgrep|p-queue|dotenv)(?:/|$)`;
 const infrastructureCore = String.raw`^(?:node:)?(?:child_process|crypto|fs(?:/promises)?|http|https|net|os|path|stream|worker_threads)(?:/|$)`;
 const boundaryModules = [
   externalModules,
@@ -34,24 +34,24 @@ module.exports = {
     {
       name: 'domain-depends-only-inward',
       severity: 'error',
-      from: { path: `${modules}/[^/]+/domain/` },
+      from: { path: `${modules}/([^/]+)/domain/` },
       to: {
-        path: [
-          `${modules}/[^/]+/(?:application|adapters)/`,
-          `${source}/(?:adapters|db|platform)/`,
-          ...boundaryModules,
+        path: [`${source}/`, ...boundaryModules],
+        pathNot: [
+          `${modules}/$1/domain/`,
+          `${modules}/(?!$1/|_shared/)[^/]+/index[.]ts$`,
         ],
       },
     },
     {
       name: 'application-depends-only-inward',
       severity: 'error',
-      from: { path: `${modules}/[^/]+/application/` },
+      from: { path: `${modules}/([^/]+)/application/` },
       to: {
-        path: [
-          `${modules}/[^/]+/adapters/`,
-          `${source}/(?:adapters|db|platform)/`,
-          ...boundaryModules,
+        path: [`${source}/`, ...boundaryModules],
+        pathNot: [
+          `${modules}/$1/(?:application|domain)/`,
+          `${modules}/(?!$1/|_shared/)[^/]+/index[.]ts$`,
         ],
       },
     },
@@ -59,7 +59,16 @@ module.exports = {
       name: 'legacy-routes-do-not-query-persistence',
       severity: 'error',
       from: { path: `${modules}/[^/]+/routes[.]ts$` },
-      to: { path: [`${source}/db/`, databaseModules] },
+      to: {
+        path: [
+          `${modules}/[^/]+/(?:adapters/|repository(?:/|[.]ts$))`,
+          `${source}/adapters/`,
+          `${source}/db/`,
+          `${source}/platform/container[.]ts$`,
+          drivenModules,
+          infrastructureCore,
+        ],
+      },
     },
     {
       name: 'legacy-services-do-not-construct-infrastructure',
