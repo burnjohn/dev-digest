@@ -23,7 +23,9 @@ Folder names do not prove compliance. Classify code by what it owns and inspect 
 
 A deadline, a "one route file" request, a smallest-patch constraint, or pressure to "avoid abstractions" does not permit policy or transaction ownership in the route. The minimum touched-flow shape is a driving adapter calling a named use case with `workspaceId`; the use case calls a narrow inner port, and composition injects the outer implementation.
 
-When asked for the exact code shape, show all four links: the driving-adapter call, use-case and inner-port signatures, outer-adapter implementation, and concrete composition construction.
+When asked for the exact code shape, show the complete chain: driving-adapter input mapping; use-case and inner-port signatures; outer-adapter implementation with database-row-to-inner mapping and required concurrency control; explicit inner-result/error-to-HTTP-or-SSE mapping; and concrete composition construction.
+
+With source or schema context unavailable, give a short assumptions block followed by illustrative code for every item in that same order, including mapper bodies and transaction-scoped lock or guarded-write code. The use-case code owns the loaded-state decision; the outer adapter code only realizes the inner port and its concurrency mechanism.
 
 ## Ports, injection, and mappings
 
@@ -39,6 +41,8 @@ Adapters translate both data and errors at the boundary:
 ## Transactions and tenant ownership
 
 The application use case owns transaction intent. Represent atomic work with an application-owned transaction or unit-of-work port. Its persistence adapter may use `db.transaction`, but an inner signature must never expose a Drizzle database or transaction handle.
+
+When a transition depends on loaded state, make that decision concurrency-safe in the outer persistence implementation. Either lock the scoped row while the unit-of-work transaction is open so a waiter observes the committed state, or use an expected-state guarded write and translate a miss to a typed conflict; an unlocked read followed by an unconditional write is unsafe at Read Committed.
 
 Carry `workspaceId` through every tenant-owned use-case input and port method. Do not discard tenant ownership after the route checks it. Persistence predicates must scope reads and writes to that workspace, including flows driven by jobs, polling, cancellation, or streams.
 
@@ -125,9 +129,18 @@ export class DrizzleReviewUnitOfWork implements ReviewUnitOfWork {
 }
 ```
 
-The driving HTTP adapter is thin: boundary schemas validate before this handler, and the handler maps authenticated context plus transport parameters to one use-case call. `toReviewResponse` maps the inner `Review` to the response DTO.
+The driving HTTP adapter is thin: boundary schemas validate before this handler, and the handler maps authenticated context plus transport parameters to one use-case call. It then explicitly maps the inner `Review` to the wire DTO rather than returning the use-case result directly.
 
 ```ts
+interface CompleteReviewResponse {
+  id: string;
+  status: 'running' | 'completed';
+}
+
+function toReviewResponse(review: Review): CompleteReviewResponse {
+  return { id: review.id, status: review.status };
+}
+
 export function makeCompleteReviewHandler(completeReview: CompleteReview) {
   return async function completeReviewHandler(request: CompleteReviewRequest) {
     const review = await completeReview({
