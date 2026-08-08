@@ -1,6 +1,6 @@
 # Source catalog
 
-This skill-local catalog copies the 35 source IDs, authority classes, definitions, exact URLs, and one-line purposes from the [canonical research ledger](../../../../docs/research/onion-architecture-backend-sources.md). Consult that ledger for DevDigest repository evidence and version/interpretation cautions before applying tool-specific examples. In particular, verify guidance against the installed Fastify 5.2, Zod 3, `fastify-type-provider-zod` 4, Drizzle, Vitest 2, dependency-cruiser 17.4.3, and deployed PostgreSQL versions described there.
+This skill-local catalog copies the 35 source IDs, authority classes, definitions, exact URLs, and one-line purposes from the [canonical research ledger](../../../../docs/research/onion-architecture-backend-sources.md). Consult that ledger for DevDigest repository evidence and version/interpretation cautions before applying tool-specific examples. The ledger pins Fastify reference links to 5.2 where available, while the server lockfile resolves Fastify 5.8.5; verify API details against the resolved local version. Apply the ledger's equivalent cautions for Zod 3, `fastify-type-provider-zod` 4, Drizzle, Vitest 2, dependency-cruiser 17.4.3, and the deployed PostgreSQL version.
 
 ## Architecture foundations
 

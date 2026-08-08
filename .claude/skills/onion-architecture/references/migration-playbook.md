@@ -58,4 +58,4 @@ These counters close the shortcuts observed in the skill's no-guidance RED contr
 - Isolated or contract tests pass, but no test exercises the critical runtime composition path.
 - A new violation is added to `.dependency-cruiser-known-violations.json` or the baseline is regenerated merely to make the gate green.
 
-Any red flag in changed code blocks completion. Fix the touched boundary, retain unrelated legacy violations without copying them, and rerun focused behavior tests, typecheck, and `pnpm architecture`.
+Any new or expanded red flag in changed code blocks completion. Fix the new or expanded boundary violation and rerun focused behavior tests, typecheck, and `pnpm architecture`. Pre-existing baselined debt may remain unchanged and be reported when a safe migration is outside task scope, as required by the decision table; do not copy, broaden, or re-baseline it.
