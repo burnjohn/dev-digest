@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type {
   LLMProvider,
   Review,
@@ -83,6 +83,34 @@ function largeTwoFileDiff(): UnifiedDiff {
       hunks: [{ file: path, oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, newLineNumbers: [1] }],
     })),
   };
+}
+
+function largeFourFileDiff(): UnifiedDiff {
+  const files = Array.from({ length: 4 }, (_, index) => `src/file-${index}.ts`);
+  const raw = files
+    .map((path, index) =>
+      [
+        `diff --git a/${path} b/${path}`,
+        `--- a/${path}`,
+        `+++ b/${path}`,
+        '@@ -1,1 +1,1 @@',
+        `+export const value${index} = '${String(index).repeat(2_000)}';`,
+      ].join('\n'),
+    )
+    .join('\n');
+  return {
+    raw,
+    files: files.map((path) => ({
+      path,
+      additions: 1,
+      deletions: 0,
+      hunks: [{ file: path, oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, newLineNumbers: [1] }],
+    })),
+  };
+}
+
+function requestText(req: StructuredRequest<unknown>): string {
+  return req.messages.map((message) => message.content).join('\n');
 }
 
 /**
@@ -235,6 +263,126 @@ describe('reviewPullRequest (engine)', () => {
     expect(outcome.mode).toBe('map-reduce');
     expect(llm.calls).toHaveLength(2);
     expect(outcome.chunks.map((chunk) => chunk.label)).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('maps independent chunks with bounded concurrency and aggregates them in diff order', async () => {
+    const clean: Review = { verdict: 'approve', summary: 'clean', score: 100, findings: [] };
+    let active = 0;
+    let maxActive = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const llm = new ScriptedLLM('openai', async (req) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await gate;
+      active--;
+      return structured(req.model, clean);
+    });
+
+    const running = reviewPullRequest({
+      systemPrompt: 'general reviewer',
+      model: 'gpt-direct',
+      diff: largeFourFileDiff(),
+      llm,
+      maxPromptTokens: 1_200,
+      minDiffTokens: 100,
+    });
+
+    let startError: unknown;
+    try {
+      await vi.waitFor(() => expect(llm.calls).toHaveLength(3), { timeout: 250, interval: 10 });
+    } catch (error) {
+      startError = error;
+    }
+    release();
+    const outcome = await running;
+    if (startError) throw startError;
+
+    expect(maxActive).toBe(3);
+    expect(outcome.chunks.map((chunk) => chunk.label)).toEqual([
+      'src/file-0.ts',
+      'src/file-1.ts',
+      'src/file-2.ts',
+      'src/file-3.ts',
+    ]);
+    expect(outcome.tokensIn).toBe(40);
+    expect(outcome.tokensOut).toBe(20);
+    expect(outcome.costUsd).toBeCloseTo(0.04);
+  });
+
+  it('aborts sibling mapper calls and does not start queued chunks after one chunk exhausts fallbacks', async () => {
+    const aborted = new Set<string>();
+    const llm = new ScriptedLLM('openrouter', async (req) => {
+      const text = requestText(req);
+      if (text.includes('src/file-0.ts')) throw new Error(`${req.model} unavailable`);
+
+      const path = ['src/file-1.ts', 'src/file-2.ts'].find((candidate) => text.includes(candidate));
+      if (!path) throw new Error('queued chunk started after fatal mapper failure');
+      if (!req.signal) throw new Error('mapper request is missing its cancellation signal');
+      return await new Promise<StructuredResult<unknown>>((_, reject) => {
+        const onAbort = () => {
+          aborted.add(path);
+          reject(req.signal!.reason);
+        };
+        if (req.signal!.aborted) onAbort();
+        else req.signal!.addEventListener('abort', onAbort, { once: true });
+      });
+    });
+
+    await expect(
+      reviewPullRequest({
+        systemPrompt: 'general reviewer',
+        model: 'broken/primary',
+        diff: largeFourFileDiff(),
+        llm,
+        maxPromptTokens: 1_200,
+        minDiffTokens: 100,
+      }),
+    ).rejects.toThrow(/src\/file-0\.ts.*broken\/primary.*gpt-5\.6-luna.*claude-haiku-4\.5/);
+
+    expect(aborted).toEqual(new Set(['src/file-1.ts', 'src/file-2.ts']));
+    expect(llm.calls.some((call) => requestText(call).includes('src/file-3.ts'))).toBe(false);
+  });
+
+  it('cancels every in-flight mapper without starting fallbacks or queued chunks', async () => {
+    const controller = new AbortController();
+    let aborted = 0;
+    const llm = new ScriptedLLM('openrouter', async (req) => {
+      if (!req.signal) throw new Error('mapper request is missing its cancellation signal');
+      return await new Promise<StructuredResult<unknown>>((_, reject) => {
+        const onAbort = () => {
+          aborted++;
+          reject(req.signal!.reason);
+        };
+        if (req.signal!.aborted) onAbort();
+        else req.signal!.addEventListener('abort', onAbort, { once: true });
+      });
+    });
+
+    const running = reviewPullRequest({
+      systemPrompt: 'general reviewer',
+      model: 'preferred/model',
+      diff: largeFourFileDiff(),
+      llm,
+      signal: controller.signal,
+      maxPromptTokens: 1_200,
+      minDiffTokens: 100,
+    });
+
+    let startError: unknown;
+    try {
+      await vi.waitFor(() => expect(llm.calls).toHaveLength(3), { timeout: 250, interval: 10 });
+    } catch (error) {
+      startError = error;
+    }
+    controller.abort(new Error('cancelled by user'));
+    await expect(running).rejects.toThrow('cancelled by user');
+    if (startError) throw startError;
+
+    expect(aborted).toBe(3);
+    expect(llm.calls).toHaveLength(3);
   });
 
   it('falls back per chunk and adjudicates grounded candidates on OpenRouter', async () => {

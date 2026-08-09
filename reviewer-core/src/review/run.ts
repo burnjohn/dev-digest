@@ -24,6 +24,7 @@ import { reduceReviews, scoreFromFindings } from './reduce.js';
 /** @deprecated Review sizing is token-aware; the old line threshold is ignored. */
 export const DEFAULT_MAP_THRESHOLD_LINES = 400;
 export const DEFAULT_REVIEW_MAX_RETRIES = 2;
+const DEFAULT_MAP_CONCURRENCY = 3;
 
 /** @deprecated Retained only so older API/DB callers remain source-compatible. */
 export type ReviewStrategy = 'auto' | 'single-pass' | 'map-reduce';
@@ -126,6 +127,44 @@ function constrainToCandidates(findings: Finding[], candidates: Finding[]): Find
   });
 }
 
+async function mapBounded<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  controller: AbortController,
+  mapper: (item: T, index: number, signal: AbortSignal) => Promise<R>,
+  callerSignal?: AbortSignal,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, controller.signal])
+    : controller.signal;
+  let nextIndex = 0;
+  let failure: { error: unknown } | undefined;
+
+  const worker = async () => {
+    while (!failure) {
+      const index = nextIndex++;
+      const item = items[index];
+      if (item === undefined) return;
+      try {
+        results[index] = await mapper(item, index, signal);
+      } catch (error) {
+        if (!failure) {
+          failure = { error };
+          controller.abort(error);
+        }
+        return;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  if (failure) throw failure.error;
+  return results;
+}
+
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
@@ -173,14 +212,96 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   );
 
   const policy = reviewModelPlan(input.llm.id, input.model);
-  const calls: ReviewOutcome['chunks'] = [];
-  const raws: string[] = [];
-  const groundedPartials: Review[] = [];
-  const mapDropped: ReviewOutcome['dropped'] = [];
-  let assembly: PromptAssembly | undefined;
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let costUsd: number | null = 0;
+  const mapController = new AbortController();
+  const mapResults = await mapBounded(
+    chunks,
+    DEFAULT_MAP_CONCURRENCY,
+    mapController,
+    async (chunk, _index, signal) => {
+      const chunkInput = { ...input, signal };
+      const prompt = assemblePrompt({
+        ...promptParts,
+        diff: chunk.diffText,
+        stageInstruction: chunks.length === 1 ? SINGLE_SCOPE : CHUNK_SCOPE,
+      });
+      let mapped: StructuredResult<Review> | undefined;
+      const attempted: string[] = [];
+      const calls: ReviewOutcome['chunks'] = [];
+      const raws: string[] = [];
+
+      for (const model of policy.mappers) {
+        throwIfCancelled(chunkInput);
+        attempted.push(model);
+        calls.push({ label: chunk.label, stage: 'map', model });
+        emit('tool', `map: reviewing ${chunk.label} with ${model}`, {
+          file: chunk.label,
+          stage: 'map',
+          model,
+        });
+        try {
+          mapped = await input.llm.completeStructured<Review>({
+            model,
+            schema: ReviewSchema,
+            schemaName: 'ReviewMap',
+            messages: prompt.messages,
+            maxTokens: policy.mapMaxTokens,
+            timeoutMs: policy.mapTimeoutMs,
+            maxRetries,
+            ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+            signal,
+          });
+          break;
+        } catch (error) {
+          throwIfCancelled(chunkInput);
+          const message = error instanceof Error ? error.message : String(error);
+          raws.push(`[map ${chunk.label} ${model} failed: ${message}]`);
+          emit('info', `map fallback after ${model} failed for ${chunk.label}: ${message}`);
+        }
+      }
+
+      if (!mapped) {
+        throw new Error(
+          `Review chunk "${chunk.label}" failed on all mapper models: ${attempted.join(', ')}`,
+        );
+      }
+      raws.push(mapped.raw);
+
+      // Never let an unsupported mapper location reach the adjudicator.
+      const ground = groundFindings(mapped.data.findings, input.diff);
+      for (const dropped of ground.dropped) {
+        emit('info', `grounding dropped "${dropped.finding.title}": ${dropped.reason}`);
+      }
+      emit(
+        'result',
+        `${chunk.label}: ${ground.kept.length} grounded candidate finding(s) via ${mapped.model}`,
+      );
+      return {
+        assembly: prompt.assembly,
+        calls,
+        raws,
+        review: { ...mapped.data, findings: ground.kept },
+        dropped: ground.dropped,
+        tokensIn: mapped.tokensIn,
+        tokensOut: mapped.tokensOut,
+        costUsd: mapped.costUsd,
+      };
+    },
+    input.signal,
+  );
+
+  throwIfCancelled(input);
+  const calls: ReviewOutcome['chunks'] = mapResults.flatMap((result) => result.calls);
+  const raws = mapResults.flatMap((result) => result.raws);
+  const groundedPartials = mapResults.map((result) => result.review);
+  const mapDropped = mapResults.flatMap((result) => result.dropped);
+  const assembly: PromptAssembly | undefined = mapResults[0]?.assembly;
+  let tokensIn = mapResults.reduce((total, result) => total + result.tokensIn, 0);
+  let tokensOut = mapResults.reduce((total, result) => total + result.tokensOut, 0);
+  let costUsd: number | null = mapResults.reduce<number | null>(
+    (total, result) =>
+      total == null || result.costUsd == null ? null : total + result.costUsd,
+    0,
+  );
 
   const account = (result: StructuredResult<Review>) => {
     tokensIn += result.tokensIn;
@@ -188,66 +309,6 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     costUsd = costUsd == null || result.costUsd == null ? null : costUsd + result.costUsd;
     raws.push(result.raw);
   };
-
-  for (const chunk of chunks) {
-    const prompt = assemblePrompt({
-      ...promptParts,
-      diff: chunk.diffText,
-      stageInstruction: chunks.length === 1 ? SINGLE_SCOPE : CHUNK_SCOPE,
-    });
-    assembly ??= prompt.assembly;
-    let mapped: StructuredResult<Review> | undefined;
-    const attempted: string[] = [];
-
-    for (const model of policy.mappers) {
-      throwIfCancelled(input);
-      attempted.push(model);
-      calls.push({ label: chunk.label, stage: 'map', model });
-      emit('tool', `map: reviewing ${chunk.label} with ${model}`, {
-        file: chunk.label,
-        stage: 'map',
-        model,
-      });
-      try {
-        mapped = await input.llm.completeStructured<Review>({
-          model,
-          schema: ReviewSchema,
-          schemaName: 'ReviewMap',
-          messages: prompt.messages,
-          maxTokens: policy.mapMaxTokens,
-          timeoutMs: policy.mapTimeoutMs,
-          maxRetries,
-          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-          ...(input.signal ? { signal: input.signal } : {}),
-        });
-        break;
-      } catch (error) {
-        throwIfCancelled(input);
-        const message = error instanceof Error ? error.message : String(error);
-        raws.push(`[map ${chunk.label} ${model} failed: ${message}]`);
-        emit('info', `map fallback after ${model} failed for ${chunk.label}: ${message}`);
-      }
-    }
-
-    if (!mapped) {
-      throw new Error(
-        `Review chunk "${chunk.label}" failed on all mapper models: ${attempted.join(', ')}`,
-      );
-    }
-    account(mapped);
-
-    // Never let an unsupported mapper location reach the adjudicator.
-    const ground = groundFindings(mapped.data.findings, input.diff);
-    mapDropped.push(...ground.dropped);
-    for (const dropped of ground.dropped) {
-      emit('info', `grounding dropped "${dropped.finding.title}": ${dropped.reason}`);
-    }
-    groundedPartials.push({ ...mapped.data, findings: ground.kept });
-    emit(
-      'result',
-      `${chunk.label}: ${ground.kept.length} grounded candidate finding(s) via ${mapped.model}`,
-    );
-  }
 
   const mappedReview = reduceReviews(groundedPartials);
   const candidates = dedupeFindings(mappedReview.findings);

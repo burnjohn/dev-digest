@@ -31,6 +31,12 @@ Local-first AI PR reviewer: add repo → import PRs → run agent review → str
 - Confirmed a non-obvious fact? Capture it immediately with the `engineering-insights` skill; don't batch it to the end of the session, that's where the specifics are already gone
 - Before finishing a task that touched code, run `/engineering-insights` to sweep up what was missed. If nothing was worth capturing, say so explicitly
 
+## Feature and bug-fix testing workflow
+
+- Add or identify a focused regression test before implementing a feature or bug fix.
+- Prove every new or materially changed test can fail for the intended reason: run it against the pre-fix behavior or temporarily reverse/mutate the relevant implementation, observe RED, then restore the implementation and observe GREEN.
+- After focused tests pass, run the affected package's complete test and typecheck suites plus any relevant cross-package, architecture, integration, or browser checks. Do not treat a focused test alone as completion evidence.
+
 ## Conventions
 
 - `@devdigest/shared` is the ONE source of truth for cross-package types — extend with new contract files, never edit existing ones
