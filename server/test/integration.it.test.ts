@@ -125,6 +125,9 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const first = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
     expect(first.statusCode).toBe(200);
     expect(first.json().length).toBeGreaterThan(0);
+    // Null rule: freshly-imported PRs have no priced runs → cost_usd is null
+    // (SUM over zero rows), never 0. The aggregate query runs on every list.
+    for (const p of first.json()) expect(p.cost_usd).toBeNull();
     // import again → still idempotent (unique repo_id+number)
     const second = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
     expect(second.json().length).toBe(first.json().length);

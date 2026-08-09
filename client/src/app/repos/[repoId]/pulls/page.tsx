@@ -97,8 +97,8 @@ export default function PullsPage() {
           refreshing={refresh.isPending}
         />
         <div style={s.headRow}>
-          {COLUMN_KEYS.map((key, i) => (
-            <div key={key} style={s.headCell(i === COLUMN_KEYS.length - 1)}>
+          {COLUMN_KEYS.map((key) => (
+            <div key={key} style={s.headCell(key === "updated")}>
               {t(`list.columns.${key}`)}
             </div>
           ))}

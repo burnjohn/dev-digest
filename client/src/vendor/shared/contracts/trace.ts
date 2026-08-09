@@ -63,6 +63,9 @@ export const RunStats = z.object({
   tokens_out: z.number().int(),
   findings: z.number().int(),
   grounding: z.string(),
+  // Per-run LLM cost in USD; null for unknown-price/free models. `.nullish()`
+  // so already-stored trace jsonb docs (which lack the key) still parse.
+  cost_usd: z.number().nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -109,5 +112,8 @@ export const RunSummary = z.object({
   // findings that trip the agent's gate. Null on failed/cancelled runs.
   score: z.number().int().nullable(),
   blockers: z.number().int().nullable(),
+  // Per-run LLM cost in USD; null on rows created before cost was persisted
+  // and for unknown-price models.
+  cost_usd: z.number().nullable(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sum } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -129,6 +129,22 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total LLM spend per PR = SUM of every run's cost_usd (mirrors the score
+    // IN-query above). SUM ignores NULLs and returns NULL when a PR has no
+    // priced run, so a never-run PR / all-unknown-price models stay `null`
+    // (rendered as "—", never $0.00). Drizzle `sum()` yields a numeric string.
+    const costByPr = new Map<string, number>();
+    if (prIds.length > 0) {
+      const costRows = await container.db
+        .select({ prId: t.agentRuns.prId, cost: sum(t.agentRuns.costUsd) })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds))
+        .groupBy(t.agentRuns.prId);
+      for (const cr of costRows) {
+        if (cr.prId != null && cr.cost != null) costByPr.set(cr.prId, Number(cr.cost));
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +169,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });
