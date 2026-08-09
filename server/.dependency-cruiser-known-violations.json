@@ -143,50 +143,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/modules/github-tokens/service.ts",
-    "to": "src/adapters/github/octokit.ts",
-    "unresolvedTo": "../../adapters/github/octokit.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-services-do-not-construct-infrastructure"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/github-tokens/service.ts",
-    "to": "src/modules/github-tokens/repository.ts",
-    "unresolvedTo": "./repository.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-services-do-not-construct-infrastructure"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/github-tokens/service.ts",
-    "to": "src/platform/container.ts",
-    "unresolvedTo": "../../platform/container.js",
-    "dependencyTypes": [
-      "local",
-      "type-only",
-      "import",
-      "pre-compilation-only"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-services-do-not-construct-infrastructure"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/modules/repo-intel/service.ts",
     "to": "src/adapters/astgrep/index.ts",
     "unresolvedTo": "../../adapters/astgrep/index.js",
@@ -237,20 +193,6 @@
       "type-only",
       "import",
       "pre-compilation-only"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-services-do-not-construct-infrastructure"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/repos/service.ts",
-    "to": "src/modules/github-tokens/repository.ts",
-    "unresolvedTo": "../github-tokens/repository.js",
-    "dependencyTypes": [
-      "local",
-      "import"
     ],
     "rule": {
       "severity": "error",
@@ -618,25 +560,6 @@
   {
     "type": "dependency",
     "from": "../reviewer-core/src/prompt.ts",
-    "to": "src/vendor/shared/index.ts",
-    "unresolvedTo": "@devdigest/shared",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "type-only",
-      "import",
-      "pre-compilation-only"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "reviewer-core-does-not-depend-on-server-or-vendors"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "../reviewer-core/src/review/exclude-generated.ts",
     "to": "src/vendor/shared/index.ts",
     "unresolvedTo": "@devdigest/shared",
     "dependencyTypes": [

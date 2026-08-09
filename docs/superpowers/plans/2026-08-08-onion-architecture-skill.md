@@ -862,7 +862,7 @@ cd server
 pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err src ../reviewer-core/src
 ```
 
-Expected against the planned base: exit 37 with **37 errors, 0 warnings, 153 modules, and 487 dependencies cruised**. Inspect every rule/path pair. The reviewed set is 9 reviewer-core server/vendor edges, 5 cycle reports, 15 legacy-service infrastructure edges, and 8 legacy-route persistence edges. Fix false positives in the config before generating a baseline; do not weaken a correct rule because current code violates it.
+Expected against the current upstream base: exit 32 with **32 errors, 0 warnings, 145 modules, and 451 dependencies cruised**. Inspect every rule/path pair. The reviewed set is 8 reviewer-core server/vendor edges, 5 cycle reports, 11 legacy-service infrastructure edges, and 8 legacy-route persistence edges. Fix false positives in the config before generating a baseline; do not weaken a correct rule because current code violates it.
 
 - [ ] **Step 4: Generate and review the legacy baseline once**
 
@@ -873,7 +873,7 @@ cd server
 pnpm exec depcruise-baseline --config .dependency-cruiser.cjs src ../reviewer-core/src
 ```
 
-Review `.dependency-cruiser-known-violations.json` and assert exactly **37** entries. Confirm every entry points to a pre-existing source/import and that the baseline contains no fixture path, config path, or file created by this plan. The behavioral suite must normalize and compare raw and known violations by type, `from`, `to`, cycle legs, and rule severity/name so both new raw violations and stale baseline records fail.
+Review `.dependency-cruiser-known-violations.json` and assert exactly **32** entries. Confirm every entry points to a pre-existing source/import and that the baseline contains no fixture path, config path, or file created by this plan. The behavioral suite must normalize and compare raw and known violations by type, `from`, `to`, cycle legs, and rule severity/name so both new raw violations and stale baseline records fail.
 
 - [ ] **Step 5: Add the routine package command**
 
@@ -895,7 +895,7 @@ pnpm architecture
 pnpm test architecture-gate
 ```
 
-Expected: both commands exit zero. `pnpm architecture` cruises 153 modules and 487 dependencies, reports no unbaselined violations, and ignores exactly 37 known violations. The fixture test does not pass `--ignore-known`; final verification is **18/18**, including exact raw-to-baseline equality.
+Expected: both commands exit zero. `pnpm architecture` cruises 145 modules and 451 dependencies, reports no unbaselined violations, and ignores exactly 32 known violations. The fixture test does not pass `--ignore-known`; final verification is **18/18**, including exact raw-to-baseline equality.
 
 - [ ] **Step 7: Add the CI step**
 
@@ -1011,7 +1011,7 @@ pnpm typecheck
 pnpm test --exclude '**/*.it.test.ts'
 ```
 
-Expected: **18/18** architecture fixture/gate tests pass across 15 scenario roots / 44 fixture files; the production architecture gate cruises 153 modules / 487 dependencies with exactly 37 reviewed violations ignored; typecheck passes; and the hermetic suite passes 24 files / 152 tests. If the known timing-sensitive cancellation test appears despite the exclusion and the task did not touch it, follow `server/INSIGHTS.md`: rerun its file in isolation before attributing it to this change.
+Expected: **18/18** architecture fixture/gate tests pass across 15 scenario roots / 44 fixture files; the production architecture gate cruises 145 modules / 451 dependencies with exactly 32 reviewed violations ignored; typecheck passes; and the hermetic suite passes. Record the fresh file/test totals because they can change as upstream evolves. If the known timing-sensitive cancellation test appears despite the exclusion and the task did not touch it, follow `server/INSIGHTS.md`: rerun its file in isolation before attributing it to this change.
 
 - [ ] **Step 4: Verify discovery and worktree integrity**
 
