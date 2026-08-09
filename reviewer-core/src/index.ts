@@ -44,6 +44,15 @@ export {
   type PlanReviewChunksInput,
 } from './review/chunks.js';
 
+export {
+  reviewModelPlan,
+  GPT_56_LUNA,
+  GPT_56_TERRA,
+  CLAUDE_HAIKU_45,
+  CLAUDE_SONNET_46,
+  type ReviewModelPlan,
+} from './review/model-policy.js';
+
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
