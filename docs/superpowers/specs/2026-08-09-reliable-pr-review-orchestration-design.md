@@ -56,7 +56,15 @@ Chunk selection accounts for repeated prompt overhead. A large system prompt, sk
 
 The legacy `strategy` value remains readable for API/database compatibility, but studio execution does not use it to control orchestration.
 
-### 2. Model roles and bounded generation
+### 2. Stage-aware prompt contract
+
+The engine appends a trusted orchestration instruction after the agent's system prompt for every model call. It states whether the model is reviewing the whole focused diff, one chunk of a larger pull request, or adjudicating mapper candidates. For map calls it also states that findings must be limited to the supplied chunk and that other chunks are reviewed separately.
+
+This engine-owned instruction is authoritative when an existing user-authored prompt contains stale wording such as “you receive the full PR diff in one pass.” The engine does not rewrite arbitrary user prompts, but the later trusted scope instruction prevents those assumptions from controlling the call.
+
+Built-in reviewer prompts are updated to be orchestration-neutral and no longer promise a full diff or one-pass execution. Their role-specific review criteria remain unchanged.
+
+### 3. Model roles and bounded generation
 
 The OpenRouter review policy has two roles:
 
@@ -69,13 +77,13 @@ Fallback is per chunk. A timeout, transient transport exhaustion, missing choice
 
 Direct OpenAI or Anthropic agents keep their selected provider and automatic chunking, but cross-vendor fallback is only available through an OpenRouter provider. The built-in agents use OpenRouter, so the default path has the full policy.
 
-### 3. Portable structured output
+### 4. Portable structured output
 
 The engine converts the existing Zod `Review` schema into a provider-portable JSON Schema by inlining local references and removing numeric bounds rejected by Anthropic-compatible OpenRouter endpoints. Strict structured output stays enabled.
 
 The original Zod schema remains the final authority after parsing. Schema normalization therefore improves transport compatibility without weakening application validation. No vendored shared contract is edited.
 
-### 4. Map, ground, and adjudicate
+### 5. Map, ground, and adjudicate
 
 Each mapper receives one focused chunk plus the agent prompt and bounded supporting context. Mapper results are grounded immediately against the original unified diff. Ungrounded findings are removed before adjudication so the expensive reducer never spends tokens on impossible citations.
 
@@ -90,7 +98,7 @@ When candidates exist, the engine builds a compact adjudication prompt containin
 
 Sonnet returns the final `Review`. That output is grounded again, deduplicated, and scored with the existing deterministic severity-based score. If both adjudicators fail, the deterministic merge of grounded mapper findings is used in degraded mode.
 
-### 5. Accounting and observability
+### 6. Accounting and observability
 
 Tokens and cost accumulate across every successful and failed-over model call whose provider returns usage. The run trace records actual model names per stage instead of attributing the entire run only to the agent's configured model.
 
@@ -119,6 +127,7 @@ The persisted review model remains the configured/preferred mapper for backward 
 - Built-in agent seed default changes from `deepseek/deepseek-v4-flash` to `openai/gpt-5.6-luna` under the OpenRouter provider.
 - Seed reconciliation updates only built-in agents whose model is still the exact legacy default. User-customized models are preserved.
 - Existing strategy columns and request fields remain for backward compatibility, but the Agent editor removes the field and the studio executor always requests automatic orchestration.
+- Built-in system prompts are reconciled to their orchestration-neutral versions without overwriting prompts that users customized. Engine-owned stage instructions make customized legacy wording safe at runtime.
 - No hand-written database migration is required.
 - OpenRouter prices continue to come from the existing live model endpoint and price book; model pricing is not hardcoded into the review engine.
 
@@ -137,6 +146,8 @@ Hermetic tests cover:
 - reducer fallback and deterministic degraded mode;
 - token/cost accumulation and stage events;
 - server wiring ignores stored strategy;
+- mapper and adjudicator calls receive the correct trusted stage instruction even when the agent prompt claims it receives the full diff;
+- built-in prompt reconciliation removes one-pass wording while preserving customized prompts;
 - legacy built-in agents migrate to Luna while customized agents remain unchanged;
 - the Agent editor no longer sends or renders strategy.
 
