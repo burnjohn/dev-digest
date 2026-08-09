@@ -1,68 +1,61 @@
 # What model to choose
 
-A guide to picking the LLM behind a reviewer agent. The model is set per agent
-(`agents.provider` + `agents.model`); the seed defaults every built-in agent to
-`openrouter` / `deepseek/deepseek-v4-flash`. You can change it per agent in the
-studio (the model dropdown) or via `PUT /agents/:id { "model": "…" }`.
+The model selected on an agent is its preferred mapper. The review engine—not a
+user-facing strategy switch—plans token-bounded chunks, retries a failed chunk on
+fallback models, grounds mapper findings, and adjudicates the grounded candidates.
 
-## Why the model matters
+Freshly seeded built-in agents use `openrouter/openai/gpt-5.6-luna`. Existing
+built-ins still on the exact legacy DeepSeek default are reconciled to Luna;
+customized provider/model choices are preserved.
 
-The prompts (see [`README.md`](./README.md)) tell the model *what* to do; the model
-decides *how well*. The cheap default (`deepseek-v4-flash`) is fast and nearly free
-but, even with good prompts, tends to:
+## Automatic OpenRouter policy
 
-- **inflate severity** — calling a 2-query sequence or an intended feature
-  `CRITICAL`, which turns harmless PRs into blockers;
-- **reason inconsistently** — occasionally shipping a finding whose own rationale
-  concludes "there is no bug";
-- **over-pattern-match** — e.g. labelling a plain REST read as a "lethal trifecta".
+| Stage | Order | Purpose |
+|---|---|---|
+| Mapper | selected model → `openai/gpt-5.6-luna` → `anthropic/claude-haiku-4.5` | Review one complete token-bounded chunk. A fallback reruns only the failed chunk. |
+| Adjudicator | `anthropic/claude-sonnet-4.6` → `openai/gpt-5.6-terra` | Deduplicate and calibrate grounded candidates against compact changed-line evidence. |
 
-A stronger model spends more per run but calibrates severity, follows the
-verdict/severity rubric, and produces far fewer false positives. For a review gate,
-fewer false blockers is usually worth a few cents.
+If every mapper fails for a chunk, the run fails instead of silently presenting a
+partial review as complete. If both adjudicators fail, the run explicitly degrades
+to the already-grounded mapper findings. When no grounded mapper candidates exist,
+adjudication is skipped.
 
-## Cost per run
+Direct OpenAI and Anthropic agents still get automatic chunking, request budgets,
+and grounding, but stay within their selected provider: they do not use the
+cross-vendor OpenRouter fallback/adjudication chain.
 
-A single-pass review of a small/medium PR is roughly **~12k input + ~1.5k output
-tokens** (observed: 9k–17k total). The `$/run` column below uses that estimate —
-bigger diffs scale up linearly. Prices are OpenRouter list prices (USD per 1M
-tokens) as surfaced by the studio's model list; verify live before relying on them.
+## Price and role
 
-| Model | in / out ($/M) | ~$/run | Notes |
-|---|---|---|---|
-| `deepseek/deepseek-v4-flash` *(current default)* | 0.09 / 0.18 | **~$0.0015** | Fast, nearly free. Severity inflation + weak instruction-following. |
-| `deepseek/deepseek-v3.2` | 0.23 / 0.34 | ~$0.003 | Cheap step up, decent reasoning. |
-| `deepseek/deepseek-chat-v3.1` | 0.21 / 0.79 | ~$0.004 | Solid budget reviewer. |
-| **`deepseek/deepseek-v4-pro`** ⭐ | 0.435 / 0.87 | **~$0.006** | **Best cheap upgrade.** Same family/provider → drop-in (no prompt or format change), 1M context, clearly stronger reasoning. Start here. |
-| `anthropic/claude-haiku-4.5` | 1 / 5 | ~$0.02 | Cheapest Claude; good at holding the rubric. |
-| `google/gemini-2.5-pro` | 1.25 / 10 | ~$0.03 | Strong, good value. |
-| `openai/gpt-4.1` | 2 / 8 | ~$0.035 | Reliable instruction-following. |
-| **`anthropic/claude-sonnet-4.6`** ⭐ | 3 / 15 | **~$0.05** | **Quality benchmark.** Best severity calibration, lowest false-positive rate of the practical options. Use to see what a great review looks like. |
-| `anthropic/claude-opus-4.8` | 5 / 25 | ~$0.10 | Top-tier reasoning; overkill for routine review, useful as a gold-standard reference. |
+OpenRouter prices change; these were verified on 2026-08-09. The provider's live
+model list and returned `usage.cost` remain the runtime source of truth.
 
-(All ~40× the default still lands at ≈5 cents/run — trivial for evaluating quality.)
+| Model | input / output ($/1M) | Role in the policy |
+|---|---:|---|
+| `openai/gpt-5.6-luna` | 0.10 / 0.60 promotional | Default high-volume mapper: low cost and latency. |
+| `anthropic/claude-haiku-4.5` | 1 / 5 | Independent mapper fallback when the preferred model and Luna fail. |
+| `anthropic/claude-sonnet-4.6` | 3 / 15 | Primary quality gate for cross-chunk deduplication and severity calibration. |
+| `openai/gpt-5.6-terra` | 1 / 6 promotional | Independent adjudicator fallback. |
+
+For a representative 12k-input/1.5k-output Luna map, promotional list price is
+about $0.0021. A compact 2k-input/0.5k-output Sonnet adjudication is about $0.0135
+and happens only when grounded candidates exist. Chunk count and actual output
+length determine the real total.
 
 ## Recommendation
 
-1. **Cheap, low-risk upgrade → `deepseek/deepseek-v4-pro`.** Only the `model` field
-   changes; everything else (prompts, structured output, context) is identical. This
-   alone should remove most of the severity-inflation wobble. ~4× the cost, still a
-   fraction of a cent per run.
-2. **Quality benchmark → `anthropic/claude-sonnet-4.6`.** Switch one agent to it and
-   compare side by side. If the quality jump is worth ~$0.05/run for your use, make
-   it the default for the gating agents (e.g. Security).
-3. **Mixed strategy.** Cheap model for advisory/Performance passes, a strong model
-   for the agent that actually blocks merge (Security). Cost follows importance.
+- Keep Luna as the default mapper for routine reviews.
+- Choose a stronger agent model only when its specialist first pass materially
+  improves the findings; the engine will still use the same fallback chain.
+- Evaluate quality on repeated PR fixtures. Compare grounded finding precision,
+  missed planted defects, severity calibration, fallback frequency, latency, and
+  `usage.cost`—not the model's self-reported score, which the engine ignores.
+- Do not encode “whole diff” or “one file per call” in custom prompts. The engine
+  appends the authoritative scope for the current map/adjudication stage.
 
-## How to A/B test
+## Sources
 
-1. Point one agent at the new model (studio model dropdown, or `PUT /agents/:id`).
-2. Re-run all agents on the same PR (`POST /pulls/:id/review { "all": true }` or the
-   **Run Review** button).
-3. Compare the runs in the timeline + the raw model output in each run's trace
-   (`run_traces.raw_output`). Look at: were the findings real, was severity honest,
-   did the verdict match the findings, any duplicates or false trifecta?
-
-Because `score` and the merge gate are derived deterministically from the grounded
-findings (not the model's self-report), the comparison is apples-to-apples across
-models — only the findings and their severities change.
+- [GPT-5.6 Luna on OpenRouter](https://openrouter.ai/openai/gpt-5.6-luna)
+- [GPT-5.6 Terra on OpenRouter](https://openrouter.ai/openai/gpt-5.6-terra)
+- [Claude Haiku 4.5 on OpenRouter](https://openrouter.ai/anthropic/claude-haiku-4.5)
+- [Claude Sonnet 4.6 on OpenRouter](https://openrouter.ai/anthropic/claude-sonnet-4.6)
+- [OpenRouter Claude 4.6 migration guide](https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/claude-4-6)

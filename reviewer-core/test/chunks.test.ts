@@ -118,6 +118,52 @@ describe('planReviewChunks', () => {
     expect(chunks.every((chunk) => chunk.estimatedTokens <= 210)).toBe(true);
   });
 
+  it('fragments one minified changed line instead of failing the review', () => {
+    const payload = `START_${'a'.repeat(2_400)}_END`;
+    const raw = fileDiff('dist/minified.js', `+${payload}`);
+
+    const chunks = planReviewChunks({
+      diff: unified(raw),
+      promptOverheadTokens: 40,
+      maxPromptTokens: 220,
+      minDiffTokens: 40,
+    });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.estimatedTokens <= 220)).toBe(true);
+    const fragments = chunks.flatMap((chunk) =>
+      chunk.diffText
+        .split('\n')
+        .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+        .map((line) => line.slice(1)),
+    );
+    expect(fragments.join('')).toBe(payload);
+  });
+
+  it('keeps a large hunkless patch within the budget', () => {
+    const path = 'assets/generated.patch';
+    const payload = `literal ${'z'.repeat(2_400)}`;
+    const raw = [
+      `diff --git a/${path} b/${path}`,
+      'new file mode 100644',
+      'GIT binary patch',
+      payload,
+    ].join('\n');
+
+    const chunks = planReviewChunks({
+      diff: unified(raw),
+      promptOverheadTokens: 40,
+      maxPromptTokens: 220,
+      minDiffTokens: 40,
+    });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.estimatedTokens <= 220)).toBe(true);
+    const rendered = chunks.map((chunk) => chunk.diffText).join('\n');
+    expect(rendered).toContain('literal');
+    expect(rendered.match(/z/g)).toHaveLength(2_400);
+  });
+
   it('uses less diff capacity when fixed prompt overhead grows', () => {
     const diff = unified(
       [

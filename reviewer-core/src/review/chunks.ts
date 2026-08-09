@@ -124,6 +124,64 @@ function renderHunk(headerLines: readonly string[], header: string, lines: reado
   return [...headerLines, header, ...lines].join('\n');
 }
 
+function splitTextToFit(
+  text: string,
+  diffTokenBudget: number,
+  render: (fragment: string) => string,
+): string[] {
+  const characters = Array.from(text);
+  const fragments: string[] = [];
+  let start = 0;
+
+  while (start < characters.length) {
+    let low = start + 1;
+    let high = characters.length;
+    let best = start;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const fragment = characters.slice(start, middle).join('');
+      if (estimateTokens(render(fragment)) <= diffTokenBudget) {
+        best = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    if (best === start) {
+      throw new Error(`Diff framing alone exceeds the ${diffTokenBudget}-token diff budget`);
+    }
+    fragments.push(characters.slice(start, best).join(''));
+    start = best;
+  }
+  return fragments;
+}
+
+function splitOversizedLine(
+  file: FileBlock,
+  hunk: HunkBlock,
+  line: string,
+  oldStart: number,
+  newStart: number,
+  diffTokenBudget: number,
+): ChunkPart[] {
+  const prefix = line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')
+    ? line[0]!
+    : '';
+  const content = prefix ? line.slice(1) : line;
+  const render = (fragment: string) => {
+    const fragmentLine = `${prefix}${fragment}`;
+    return renderHunk(
+      file.headerLines,
+      syntheticHunk(oldStart, newStart, hunkCoordinates(hunk.header).suffix, [fragmentLine]),
+      [fragmentLine],
+    );
+  };
+  return splitTextToFit(content, diffTokenBudget, render).map((fragment) => ({
+    path: file.path,
+    text: render(fragment),
+  }));
+}
+
 function splitOversizedHunk(
   file: FileBlock,
   hunk: HunkBlock,
@@ -153,6 +211,26 @@ function splitOversizedHunk(
   };
 
   for (const line of hunk.lines) {
+    if (estimateTokens(render([line], oldCursor, newCursor)) > diffTokenBudget) {
+      flush();
+      parts.push(
+        ...splitOversizedLine(
+          file,
+          hunk,
+          line,
+          oldCursor,
+          newCursor,
+          diffTokenBudget,
+        ),
+      );
+      const delta = lineDelta(line);
+      oldCursor += delta.old;
+      newCursor += delta.next;
+      segmentOldStart = oldCursor;
+      segmentNewStart = newCursor;
+      continue;
+    }
+
     const candidate = [...segmentLines, line];
     if (segmentLines.length > 0 && estimateTokens(render(candidate, segmentOldStart, segmentNewStart)) > diffTokenBudget) {
       flush();
@@ -163,20 +241,55 @@ function splitOversizedHunk(
     oldCursor += delta.old;
     newCursor += delta.next;
 
-    if (estimateTokens(render(segmentLines, segmentOldStart, segmentNewStart)) > diffTokenBudget) {
-      throw new Error(
-        `A single diff line in ${file.path} exceeds the ${diffTokenBudget}-token diff budget`,
-      );
-    }
   }
   flush();
   return parts;
 }
 
+function splitHunklessFile(file: FileBlock, diffTokenBudget: number): ChunkPart[] {
+  const lines = file.raw.split('\n');
+  let contextLength = Math.min(3, lines.length);
+  while (
+    contextLength > 1 &&
+    estimateTokens(lines.slice(0, contextLength).join('\n')) > diffTokenBudget
+  ) {
+    contextLength--;
+  }
+  const context = lines.slice(0, contextLength);
+  const body = lines.slice(contextLength);
+  const render = (content: readonly string[]) => [...context, ...content].join('\n');
+  if (estimateTokens(render([])) > diffTokenBudget) {
+    throw new Error(`Diff framing for ${file.path} exceeds the ${diffTokenBudget}-token diff budget`);
+  }
+
+  const parts: ChunkPart[] = [];
+  let current: string[] = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    parts.push({ path: file.path, text: render(current) });
+    current = [];
+  };
+
+  for (const line of body) {
+    if (estimateTokens(render([line])) > diffTokenBudget) {
+      flush();
+      for (const fragment of splitTextToFit(line, diffTokenBudget, (value) => render([value]))) {
+        parts.push({ path: file.path, text: render([fragment]) });
+      }
+      continue;
+    }
+    if (current.length > 0 && estimateTokens(render([...current, line])) > diffTokenBudget) flush();
+    current.push(line);
+  }
+  flush();
+  return parts.length > 0 ? parts : [{ path: file.path, text: render([]) }];
+}
+
 function splitFile(file: FileBlock, diffTokenBudget: number): ChunkPart[] {
-  if (estimateTokens(file.raw) <= diffTokenBudget || file.hunks.length === 0) {
+  if (estimateTokens(file.raw) <= diffTokenBudget) {
     return [{ path: file.path, text: file.raw }];
   }
+  if (file.hunks.length === 0) return splitHunklessFile(file, diffTokenBudget);
 
   const parts: ChunkPart[] = [];
   let currentHunks: HunkBlock[] = [];
