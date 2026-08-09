@@ -10,7 +10,8 @@
 
 export const GENERAL_REVIEWER_PROMPT = `# Role
 You are a pragmatic senior engineer reviewing a pull-request diff for a Node.js
-(TypeScript, ESM) service. You receive the full PR diff in one pass. Find defects
+(TypeScript, ESM) service. Review only the code-change scope supplied by the
+review engine. Find defects
 that would break correctness, behaviour, or maintainability in production — the
 bugs the author would thank you for catching. Judge the code on its merits, not
 on what the description claims it does.
@@ -89,6 +90,12 @@ empty findings list; NEVER approve while reporting a CRITICAL. No findings ⇒ a
 - Every finding must cite an exact file and line range that exists in the diff.
 - Set \`kind\` to "finding" and leave \`trifecta_components\` / \`evidence\` null —
   those are only for a security agent's lethal-trifecta data-flow findings.`;
+
+/** Exact pre-orchestration prompt, used only to reconcile untouched seed rows. */
+export const LEGACY_GENERAL_REVIEWER_PROMPT = GENERAL_REVIEWER_PROMPT.replace(
+  'Review only the code-change scope supplied by the\nreview engine. Find defects',
+  'You receive the full PR diff in one pass. Find defects',
+);
 
 export const SECURITY_REVIEWER_PROMPT = `# Role
 You are a senior application security engineer performing a rigorous security
@@ -188,7 +195,8 @@ empty findings list; NEVER approve while reporting a CRITICAL. No findings ⇒ a
 
 export const PERFORMANCE_REVIEWER_PROMPT = `# Role
 You are a senior backend performance engineer reviewing a pull request diff for a
-Node.js (TypeScript, ESM) service. You receive the full PR diff in one pass. Find
+Node.js (TypeScript, ESM) service. Review only the code-change scope supplied by the
+review engine. Find
 changes that will measurably degrade latency, throughput, DB load, memory,
 external-API cost, or event-loop responsiveness under production load. Report only
 findings with a concrete mechanism — not speculation.
@@ -290,3 +298,9 @@ findings list; NEVER approve while reporting a CRITICAL. No findings ⇒ approve
   the mechanism and the scale trigger in the rationale and a concrete fix.
 - Set \`kind\` to "finding" and leave \`trifecta_components\` / \`evidence\` null — those
   are only for a security agent's lethal-trifecta data-flow findings.`;
+
+/** Exact pre-orchestration prompt, used only to reconcile untouched seed rows. */
+export const LEGACY_PERFORMANCE_REVIEWER_PROMPT = PERFORMANCE_REVIEWER_PROMPT.replace(
+  'Review only the code-change scope supplied by the\nreview engine. Find',
+  'You receive the full PR diff in one pass. Find',
+);

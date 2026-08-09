@@ -14,12 +14,14 @@ on:
     paths:
       - 'client/**'
       - 'server/**'
+      - 'reviewer-core/**'
       - 'e2e/**'
       - '.github/workflows/e2e-web.yml'
   pull_request:
     paths:
       - 'client/**'
       - 'server/**'
+      - 'reviewer-core/**'
       - 'e2e/**'
       - '.github/workflows/e2e-web.yml'
 
@@ -62,6 +64,14 @@ jobs:
           done
           [ "$(docker inspect -f '{{.State.Health.Status}}' devdigest-postgres)" = "healthy" ]
 
+      # Server commands can import @devdigest/reviewer-core's RAW source through
+      # the tsconfig alias. Install its runtime dependencies before migrate,
+      # seed, tests, or API boot; otherwise Node resolves packages from the
+      # reviewer-core source location and fails with ERR_MODULE_NOT_FOUND.
+      - name: Install reviewer-core deps
+        working-directory: reviewer-core
+        run: npm ci
+
       # --- API: install, migrate, seed, then start in the background ---
       - name: Install + migrate + seed (server)
         working-directory: server
@@ -69,15 +79,6 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm db:migrate
           pnpm db:seed
-
-      # The API imports @devdigest/reviewer-core's RAW source at runtime (tsx
-      # resolves the tsconfig alias to ../reviewer-core/src), and that source
-      # imports `openai`/`zod`. Without reviewer-core's deps the API crashes at
-      # boot with ERR_MODULE_NOT_FOUND and never becomes healthy. reviewer-core
-      # uses npm (see reviewer-core.yml).
-      - name: Install reviewer-core deps
-        working-directory: reviewer-core
-        run: npm ci
 
       - name: Start API (:3001)
         working-directory: server

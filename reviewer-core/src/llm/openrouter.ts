@@ -33,6 +33,16 @@ const NOT_SUPPORTED = 'OpenRouterProvider only implements completeStructured';
 /** Default wall-clock budget for a single LLM call. */
 export const DEFAULT_TIMEOUT_MS = 90_000;
 
+function openRouterTuning(model: string): Record<string, unknown> {
+  if (model.startsWith('deepseek/deepseek-v4')) {
+    return { reasoning: { enabled: false } };
+  }
+  if (model.startsWith('openai/gpt-5.6-')) {
+    return { reasoning: { effort: 'low' } };
+  }
+  return {};
+}
+
 /**
  * Did this error come from our own abort signal? The SDK reports a
  * caller-supplied signal as a USER abort and deliberately skips its retries, so
@@ -115,6 +125,7 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensOut = 0;
     let costFromApi: number | null = null;
     let lastRaw = '';
+    const requestTimeoutMs = req.timeoutMs ?? this.timeoutMs;
 
     // Two independent budgets. `maxRetries` belongs to SCHEMA repair: each
     // iteration appends the model's bad output plus a correction and asks
@@ -134,6 +145,7 @@ export class OpenRouterProvider implements LLMProvider {
                 messages,
                 temperature: req.temperature ?? 0,
                 ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+                ...openRouterTuning(req.model),
                 response_format: {
                   type: 'json_schema',
                   json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
@@ -151,8 +163,8 @@ export class OpenRouterProvider implements LLMProvider {
               // A fresh timeout per attempt; the caller's signal is shared.
               {
                 signal: req.signal
-                  ? AbortSignal.any([AbortSignal.timeout(this.timeoutMs), req.signal])
-                  : AbortSignal.timeout(this.timeoutMs),
+                  ? AbortSignal.any([AbortSignal.timeout(requestTimeoutMs), req.signal])
+                  : AbortSignal.timeout(requestTimeoutMs),
               },
             ),
           {
@@ -176,7 +188,7 @@ export class OpenRouterProvider implements LLMProvider {
         // AbortError, and an exhausted retry as whatever the last attempt threw.
         if (isAbort(err)) {
           throw new Error(
-            `OpenRouter call for ${req.schemaName} exceeded ${this.timeoutMs}ms on all ` +
+            `OpenRouter call for ${req.schemaName} exceeded ${requestTimeoutMs}ms on all ` +
               `${transportAttempts + 1} transport attempt(s)`,
           );
         }

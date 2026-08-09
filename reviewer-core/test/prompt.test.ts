@@ -30,6 +30,28 @@ describe('assemblePrompt — shared injection guard (server + CI)', () => {
     expect(sys).toMatch(/never reduce|never .*descope|REPORT it/i);
     expect(sys).toMatch(/any language/i);
   });
+
+  it('appends the trusted current-stage scope after stale agent wording and the guard', () => {
+    const stageInstruction =
+      'CURRENT REVIEW SCOPE — one chunk of a larger pull request. Review only this chunk.';
+    const scoped = systemOf({
+      system: 'You receive the full PR diff in one pass.',
+      diff: 'DIFF',
+      stageInstruction,
+    });
+
+    expect(scoped.indexOf('full PR diff in one pass')).toBeLessThan(
+      scoped.indexOf('<untrusted>…</untrusted>'),
+    );
+    expect(scoped.indexOf('<untrusted>…</untrusted>')).toBeLessThan(
+      scoped.indexOf(stageInstruction),
+    );
+    expect(scoped.endsWith(stageInstruction)).toBe(true);
+  });
+
+  it('does not add a stage scope when the caller does not supply one', () => {
+    expect(sys).not.toContain('CURRENT REVIEW SCOPE');
+  });
 });
 
 describe('assemblePrompt — ## PR description', () => {

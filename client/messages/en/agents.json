@@ -65,13 +65,6 @@
     "systemPromptHint": "Loaded as the static system message. Enabled skills are appended below it.",
     "outputSchema": "Output schema",
     "outputSchemaOption": "Standard findings JSON",
-    "strategy": "Review strategy",
-    "strategyHint": "How the diff is sent to the model. Single pass = whole diff in one call (recommended); map-reduce = one call per file (for very large PRs); auto = single pass, switching to map-reduce on large diffs.",
-    "strategyOptions": {
-      "single-pass": "Single pass — whole diff in one call",
-      "map-reduce": "Map-reduce — one call per file",
-      "auto": "Auto — single pass, map-reduce when large"
-    },
     "ciFailOn": "CI gate",
     "ciFailOnHint": "In GitHub Actions only: when should this agent's review block the PR (request changes + fail the check) vs just comment? Decided by finding severity, not the model. No effect on reviews shown in the studio.",
     "ciFailOnOptions": {

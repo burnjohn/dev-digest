@@ -205,6 +205,10 @@ export class Container {
       if (!key) throw new ConfigError('OPENROUTER_API_KEY is not configured');
       return new OpenRouterProvider(key, {
         timeoutMs: this.config.llmTimeoutMs,
+        // Model-level fallback in reviewer-core owns recovery. Retrying the
+        // same timed-out generation here delays that fallback and reproduced
+        // the original 3 × 90s failure mode.
+        transportRetries: 0,
         estimateCost: (model, tokensIn, tokensOut) =>
           this.priceBook.estimate(model, tokensIn, tokensOut),
       });

@@ -21,9 +21,15 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## Codebase Patterns
 
+- `2026-08-09` — Token-bounded diff planning must handle boundaries below hunks: a single minified changed line otherwise throws, while a large hunkless/binary block bypasses the budget; UTF-8-safe line fragmentation and hunkless block splitting keep every emitted chunk within maxPromptTokens → reviewer-core/test/chunks.test.ts (minified-line and hunkless-patch cases)
+- `2026-08-09` — The Onion dependency gate treats new type-only imports from reviewer-core to @devdigest/shared as real vendor edges; new core modules must reuse type aliases exposed by an existing boundary module or define a local structural union, never add the edge to the known-violations baseline → server/test/architecture-gate.test.ts (type-only fixture and exact production inventory), verified by pnpm architecture after reviewer-core/src/review/{adjudicate,chunks,model-policy}.ts were made inward-only
+- `2026-08-09` — Concurrent mapper workers must return isolated per-chunk results and aggregate them only after all workers settle in original diff order; when one chunk exhausts fallbacks, an internal AbortController composed with the caller signal must abort sibling paid requests before the original chunk error is rethrown. → reviewer-core/test/run.test.ts (bounded concurrency, sibling abort, cancellation tests); live OpenRouter validation 2026-08-09: 4 chunks + fallback + adjudication in 14.8s
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes
+
+- `2026-08-09` — Mapper finding IDs are chunk-local, not globally unique: constraining adjudicator output with a single Map keyed only by id silently re-anchors an earlier candidate when two chunks both emit finding-1; match id plus exact file/start/end and use id-only fallback only when unique → reviewer-core/test/run.test.ts (preserves exact anchors when mapper candidates reuse the same local id)
 
 ## Session Notes
 

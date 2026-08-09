@@ -1,5 +1,8 @@
 import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
 
+/** Internal alias for review stages that must not import the shared vendor directly. */
+export type ReviewChatMessage = ChatMessage;
+
 /**
  * Prompt assembly + prompt-injection hardening.
  *
@@ -70,6 +73,8 @@ export interface PromptParts {
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
   task?: string;
+  /** Trusted engine-owned statement of the current map/adjudication scope. */
+  stageInstruction?: string;
 }
 
 export interface AssembledPrompt {
@@ -83,7 +88,9 @@ export interface AssembledPrompt {
  * appended to the system message.
  */
 export function assemblePrompt(parts: PromptParts): AssembledPrompt {
-  const system = `${parts.system}\n\n${INJECTION_GUARD}`;
+  const system = [parts.system, INJECTION_GUARD, parts.stageInstruction]
+    .filter((part): part is string => Boolean(part))
+    .join('\n\n');
 
   const skillsBlock =
     parts.skills && parts.skills.length > 0 ? parts.skills.join('\n\n') : undefined;

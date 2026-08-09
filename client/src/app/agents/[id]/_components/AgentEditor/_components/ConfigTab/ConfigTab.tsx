@@ -3,11 +3,11 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { FormField, TextInput, SelectInput, SearchableSelect, Textarea, Toggle, Button } from "@devdigest/ui";
-import type { Agent, CiFailOn, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, CiFailOn, Provider } from "@devdigest/shared";
 import { useUpdateAgent, useProviderModels } from "../../../../../../../lib/hooks/agents";
 import { useToast } from "../../../../../../../lib/toast";
 import { toModelOptions } from "../../../../../../../lib/model-label";
-import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, PROVIDER_OPTIONS, STRATEGY_VALUES } from "./constants";
+import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, PROVIDER_OPTIONS } from "./constants";
 import { s } from "./styles";
 
 /** Config tab — name/description/provider/model/system-prompt + enabled toggle. */
@@ -20,7 +20,6 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const [provider, setProvider] = React.useState<Provider>(agent.provider);
   const [model, setModel] = React.useState(agent.model);
   const [systemPrompt, setSystemPrompt] = React.useState(agent.system_prompt);
-  const [strategy, setStrategy] = React.useState<ReviewStrategy>(agent.strategy);
   const [ciFailOn, setCiFailOn] = React.useState<CiFailOn>(agent.ci_fail_on);
   const [repoIntel, setRepoIntel] = React.useState(agent.repo_intel);
   const [enabled, setEnabled] = React.useState(agent.enabled);
@@ -32,7 +31,6 @@ export function ConfigTab({ agent }: { agent: Agent }) {
     setProvider(agent.provider);
     setModel(agent.model);
     setSystemPrompt(agent.system_prompt);
-    setStrategy(agent.strategy);
     setCiFailOn(agent.ci_fail_on);
     setRepoIntel(agent.repo_intel);
     setEnabled(agent.enabled);
@@ -48,8 +46,6 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   // guide the user instead of showing a silent one-item dropdown.
   const noModels = models !== undefined && models.length === 0;
 
-  // Friendly labels for the strategy select (values come from constants).
-  const strategyOptions = STRATEGY_VALUES.map((v) => ({ value: v, label: t(`config.strategyOptions.${v}`) }));
   const ciFailOnOptions = CI_FAIL_ON_VALUES.map((v) => ({ value: v, label: t(`config.ciFailOnOptions.${v}`) }));
 
   const save = () =>
@@ -62,7 +58,6 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           provider,
           model,
           system_prompt: systemPrompt,
-          strategy,
           ci_fail_on: ciFailOn,
           repo_intel: repoIntel,
           enabled,
@@ -106,13 +101,6 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           onChange={setModel}
           options={modelOptions}
           placeholder={t("config.modelSearch")}
-        />
-      </FormField>
-      <FormField label={t("config.strategy")} hint={t("config.strategyHint")}>
-        <SelectInput
-          value={strategy}
-          onChange={(v) => setStrategy(v as ReviewStrategy)}
-          options={strategyOptions}
         />
       </FormField>
       <FormField label={t("config.ciFailOn")} hint={t("config.ciFailOnHint")}>

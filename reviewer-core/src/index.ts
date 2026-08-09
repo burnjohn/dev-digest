@@ -34,6 +34,32 @@ export {
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
 
+export {
+  planReviewChunks,
+  estimateTokens,
+  PromptBudgetExceededError,
+  DEFAULT_MAX_PROMPT_TOKENS,
+  DEFAULT_MIN_DIFF_TOKENS,
+  type ReviewChunk,
+  type PlanReviewChunksInput,
+} from './review/chunks.js';
+
+export {
+  reviewModelPlan,
+  GPT_56_LUNA,
+  GPT_56_TERRA,
+  CLAUDE_HAIKU_45,
+  CLAUDE_SONNET_46,
+  type ReviewModelPlan,
+} from './review/model-policy.js';
+
+export {
+  buildAdjudicationMessages,
+  dedupeFindings,
+  ADJUDICATION_STAGE_INSTRUCTION,
+  type BuildAdjudicationMessagesInput,
+} from './review/adjudicate.js';
+
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,

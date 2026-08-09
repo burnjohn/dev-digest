@@ -1,19 +1,24 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/agents.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
+const { mutate } = vi.hoisted(() => ({ mutate: vi.fn() }));
+
 // Mock the data hooks so the editor renders without a network/query client.
 vi.mock("../../../../../lib/hooks/agents", () => ({
-  useUpdateAgent: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, data: undefined }),
+  useUpdateAgent: () => ({ mutate, isPending: false, isSuccess: false, data: undefined }),
   useProviderModels: () => ({ data: [{ id: "gpt-4.1", provider: "openai" }] }),
 }));
 
 import { AgentEditor } from "./AgentEditor";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  mutate.mockReset();
+});
 
 const AGENT: Agent = {
   id: "ag1",
@@ -44,5 +49,15 @@ describe("A2 Agent Editor (smoke)", () => {
     expect(screen.getByText("Config")).toBeInTheDocument();
     expect(screen.getByText("Configuration")).toBeInTheDocument();
     expect(screen.getByText("Save agent")).toBeInTheDocument();
+  });
+
+  it("does not expose or persist the legacy review strategy", () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
+
+    expect(screen.queryByText("Review strategy")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save agent"));
+
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(mutate.mock.calls[0]![0].patch).not.toHaveProperty("strategy");
   });
 });

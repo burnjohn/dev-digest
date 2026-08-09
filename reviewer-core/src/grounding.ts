@@ -1,5 +1,9 @@
 import type { Finding, UnifiedDiff } from '@devdigest/shared';
 
+/** Internal aliases let new core modules depend inward without adding vendor edges. */
+export type ReviewFinding = Finding;
+export type ReviewDiff = UnifiedDiff;
+
 /**
  * Citation grounding — the mandatory mechanical gate for diff-findings.
  *
