@@ -63,6 +63,15 @@ function provider(fetchImpl: never, over: Record<string, unknown> = {}) {
   });
 }
 
+function bodyCapturingFetch() {
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetch = (async (_url: string, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return response(async () => okBody({ ok: true }));
+  }) as unknown as never;
+  return { fetch, bodies };
+}
+
 const request = {
   model: 'deepseek/deepseek-v4-flash',
   schema: Schema,
@@ -137,5 +146,66 @@ describe('OpenRouterProvider — transport retry', () => {
     await expect(
       provider(stalling, { timeoutMs: 20, transportRetries: 1 }).completeStructured(request),
     ).rejects.toThrow(/exceeded 20ms on all 2 transport attempt\(s\)/);
+  });
+});
+
+describe('OpenRouterProvider — bounded model tuning', () => {
+  it('disables hidden reasoning for DeepSeek V4 and sends the completion cap', async () => {
+    const { fetch, bodies } = bodyCapturingFetch();
+
+    await provider(fetch).completeStructured({ ...request, maxTokens: 4096 });
+
+    expect(bodies[0]).toMatchObject({
+      model: 'deepseek/deepseek-v4-flash',
+      max_tokens: 4096,
+      reasoning: { enabled: false },
+    });
+  });
+
+  it('uses bounded low reasoning for GPT-5.6 models', async () => {
+    const { fetch, bodies } = bodyCapturingFetch();
+
+    await provider(fetch).completeStructured({
+      ...request,
+      model: 'openai/gpt-5.6-luna',
+      maxTokens: 4096,
+    });
+
+    expect(bodies[0]).toMatchObject({
+      model: 'openai/gpt-5.6-luna',
+      reasoning: { effort: 'low' },
+    });
+  });
+
+  it('does not send a reasoning field to non-reasoning models', async () => {
+    const { fetch, bodies } = bodyCapturingFetch();
+
+    await provider(fetch).completeStructured({
+      ...request,
+      model: 'qwen/qwen3-coder-next',
+      maxTokens: 4096,
+    });
+
+    expect(bodies[0]).not.toHaveProperty('reasoning');
+  });
+
+  it('honors the request timeout instead of the longer provider default', async () => {
+    const stalling = (async (_url: string, init: { signal?: AbortSignal }) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const e = new Error('The user aborted a request.');
+          e.name = 'AbortError';
+          reject(e);
+        });
+      })) as unknown as never;
+
+    const started = Date.now();
+    await expect(
+      provider(stalling, { timeoutMs: 5_000, transportRetries: 0 }).completeStructured({
+        ...request,
+        timeoutMs: 20,
+      }),
+    ).rejects.toThrow(/exceeded 20ms on all 1 transport attempt\(s\)/);
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 });
