@@ -53,6 +53,13 @@ export {
   type ReviewModelPlan,
 } from './review/model-policy.js';
 
+export {
+  buildAdjudicationMessages,
+  dedupeFindings,
+  ADJUDICATION_STAGE_INSTRUCTION,
+  type BuildAdjudicationMessagesInput,
+} from './review/adjudicate.js';
+
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
