@@ -389,6 +389,47 @@ describe('reviewPullRequest (engine)', () => {
     expect(outcome.review.findings[0]!.start_line).toBe(11);
   });
 
+  it('preserves exact anchors when mapper candidates reuse the same local id', async () => {
+    const diff: UnifiedDiff = {
+      raw: [
+        'diff --git a/src/a.ts b/src/a.ts',
+        '--- a/src/a.ts',
+        '+++ b/src/a.ts',
+        '@@ -1,1 +1,1 @@',
+        '+export const a = brokenA();',
+        'diff --git a/src/b.ts b/src/b.ts',
+        '--- a/src/b.ts',
+        '+++ b/src/b.ts',
+        '@@ -1,1 +1,1 @@',
+        '+export const b = brokenB();',
+      ].join('\n'),
+      files: ['src/a.ts', 'src/b.ts'].map((file) => ({
+        path: file,
+        additions: 1,
+        deletions: 0,
+        hunks: [{ file, oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, newLineNumbers: [1] }],
+      })),
+    };
+    const findings = [
+      { ...fixture.findings[0]!, id: 'finding-1', file: 'src/a.ts', start_line: 1, end_line: 1, title: 'A breaks' },
+      { ...fixture.findings[0]!, id: 'finding-1', file: 'src/b.ts', start_line: 1, end_line: 1, title: 'B breaks' },
+    ];
+    const review = { ...fixture, findings } as Review;
+    const llm = new ScriptedLLM('openrouter', async (req) => structured(req.model, review));
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'general reviewer',
+      model: GPT_56_LUNA,
+      diff,
+      llm,
+    });
+
+    expect(outcome.review.findings.map((finding) => finding.file)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+    ]);
+  });
+
   it('returns grounded mapper findings in explicit degraded mode when both adjudicators fail', async () => {
     const mapReview = { ...fixture, findings: [fixture.findings[0]!] } as Review;
     const events: string[] = [];

@@ -130,6 +130,12 @@ function splitTextToFit(
   render: (fragment: string) => string,
 ): string[] {
   const characters = Array.from(text);
+  if (characters.length === 0) {
+    if (estimateTokens(render('')) > diffTokenBudget) {
+      throw new Error(`Diff framing alone exceeds the ${diffTokenBudget}-token diff budget`);
+    }
+    return [''];
+  }
   const fragments: string[] = [];
   let start = 0;
 
@@ -164,15 +170,15 @@ function splitOversizedLine(
   newStart: number,
   diffTokenBudget: number,
 ): ChunkPart[] {
-  const prefix = line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')
-    ? line[0]!
-    : '';
+  const prefix =
+    line.startsWith('+') || line.startsWith('-') || line.startsWith(' ') ? line[0]! : '';
   const content = prefix ? line.slice(1) : line;
+  const suffix = hunkCoordinates(hunk.header).suffix;
   const render = (fragment: string) => {
     const fragmentLine = `${prefix}${fragment}`;
     return renderHunk(
       file.headerLines,
-      syntheticHunk(oldStart, newStart, hunkCoordinates(hunk.header).suffix, [fragmentLine]),
+      syntheticHunk(oldStart, newStart, suffix, [fragmentLine]),
       [fragmentLine],
     );
   };
@@ -213,16 +219,7 @@ function splitOversizedHunk(
   for (const line of hunk.lines) {
     if (estimateTokens(render([line], oldCursor, newCursor)) > diffTokenBudget) {
       flush();
-      parts.push(
-        ...splitOversizedLine(
-          file,
-          hunk,
-          line,
-          oldCursor,
-          newCursor,
-          diffTokenBudget,
-        ),
-      );
+      parts.push(...splitOversizedLine(file, hunk, line, oldCursor, newCursor, diffTokenBudget));
       const delta = lineDelta(line);
       oldCursor += delta.old;
       newCursor += delta.next;
@@ -232,7 +229,10 @@ function splitOversizedHunk(
     }
 
     const candidate = [...segmentLines, line];
-    if (segmentLines.length > 0 && estimateTokens(render(candidate, segmentOldStart, segmentNewStart)) > diffTokenBudget) {
+    if (
+      segmentLines.length > 0 &&
+      estimateTokens(render(candidate, segmentOldStart, segmentNewStart)) > diffTokenBudget
+    ) {
       flush();
     }
 
@@ -240,7 +240,6 @@ function splitOversizedHunk(
     const delta = lineDelta(line);
     oldCursor += delta.old;
     newCursor += delta.next;
-
   }
   flush();
   return parts;
@@ -259,7 +258,9 @@ function splitHunklessFile(file: FileBlock, diffTokenBudget: number): ChunkPart[
   const body = lines.slice(contextLength);
   const render = (content: readonly string[]) => [...context, ...content].join('\n');
   if (estimateTokens(render([])) > diffTokenBudget) {
-    throw new Error(`Diff framing for ${file.path} exceeds the ${diffTokenBudget}-token diff budget`);
+    throw new Error(
+      `Diff framing for ${file.path} exceeds the ${diffTokenBudget}-token diff budget`,
+    );
   }
 
   const parts: ChunkPart[] = [];
@@ -278,7 +279,9 @@ function splitHunklessFile(file: FileBlock, diffTokenBudget: number): ChunkPart[
       }
       continue;
     }
-    if (current.length > 0 && estimateTokens(render([...current, line])) > diffTokenBudget) flush();
+    if (current.length > 0 && estimateTokens(render([...current, line])) > diffTokenBudget) {
+      flush();
+    }
     current.push(line);
   }
   flush();

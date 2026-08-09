@@ -99,16 +99,30 @@ function promptTokenEstimate(messages: readonly { content: string }[]): number {
 }
 
 function constrainToCandidates(findings: Finding[], candidates: Finding[]): Finding[] {
-  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const candidatesById = new Map<string, Finding[]>();
+  for (const candidate of candidates) {
+    const matches = candidatesById.get(candidate.id) ?? [];
+    matches.push(candidate);
+    candidatesById.set(candidate.id, matches);
+  }
   return findings.flatMap((finding) => {
-    const candidate = candidateById.get(finding.id);
+    const matches = candidatesById.get(finding.id) ?? [];
+    const exact = matches.find(
+      (candidate) =>
+        candidate.file === finding.file &&
+        candidate.start_line === finding.start_line &&
+        candidate.end_line === finding.end_line,
+    );
+    const candidate = exact ?? (matches.length === 1 ? matches[0] : undefined);
     if (!candidate) return [];
-    return [{
-      ...finding,
-      file: candidate.file,
-      start_line: candidate.start_line,
-      end_line: candidate.end_line,
-    }];
+    return [
+      {
+        ...finding,
+        file: candidate.file,
+        start_line: candidate.start_line,
+        end_line: candidate.end_line,
+      },
+    ];
   });
 }
 
