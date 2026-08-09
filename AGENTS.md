@@ -42,6 +42,7 @@ Local-first AI PR reviewer: add repo → import PRs → run agent review → str
 - `@devdigest/shared` is the ONE source of truth for cross-package types — extend with new contract files, never edit existing ones
 - `reviewer-core` never emits JS — consumed as TypeScript source via path alias
 - Secrets live in `~/.devdigest/secrets.json` (mode 0600), NOT in git or DB; `process.env` is fallback
+- When running from a Git worktree, reuse the primary checkout's existing `server/.env` by setting `DOTENV_CONFIG_PATH` to its absolute path before server, migration, seed, test, or review processes. Verify the file exists; do not copy secrets into the worktree or silently run with an empty environment.
 - DB migrations are NOT auto-applied on boot — always `cd server && pnpm db:migrate`
 - Test split: `*.it.test.ts` = DB-backed (testcontainers), everything else = hermetic
 

@@ -16,6 +16,8 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 
 ## What Doesn't Work
 
+- `2026-08-08` — A transient EventSource error is treated as run completion: useRunEvents closes the source and sets running=false on every onerror, then RunStatus calls onDone for that transition even if the server run is still active. Native reconnect cannot simply be restored because the SSE route always replays the whole buffer while the client neither sends/uses a cursor explicitly nor deduplicates RunEvent.seq; separate terminal completion from transport failure and make resume idempotent → client/src/lib/hooks/reviews.ts:180-204; client/src/app/repos/[repoId]/pulls/[number]/_components/RunStatus/RunStatus.tsx:20-26; server/src/modules/reviews/routes.ts:62-84
+
 ## Codebase Patterns
 
 - `2026-08-01` — An effect that opens an `EventSource` must depend on a PRIMITIVE key, never on the array or object of ids: `useRunEvents` keys on `runIds.join(",")` because a fresh array identity every render tears down and reopens every stream, so each render refetches the whole replay buffer and hammers the API (symptom: a flood of `/runs/:id/events` requests and events that keep resetting). The `react-hooks/exhaustive-deps` disable directly above the dep array is load-bearing — putting `runIds` back in the deps reintroduces the loop → `client/src/lib/hooks/reviews.ts:171` (key) and the eslint-disable at :212
@@ -30,6 +32,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 ## Tool & Library Notes
 
 - `2026-08-06` — vi.fn(async () => new Response(...)) infers a zero-arg mock; capturing fetchMock.mock.calls[0] then fails typecheck with TS2493 ("Tuple type [] has no element at index 0") even though the test runs fine — give the mock factory explicit params, e.g. vi.fn(async (_url: string, _init?: RequestInit) => …), to type mock.calls correctly → client/src/lib/hooks/github-tokens.test.ts (PR feat/per-repo-github-tokens Task 9)
+- `2026-08-08` — The local next-best-practices RSC boundary guide incorrectly narrows React serialization to JSON and bans Date, Map, and Set; React 19 supports Date, Map, Set, TypedArray, ArrayBuffer, global symbols, Promises, JSX, and Server Functions across a Server→Client boundary, while ordinary functions, classes, null-prototype objects, and non-global symbols remain unsupported — do not copy the guide's JSON-only checklist into reviews → .claude/skills/next-best-practices/rsc-boundaries.md:48-56; react@19; https://react.dev/reference/rsc/use-client#serializable-types
 
 ## Recurring Errors & Fixes
 

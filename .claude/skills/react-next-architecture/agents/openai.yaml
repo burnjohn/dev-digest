@@ -1,0 +1,4 @@
+interface:
+  display_name: "React + Next.js Architecture"
+  short_description: "Architecture boundaries for React and Next.js"
+  default_prompt: "Use $react-next-architecture to design or review this React and Next.js architecture."
