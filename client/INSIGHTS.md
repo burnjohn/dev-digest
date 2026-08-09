@@ -30,6 +30,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 ## Tool & Library Notes
 
 - `2026-08-06` — vi.fn(async () => new Response(...)) infers a zero-arg mock; capturing fetchMock.mock.calls[0] then fails typecheck with TS2493 ("Tuple type [] has no element at index 0") even though the test runs fine — give the mock factory explicit params, e.g. vi.fn(async (_url: string, _init?: RequestInit) => …), to type mock.calls correctly → client/src/lib/hooks/github-tokens.test.ts (PR feat/per-repo-github-tokens Task 9)
+- `2026-08-08` — The local next-best-practices RSC boundary guide incorrectly narrows React serialization to JSON and bans Date, Map, and Set; React 19 supports Date, Map, Set, TypedArray, ArrayBuffer, global symbols, Promises, JSX, and Server Functions across a Server→Client boundary, while ordinary functions, classes, null-prototype objects, and non-global symbols remain unsupported — do not copy the guide's JSON-only checklist into reviews → .claude/skills/next-best-practices/rsc-boundaries.md:48-56; react@19; https://react.dev/reference/rsc/use-client#serializable-types
 
 ## Recurring Errors & Fixes
 
