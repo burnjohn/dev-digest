@@ -1,4 +1,4 @@
-import type { LLMProvider } from '@devdigest/shared';
+type ProviderId = 'openai' | 'anthropic' | 'openrouter';
 
 export const GPT_56_LUNA = 'openai/gpt-5.6-luna';
 export const GPT_56_TERRA = 'openai/gpt-5.6-terra';
@@ -20,7 +20,7 @@ function distinct(models: readonly string[]): string[] {
 
 /** Internal execution policy; it is deliberately not a user-facing strategy. */
 export function reviewModelPlan(
-  provider: LLMProvider['id'],
+  provider: ProviderId,
   preferredModel: string,
 ): ReviewModelPlan {
   const openRouter = provider === 'openrouter';

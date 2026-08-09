@@ -1,4 +1,4 @@
-import type { UnifiedDiff } from '@devdigest/shared';
+import type { ReviewDiff as UnifiedDiff } from '../grounding.js';
 
 export const DEFAULT_MAX_PROMPT_TOKENS = 16_000;
 export const DEFAULT_MIN_DIFF_TOKENS = 512;

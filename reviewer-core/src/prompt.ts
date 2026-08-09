@@ -1,5 +1,8 @@
 import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
 
+/** Internal alias for review stages that must not import the shared vendor directly. */
+export type ReviewChatMessage = ChatMessage;
+
 /**
  * Prompt assembly + prompt-injection hardening.
  *

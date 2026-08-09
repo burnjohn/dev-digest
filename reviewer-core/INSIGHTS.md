@@ -22,6 +22,7 @@ Entry format: `` - `YYYY-MM-DD` — finding → evidence ``
 ## Codebase Patterns
 
 - `2026-08-09` — Token-bounded diff planning must handle boundaries below hunks: a single minified changed line otherwise throws, while a large hunkless/binary block bypasses the budget; UTF-8-safe line fragmentation and hunkless block splitting keep every emitted chunk within maxPromptTokens → reviewer-core/test/chunks.test.ts (minified-line and hunkless-patch cases)
+- `2026-08-09` — The Onion dependency gate treats new type-only imports from reviewer-core to @devdigest/shared as real vendor edges; new core modules must reuse type aliases exposed by an existing boundary module or define a local structural union, never add the edge to the known-violations baseline → server/test/architecture-gate.test.ts (type-only fixture and exact production inventory), verified by pnpm architecture after reviewer-core/src/review/{adjudicate,chunks,model-policy}.ts were made inward-only
 
 ## Tool & Library Notes
 

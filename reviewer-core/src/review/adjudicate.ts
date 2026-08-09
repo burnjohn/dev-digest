@@ -1,5 +1,5 @@
-import type { ChatMessage, Finding, UnifiedDiff } from '@devdigest/shared';
-import { assemblePrompt, wrapUntrusted } from '../prompt.js';
+import type { ReviewDiff as UnifiedDiff, ReviewFinding as Finding } from '../grounding.js';
+import { assemblePrompt, wrapUntrusted, type ReviewChatMessage as ChatMessage } from '../prompt.js';
 
 const ADJUDICATOR_SYSTEM =
   'You are the final pull-request review adjudicator. Keep only concrete, actionable ' +
