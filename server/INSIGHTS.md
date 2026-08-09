@@ -8,6 +8,13 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-09 — `completeAgentRun` has a THIRD, hidden param-type copy
+Adding a field to an agent run means editing the values type in **both**
+`repository/run.repo.ts::completeAgentRun` *and* the class wrapper
+`reviews/repository.ts::completeAgentRun` (it re-declares the same inline object
+type, not `typeof`/`Parameters<>`). Miss the wrapper and you get a TS2353
+"unknown property" at the call site in `run-executor.ts`, not at the repo.
+
 ### 2026-08-09 — seed
 - **Migrations don't run on boot.** A fresh clone that "won't serve" almost always
   just needs `pnpm db:migrate` (pgvector is enabled by migration `0000`).
