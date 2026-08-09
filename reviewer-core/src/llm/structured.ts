@@ -16,9 +16,76 @@ export interface JsonSchema {
   name: string;
 }
 
+const OMITTED_PORTABLE_KEYS = new Set(['$defs', 'definitions', 'minimum', 'maximum']);
+
+function decodePointerSegment(segment: string): string {
+  return segment.replaceAll('~1', '/').replaceAll('~0', '~');
+}
+
+function resolveLocalReference(root: Record<string, unknown>, ref: string): unknown {
+  if (!ref.startsWith('#/')) throw new Error(`Only local JSON Schema references are supported: ${ref}`);
+  let current: unknown = root;
+  for (const rawSegment of ref.slice(2).split('/')) {
+    const segment = decodePointerSegment(rawSegment);
+    if (!current || typeof current !== 'object' || Array.isArray(current) || !(segment in current)) {
+      throw new Error(`JSON Schema reference does not resolve: ${ref}`);
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function normalizeSchemaNode(
+  node: unknown,
+  root: Record<string, unknown>,
+  resolving: ReadonlySet<string>,
+): unknown {
+  if (Array.isArray(node)) return node.map((item) => normalizeSchemaNode(item, root, resolving));
+  if (!node || typeof node !== 'object') return node;
+
+  const record = node as Record<string, unknown>;
+  const ref = record.$ref;
+  if (typeof ref === 'string') {
+    if (resolving.has(ref)) throw new Error(`Cyclic JSON Schema reference: ${ref}`);
+    const nextResolving = new Set(resolving);
+    nextResolving.add(ref);
+    const resolved = normalizeSchemaNode(resolveLocalReference(root, ref), root, nextResolving);
+    const siblings = Object.fromEntries(Object.entries(record).filter(([key]) => key !== '$ref'));
+    if (Object.keys(siblings).length === 0) return resolved;
+    if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) {
+      throw new Error(`JSON Schema reference does not resolve to an object: ${ref}`);
+    }
+    return {
+      ...(resolved as Record<string, unknown>),
+      ...(normalizeSchemaNode(siblings, root, resolving) as Record<string, unknown>),
+    };
+  }
+
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (OMITTED_PORTABLE_KEYS.has(key)) continue;
+    normalized[key] = normalizeSchemaNode(value, root, resolving);
+  }
+  return normalized;
+}
+
+/**
+ * Normalize the OpenAI-generated JSON Schema for strict structured-output
+ * providers routed through OpenRouter. Anthropic-compatible endpoints reject
+ * numeric bounds and some endpoints fail to resolve local definitions, so refs
+ * are inlined and those transport-only constraints are removed. The original
+ * Zod schema remains authoritative in parseWithRepair.
+ */
+export function portableJsonSchema(root: Record<string, unknown>): Record<string, unknown> {
+  return normalizeSchemaNode(root, root, new Set()) as Record<string, unknown>;
+}
+
 export function toJsonSchema<T>(schema: z.ZodType<T>, name: string): JsonSchema {
   const rf = zodResponseFormat(schema as z.ZodTypeAny, name);
-  return { schema: rf.json_schema.schema as Record<string, unknown>, name };
+  return {
+    schema: portableJsonSchema(rf.json_schema.schema as Record<string, unknown>),
+    name,
+  };
 }
 
 /** Best-effort extraction of a JSON object/array from a model's text output. */
