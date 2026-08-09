@@ -23,3 +23,5 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+/client/pnpm-workspace.yaml
+/server/pnpm-workspace.yaml
