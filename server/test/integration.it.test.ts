@@ -6,6 +6,10 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
+import {
+  GENERAL_REVIEWER_PROMPT,
+  LEGACY_GENERAL_REVIEWER_PROMPT,
+} from '../src/db/seed-prompts.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 
@@ -72,6 +76,55 @@ d('Testcontainers: pg + pgvector', () => {
     await seed(pg.handle.db);
     const ws = await pg.handle.db.select().from(t.workspaces);
     expect(ws.filter((w) => w.name === 'default')).toHaveLength(1);
+  });
+
+  it('reconciles untouched built-in agents while preserving user customizations', async () => {
+    const { workspaceId } = await seed(pg.handle.db);
+    const agents = await pg.handle.db
+      .select()
+      .from(t.agents)
+      .where(eq(t.agents.workspaceId, workspaceId));
+    const general = agents.find((agent) => agent.name === 'General Reviewer')!;
+    const performance = agents.find((agent) => agent.name === 'Performance Reviewer')!;
+    const security = agents.find((agent) => agent.name === 'Security Reviewer')!;
+
+    await pg.handle.db
+      .update(t.agents)
+      .set({
+        model: 'deepseek/deepseek-v4-flash',
+        systemPrompt: LEGACY_GENERAL_REVIEWER_PROMPT,
+        version: 7,
+      })
+      .where(eq(t.agents.id, general.id));
+    await pg.handle.db
+      .update(t.agents)
+      .set({ model: 'deepseek/deepseek-v4-flash', systemPrompt: 'My custom performance prompt' })
+      .where(eq(t.agents.id, performance.id));
+    await pg.handle.db
+      .update(t.agents)
+      .set({ model: 'my/custom-model', systemPrompt: 'My custom security prompt' })
+      .where(eq(t.agents.id, security.id));
+
+    await seed(pg.handle.db);
+    await seed(pg.handle.db);
+
+    const reconciled = await pg.handle.db
+      .select()
+      .from(t.agents)
+      .where(eq(t.agents.workspaceId, workspaceId));
+    expect(reconciled.find((agent) => agent.id === general.id)).toMatchObject({
+      model: 'openai/gpt-5.6-luna',
+      systemPrompt: GENERAL_REVIEWER_PROMPT,
+      version: 7,
+    });
+    expect(reconciled.find((agent) => agent.id === performance.id)).toMatchObject({
+      model: 'openai/gpt-5.6-luna',
+      systemPrompt: 'My custom performance prompt',
+    });
+    expect(reconciled.find((agent) => agent.id === security.id)).toMatchObject({
+      model: 'my/custom-model',
+      systemPrompt: 'My custom security prompt',
+    });
   });
 });
 

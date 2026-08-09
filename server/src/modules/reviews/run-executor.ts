@@ -5,7 +5,6 @@ import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
@@ -195,7 +194,7 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
-      // ---- Engine: assemble → single-pass → grounding -----------------------
+      // ---- Engine: plan → map/fallback → grounding → adjudication -----------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
       // above, and persistence + observability below.
@@ -204,9 +203,6 @@ export class ReviewRunExecutor {
         model: agent.model,
         diff,
         llm,
-        // Per-agent review strategy (configured in the Agent editor); falls back
-        // to the studio default. single-pass = whole diff in one call.
-        strategy: agent.strategy ?? REVIEW_STRATEGY,
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -287,9 +283,9 @@ export class ReviewRunExecutor {
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
-          tool: 'review_file',
+          tool: c.stage === 'map' ? 'review_chunk' : 'adjudicate_review',
           args: c.label,
-          meta: outcome.mode,
+          meta: `${c.stage}:${c.model}`,
           ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
         })),
         raw_output: outcome.raw,

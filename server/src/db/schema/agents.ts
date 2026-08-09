@@ -16,7 +16,7 @@ export const agents = pgTable('agents', {
   model: text('model').notNull(),
   systemPrompt: text('system_prompt').notNull(),
   outputSchema: jsonb('output_schema'),
-  // Review execution strategy — whole diff in one call (default) vs per-file.
+  // Legacy compatibility field. The engine now plans review chunks automatically.
   strategy: text('strategy', { enum: ['single-pass', 'map-reduce', 'auto'] })
     .notNull()
     .default('single-pass'),

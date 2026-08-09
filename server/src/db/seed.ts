@@ -4,13 +4,17 @@ import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
 import {
   GENERAL_REVIEWER_PROMPT,
+  LEGACY_GENERAL_REVIEWER_PROMPT,
+  LEGACY_PERFORMANCE_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { GPT_56_LUNA } from '@devdigest/reviewer-core';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
-const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+const DEFAULT_MODEL = GPT_56_LUNA;
+const LEGACY_DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 
 /**
  * Seed the starter's demo data. Idempotent: re-running upserts the default
@@ -21,7 +25,7 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * `configured: false`), demo repo (acme/payments-api) pointed at that token,
  * PR #482 with files/commits, a sample review with a few findings, and the
  * three built-in agents (General + Security + Performance), all on the
- * default openrouter/deepseek-v4-flash provider+model.
+ * default OpenRouter mapper model.
  *
  * Course lessons populate the other tables (skills, conventions, memory, eval,
  * …) once their features are built — they start empty here.
@@ -194,47 +198,76 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 
   // ---- built-in agents (the three starter presets) ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
-  const seedAgents: Array<typeof t.agents.$inferInsert> = [
+  const seedAgents: Array<{
+    values: typeof t.agents.$inferInsert;
+    legacyPrompt?: string;
+  }> = [
     {
-      workspaceId,
-      name: 'General Reviewer',
-      description: 'Reviews a PR diff for bugs, correctness, and clarity.',
-      provider: DEFAULT_PROVIDER,
-      model: DEFAULT_MODEL,
-      systemPrompt: GENERAL_REVIEWER_PROMPT,
-      enabled: true,
-      version: 1,
-      createdBy: userId,
+      values: {
+        workspaceId,
+        name: 'General Reviewer',
+        description: 'Reviews a PR diff for bugs, correctness, and clarity.',
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: GENERAL_REVIEWER_PROMPT,
+        enabled: true,
+        version: 1,
+        createdBy: userId,
+      },
+      legacyPrompt: LEGACY_GENERAL_REVIEWER_PROMPT,
     },
     {
-      workspaceId,
-      name: 'Security Reviewer',
-      description: 'Flags secrets, injection, SSRF and the lethal trifecta before merge.',
-      provider: DEFAULT_PROVIDER,
-      model: DEFAULT_MODEL,
-      systemPrompt: SECURITY_REVIEWER_PROMPT,
-      enabled: true,
-      version: 1,
-      createdBy: userId,
+      values: {
+        workspaceId,
+        name: 'Security Reviewer',
+        description: 'Flags secrets, injection, SSRF and the lethal trifecta before merge.',
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: SECURITY_REVIEWER_PROMPT,
+        enabled: true,
+        version: 1,
+        createdBy: userId,
+      },
     },
     {
-      workspaceId,
-      name: 'Performance Reviewer',
-      description: 'Catches N+1 queries, missing indexes, and hot-path allocations.',
-      provider: DEFAULT_PROVIDER,
-      model: DEFAULT_MODEL,
-      systemPrompt: PERFORMANCE_REVIEWER_PROMPT,
-      enabled: true,
-      version: 1,
-      createdBy: userId,
+      values: {
+        workspaceId,
+        name: 'Performance Reviewer',
+        description: 'Catches N+1 queries, missing indexes, and hot-path allocations.',
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: PERFORMANCE_REVIEWER_PROMPT,
+        enabled: true,
+        version: 1,
+        createdBy: userId,
+      },
+      legacyPrompt: LEGACY_PERFORMANCE_REVIEWER_PROMPT,
     },
   ];
-  for (const a of seedAgents) {
+  for (const { values, legacyPrompt } of seedAgents) {
     const [existing] = await db
       .select()
       .from(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
-    if (!existing) await db.insert(t.agents).values(a);
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, values.name)));
+    if (!existing) {
+      await db.insert(t.agents).values(values);
+      continue;
+    }
+
+    // Reconcile only values that still exactly match an old built-in default.
+    // Customized provider/model/prompt choices are user data and stay untouched.
+    const modelIsLegacy =
+      existing.provider === DEFAULT_PROVIDER && existing.model === LEGACY_DEFAULT_MODEL;
+    const promptIsLegacy = legacyPrompt !== undefined && existing.systemPrompt === legacyPrompt;
+    if (modelIsLegacy || promptIsLegacy) {
+      await db
+        .update(t.agents)
+        .set({
+          ...(modelIsLegacy ? { model: DEFAULT_MODEL } : {}),
+          ...(promptIsLegacy ? { systemPrompt: values.systemPrompt } : {}),
+        })
+        .where(eq(t.agents.id, existing.id));
+    }
   }
 
   return { workspaceId, userId };

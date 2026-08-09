@@ -208,6 +208,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
     expect(trace.config.model).toBe('gpt-4.1');
     expect(trace.stats.grounding).toBe('1/2 passed');
+    expect(trace.tool_calls[0]).toMatchObject({
+      tool: 'review_chunk',
+      args: 'all files',
+      meta: 'map:gpt-4.1',
+    });
     expect(trace.log.length).toBeGreaterThan(0);
 
     // agent_runs row populated for A5 to aggregate
