@@ -71,6 +71,17 @@ export function FindingsTab({
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
+  // Per-run findings for the timeline severity indicators. Keyed by run_id
+  // (ReviewRecord.run_id === RunSummary.run_id), non-dismissed. The timeline
+  // shows each run's findings verbatim — no cross-run dedup (that's PR-list only).
+  const findingsByRun = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const r of runs) {
+      if (r.run_id) m.set(r.run_id, r.findings.filter((f) => !f.dismissed_at));
+    }
+    return m;
+  }, [runs]);
+
   return (
     <section>
       {liveRunIds.length > 0 && (
@@ -131,6 +142,9 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRun={findingsByRun}
+            repoFullName={repoFullName}
+            headSha={headSha}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
