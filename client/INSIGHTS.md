@@ -6,6 +6,13 @@ way, and what to do about it. [CLAUDE.md](CLAUDE.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-10 — React inline styles: `borderColor` is a shorthand, conflicts with `borderLeftColor`
+In our inline-style-object convention, setting `borderColor` alongside `borderLeftColor` (e.g.
+`FindingCard/styles.ts` focus ring) triggers React's "Updating a style property during rerender…
+when a conflicting property is set" warning on re-render — `borderColor` expands to all four sides.
+Use the three non-left side longhands (`borderTopColor`/`borderRightColor`/`borderBottomColor`)
+when a distinct `borderLeftColor` accent is present. Dropping the `border` shorthand alone isn't enough.
+
 ### 2026-08-10 — Findings popups must portal + `position:fixed`, not absolute
 The PR-list table card (`pulls/styles.ts` `tableCard`) sets `overflow:hidden`, so an in-flow
 `position:absolute` popup is clipped. `FindingsIndicator` (`components/findings-indicator/`)

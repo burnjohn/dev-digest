@@ -23,5 +23,16 @@ export const s = {
     fontSize: 13,
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
+  // Severity filter chip — mirrors components/findings-indicator/styles.ts `s.chip`
+  // (pill; --accent border + --accent-bg when active, else --border/transparent).
+  chip: (active: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "3px 8px",
+    borderRadius: 999,
+    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+    background: active ? "var(--accent-bg)" : "transparent",
+    cursor: "pointer",
+  }),
   list: { display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
 } as const;

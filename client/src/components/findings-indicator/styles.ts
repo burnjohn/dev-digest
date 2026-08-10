@@ -44,26 +44,6 @@ export const s = {
     fontWeight: 600,
     color: "var(--text-primary)",
   } satisfies CSSProperties,
-  chips: {
-    display: "flex",
-    gap: 6,
-    flexWrap: "wrap",
-    padding: "8px 12px",
-    borderBottom: "1px solid var(--border)",
-  } satisfies CSSProperties,
-  chip: (active: boolean): CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    padding: "3px 9px",
-    borderRadius: 999,
-    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-    background: active ? "var(--accent-bg)" : "transparent",
-    color: active ? "var(--accent-text)" : "var(--text-secondary)",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-  }),
   // flex:1 + minHeight:0 lets the list scroll inside the height-capped panel.
   list: {
     flex: 1,
@@ -108,18 +88,5 @@ export const s = {
     padding: "16px 12px",
     fontSize: 13,
     color: "var(--text-muted)",
-  } satisfies CSSProperties,
-  // Visually hidden but kept for screen readers — icon-only chips still need a
-  // text alternative naming the severity.
-  srOnly: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: "hidden",
-    clip: "rect(0, 0, 0, 0)",
-    whiteSpace: "nowrap",
-    border: 0,
   } satisfies CSSProperties,
 } as const;

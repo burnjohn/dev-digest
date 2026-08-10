@@ -4,13 +4,20 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import { Toggle, EmptyState, SeverityBadge } from "@devdigest/ui";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION } from "./constants";
-import { visibleFindings } from "./helpers";
+import { KEY_TO_ACTION, SEVERITY_ORDER } from "./constants";
+import { severityCounts, visibleFindings } from "./helpers";
 import { s } from "./styles";
+
+/** Existing i18n keys reused for the icon-only chips' accessible names. */
+const ARIA_KEY: Record<Severity, string> = {
+  CRITICAL: "findings.indicator.ariaCritical",
+  WARNING: "findings.indicator.ariaWarning",
+  SUGGESTION: "findings.indicator.ariaSuggestion",
+};
 
 export function FindingsPanel({
   findings,
@@ -26,9 +33,35 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
+  const [sev, setSev] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  // Counts are tallied after the confidence filter so a chip's number matches
+  // exactly what clicking it reveals; the shown list applies both filters.
+  const counts = React.useMemo(() => severityCounts(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, sev),
+    [findings, hideLow, sev],
+  );
+  const present = React.useMemo(
+    () =>
+      (Object.keys(counts) as Severity[])
+        .filter((S) => counts[S] > 0)
+        .sort((a, b) => (SEVERITY_ORDER[a] ?? 9) - (SEVERITY_ORDER[b] ?? 9)),
+    [counts],
+  );
+
+  // Clear a severity filter whose chip is no longer rendered (count dropped to 0
+  // after toggling hide-low-confidence), so the list falls back to all findings
+  // instead of a confusing empty state for an invisible chip.
+  React.useEffect(() => {
+    if (sev && counts[sev] === 0) setSev(null);
+  }, [sev, counts]);
+
+  // Reset the j/k cursor to the top whenever the visible set changes.
+  React.useEffect(() => {
+    setFocusIdx(0);
+  }, [sev, hideLow]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -48,6 +81,17 @@ export function FindingsPanel({
   return (
     <div>
       <div style={s.toolbar}>
+        {present.map((S) => (
+          <button
+            key={S}
+            type="button"
+            aria-label={t(ARIA_KEY[S], { count: counts[S] })}
+            style={s.chip(sev === S)}
+            onClick={() => setSev((p) => (p === S ? null : S))}
+          >
+            <SeverityBadge severity={S} count={counts[S]} compact />
+          </button>
+        ))}
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
           <Toggle on={hideLow} onChange={setHideLow} size={16} />

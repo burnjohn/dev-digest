@@ -90,13 +90,23 @@ describe("FindingsIndicator", () => {
     expect(screen.getByText("Null deref")).toBeInTheDocument();
   });
 
-  it("filter chips switch the visible set", () => {
+  it("strip icons switch the visible set", () => {
     renderIndicator();
     fireEvent.mouseEnter(stripOf(screen.getByRole("button", { name: /critical/i })));
-    // Chip labelled "Warning 1" filters to warnings only.
-    fireEvent.click(screen.getByRole("button", { name: /warning 1/i }));
+    // Click the WARNING strip icon → filter switches to warnings only.
+    fireEvent.click(screen.getByRole("button", { name: /1 warning finding/i }));
     expect(screen.getByText("Unused var")).toBeInTheDocument();
     expect(screen.queryByText("Null deref")).not.toBeInTheDocument();
+  });
+
+  it("re-clicking the active strip icon toggles the filter back to all", () => {
+    renderIndicator();
+    const critIcon = screen.getByRole("button", { name: /2 critical findings/i });
+    fireEvent.click(critIcon); // open filtered to CRITICAL
+    expect(screen.queryByText("Unused var")).not.toBeInTheDocument();
+    fireEvent.click(critIcon); // re-click the active icon → back to "all"
+    expect(screen.getByText("Unused var")).toBeInTheDocument();
+    expect(screen.getByText("Null deref")).toBeInTheDocument();
   });
 
   it("shows a spinner, not rows, while loading", () => {

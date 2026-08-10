@@ -3,14 +3,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import {
-  SeverityBadge,
-  CategoryTag,
-  MonoLink,
-  ConfidenceNum,
-  Icon,
-  SEV,
-} from "@devdigest/ui";
+import { SeverityBadge, CategoryTag, MonoLink, ConfidenceNum, Icon } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { githubBlobUrl } from "@/lib/github-urls";
 import { lineLabel } from "@/app/repos/[repoId]/pulls/[number]/_components/FindingCard/helpers";
@@ -172,6 +165,12 @@ export function FindingsIndicator({
     setOpen(true);
   };
   const openWithFilter = (sev: SevKey) => {
+    // Toggle off: re-clicking the strip icon for the already-active filter clears
+    // it back to "all" (matches the popup chips + the FindingsPanel chips).
+    if (open && filter === sev) {
+      setFilter("all");
+      return;
+    }
     cancelScheduledClose();
     setFilter(sev);
     setOpen(true);
@@ -203,26 +202,6 @@ export function FindingsIndicator({
     >
       <div style={s.panelHeader}>
         <span style={s.headerCount}>{header}</span>
-      </div>
-      <div style={s.chips}>
-        <button type="button" style={s.chip(filter === "all")} onClick={() => setFilter("all")}>
-          {t("findings.indicator.all")}
-        </button>
-        {present.map((sev) => {
-          const SevIcon = Icon[SEV[sev].icon];
-          return (
-            <button
-              key={sev}
-              type="button"
-              style={s.chip(filter === sev)}
-              onClick={() => setFilter(sev)}
-            >
-              <SevIcon size={12} style={{ color: SEV[sev].c }} />
-              <span style={s.srOnly}>{t(`findings.indicator.sev.${sev}`)}</span>
-              {counts[sev]}
-            </button>
-          );
-        })}
       </div>
       {loading ? (
         <div style={s.loadingRow}>
