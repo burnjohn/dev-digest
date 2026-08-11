@@ -8,6 +8,11 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-10 — `reviews.run_id` is a `uuid` — don't seed string run-ids in `.it` tests
+`reviews.runId` (`db/schema/reviews.ts`) is a `uuid` column, so seeding `runId: 'run-1'` fails
+with `invalid input syntax for type uuid`. To model "findings across N runs" in a `.it` test,
+insert N separate `reviews` rows (runId is nullable — omit it), not distinct run-id strings.
+
 ### 2026-08-09 — `completeAgentRun` has a THIRD, hidden param-type copy
 Adding a field to an agent run means editing the values type in **both**
 `repository/run.repo.ts::completeAgentRun` *and* the class wrapper

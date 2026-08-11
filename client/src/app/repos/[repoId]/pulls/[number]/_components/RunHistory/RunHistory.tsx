@@ -3,8 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
 import { formatCost } from "@/lib/format";
+import { FindingsIndicator } from "@/components/findings-indicator";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,12 +89,19 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun = new Map(),
+  repoFullName,
+  headSha,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Non-dismissed findings per run (keyed by run_id) for the severity indicator. */
+  findingsByRun?: Map<string, FindingRecord[]>;
+  repoFullName?: string | null;
+  headSha?: string | null;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -150,6 +158,17 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        // Per-run severity indicator: tally this run's findings verbatim (no
+        // cross-run dedup — that's the PR-list summary's job).
+        const runFindings = findingsByRun.get(r.run_id) ?? [];
+        const runCounts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+        for (const f of runFindings) {
+          if (f.severity === "CRITICAL") runCounts.CRITICAL += 1;
+          else if (f.severity === "WARNING") runCounts.WARNING += 1;
+          else if (f.severity === "SUGGESTION") runCounts.SUGGESTION += 1;
+        }
+        const runHasFindings =
+          runCounts.CRITICAL + runCounts.WARNING + runCounts.SUGGESTION > 0;
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -190,9 +209,20 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {t("runStatus.findings", { count: r.findings_count ?? 0 })}
+                    {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                  </span>
+                  {runHasFindings && (
+                    <FindingsIndicator
+                      variant="run"
+                      counts={runCounts}
+                      findings={runFindings}
+                      repoFullName={repoFullName}
+                      headSha={headSha}
+                    />
+                  )}
                 </div>
               )}
             </div>

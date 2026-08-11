@@ -91,6 +91,7 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
       "updated": "Updated"
@@ -106,5 +107,16 @@
     "goToReview": "Jump to this run’s findings below",
     "openTrace": "Open run trace & logs",
     "deleteRun": "Delete run"
+  },
+  "findings": {
+    "indicator": {
+      "headerRun": "{count, plural, one {# finding in this run} other {# findings in this run}}",
+      "headerPr": "{count, plural, one {# finding} other {# findings}}",
+      "loading": "Loading findings…",
+      "empty": "No findings",
+      "ariaCritical": "{count, plural, one {# critical finding} other {# critical findings}}",
+      "ariaWarning": "{count, plural, one {# warning finding} other {# warning findings}}",
+      "ariaSuggestion": "{count, plural, one {# suggestion finding} other {# suggestion findings}}"
+    }
   }
 }

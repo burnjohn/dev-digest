@@ -9,15 +9,48 @@ import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { formatCost } from "@/lib/format";
+import { usePrReviews } from "@/lib/hooks/reviews";
+import { FindingsIndicator, findingKey } from "@/components/findings-indicator";
 import { s } from "../../styles";
 
-export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
+export function PRRow({
+  pr,
+  repoId,
+  repoFullName,
+}: {
+  pr: PrMeta;
+  repoId: string;
+  repoFullName?: string | null;
+}) {
   const t = useTranslations("prReview");
   const router = useRouter();
   const [h, setH] = React.useState(false);
   const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
   const { size, lines } = sizeOf(pr);
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
+
+  // Per-severity counts come from the list response (deduped server-side). The
+  // popup's finding list is lazy: fetch reviews only once the cell is hovered,
+  // then apply the SAME rule as the server (non-dismissed, deduped by findingKey)
+  // so the counts and the popup always agree.
+  const fbs = pr.findings_by_severity;
+  const counts = {
+    CRITICAL: fbs?.critical ?? 0,
+    WARNING: fbs?.warning ?? 0,
+    SUGGESTION: fbs?.suggestion ?? 0,
+  };
+  const hasFindings = counts.CRITICAL + counts.WARNING + counts.SUGGESTION > 0;
+
+  const [hovered, setHovered] = React.useState(false);
+  const { data: reviews, isLoading } = usePrReviews(hovered ? (pr.id ?? null) : null);
+  const seen = new Set<string>();
+  const findings = (reviews ?? [])
+    .flatMap((r) => r.findings)
+    .filter((f) => !f.dismissed_at)
+    .filter((f) => {
+      const k = findingKey(f);
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
   return (
     <div
       onMouseEnter={() => setH(true)}
@@ -50,6 +83,20 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
       <div style={s.scoreCell}>
         {reviewed ? (
           <CircularScore score={pr.score!} size={34} stroke={3} />
+        ) : (
+          <span style={s.muted}>—</span>
+        )}
+      </div>
+      <div style={s.findingsCell} onMouseEnter={() => setHovered(true)}>
+        {hasFindings ? (
+          <FindingsIndicator
+            variant="pr"
+            counts={counts}
+            findings={findings}
+            loading={isLoading}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+          />
         ) : (
           <span style={s.muted}>—</span>
         )}

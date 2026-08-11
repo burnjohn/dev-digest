@@ -127,7 +127,14 @@ export default function PullsPage() {
             }
           />
         ) : (
-          filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
+          filtered.map((pr) => (
+            <PRRow
+              key={pr.number}
+              pr={pr}
+              repoId={repoId}
+              repoFullName={activeRepo?.full_name}
+            />
+          ))
         )}
       </div>
     </AppShell>

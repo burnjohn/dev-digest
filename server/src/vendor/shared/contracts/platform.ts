@@ -173,6 +173,11 @@ export const PrMeta = z.object({
   // Total LLM cost across all runs for this PR (list endpoint only; null when
   // no run has a persisted cost, e.g. never reviewed or unknown-price models).
   cost_usd: z.number().nullish(),
+  // Per-severity findings breakdown (list endpoint only): all runs, non-dismissed,
+  // de-duplicated across runs. Nullish for back-compat; served as all-zero when absent.
+  findings_by_severity: z
+    .object({ critical: z.number().int(), warning: z.number().int(), suggestion: z.number().int() })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 
