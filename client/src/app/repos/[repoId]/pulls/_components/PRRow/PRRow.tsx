@@ -8,7 +8,7 @@ import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
 import type { PrMeta } from "@/lib/types";
 import { RunCostBadge } from "@/components/run-cost-badge";
 import { useActiveRepo } from "@/lib/repo-context";
-import { SIZE_COLOR, STATUS_META } from "../../constants";
+import { DEFAULT_STATUS_META, SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
 import { FindingsCell } from "../FindingsCell";
@@ -20,14 +20,29 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   // popup needs owner/repo to deep-link a finding to GitHub.
   const { activeRepo } = useActiveRepo();
   const [h, setH] = React.useState(false);
-  const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
+  const st = STATUS_META[pr.status] ?? DEFAULT_STATUS_META;
   const { size, lines } = sizeOf(pr);
-  const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
+  const open = () => router.push(`/repos/${repoId}/pulls/${pr.number}`);
   return (
+    /* Not a <button>: the row contains its own interactive children (the
+       FINDINGS trigger and the links inside its popup), and interactive content
+       inside a button is invalid HTML. Same role/tabIndex/onKeyDown shape as
+       FindingsCell instead. Accessible name comes from the row's content. */
     <div
+      role="button"
+      tabIndex={0}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
-      onClick={() => router.push(`/repos/${repoId}/pulls/${pr.number}`)}
+      onClick={open}
+      onKeyDown={(e) => {
+        // Only when the row itself holds focus: keydown bubbles, so without
+        // this, Enter on the FINDINGS trigger inside would navigate away too.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          if (e.key === " ") e.preventDefault(); // Space scrolls the page otherwise
+          open();
+        }
+      }}
       style={s.row(h)}
     >
       <div style={s.rowTitleCell}>
@@ -47,14 +62,16 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
         <Badge
           color={SIZE_COLOR[size]}
           bg="transparent"
-          style={s.sizeBadgeBorder(SIZE_COLOR[size]!)}
+          style={s.sizeBadgeBorder(SIZE_COLOR[size])}
         >
           {size} · {lines}
         </Badge>
       </div>
       <div style={s.scoreCell}>
-        {reviewed ? (
-          <CircularScore score={pr.score!} size={34} stroke={3} />
+        {/* null score ⇒ PR has never been reviewed. Testing `pr.score` here
+            rather than a precomputed boolean is what narrows it to a number. */}
+        {pr.score != null ? (
+          <CircularScore score={pr.score} size={34} stroke={3} />
         ) : (
           <span style={s.muted}>—</span>
         )}

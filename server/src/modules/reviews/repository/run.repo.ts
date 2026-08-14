@@ -139,7 +139,10 @@ export async function createAgentRun(
       source: 'local',
     })
     .returning({ id: t.agentRuns.id });
-  return row!.id;
+  // A single-row INSERT ... RETURNING always yields exactly one row; the array
+  // type is just noUncheckedIndexedAccess widening it.
+  if (!row) throw new Error('insert into agent_runs returned no row');
+  return row.id;
 }
 
 export async function completeAgentRun(

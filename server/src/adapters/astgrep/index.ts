@@ -342,7 +342,7 @@ function handleDecl(
   }
 }
 
-function isFunctionLike(n: SgNode | null | undefined): boolean {
+function isFunctionLike(n: SgNode | null | undefined): n is SgNode {
   if (!n) return false;
   const k = n.kind();
   return k === 'arrow_function' || k === 'function_expression' || k === 'generator_function';
@@ -361,7 +361,7 @@ function headSignatureOfVariable(decl: SgNode): string {
     : decl;
   const value = getField(decl, 'value');
   if (isFunctionLike(value)) {
-    const valueBody = getField(value!, 'body');
+    const valueBody = getField(value, 'body');
     if (valueBody) {
       const offset = valueBody.range().start.index - base.range().start.index;
       let head = base.text().slice(0, offset);

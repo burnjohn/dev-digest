@@ -82,8 +82,7 @@ export function extractSymbols(content: string): ExtractedSymbol[] {
   let currentClass: string | null = null;
   let braceDepth = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]!;
+  for (const [i, raw] of lines.entries()) {
     if (LINE_COMMENT.test(raw)) {
       braceDepth += countBraces(raw);
       continue;
@@ -148,7 +147,7 @@ function dedupeSymbols(syms: ExtractedSymbol[]): ExtractedSymbol[] {
 export function extractReferences(content: string, symbol: string): ExtractedReference[] {
   // Reference search works on the *method/function name* — if the caller passes
   // a `Class.method` symbol, match on the trailing member.
-  const bare = symbol.includes('.') ? symbol.split('.').pop()! : symbol;
+  const bare = symbol.includes('.') ? symbol.slice(symbol.lastIndexOf('.') + 1) : symbol;
   const escaped = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const callRe = new RegExp(`(?<![\\w$.])${escaped}\\s*\\(`); // sym(
@@ -162,8 +161,7 @@ export function extractReferences(content: string, symbol: string): ExtractedRef
 
   const out: ExtractedReference[] = [];
   const lines = content.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]!;
+  for (const [i, raw] of lines.entries()) {
     if (LINE_COMMENT.test(raw) || IMPORT_LINE.test(raw)) continue;
     const line = sanitizeLine(raw);
     if (declRe.test(line)) continue; // the declaration itself is not a reference
@@ -187,9 +185,15 @@ export function extractEndpoints(content: string): string[] {
   const routeObjRe = /method\s*:\s*['"`](GET|POST|PUT|PATCH|DELETE)['"`][\s\S]*?url\s*:\s*['"`]([^'"`]+)['"`]/i;
   for (const raw of lines) {
     const m = raw.match(verbRe);
-    if (m) out.add(`${m[1]!.toUpperCase()} ${m[3]}`);
+    if (m) {
+      const [, verb, , path] = m;
+      if (verb && path) out.add(`${verb.toUpperCase()} ${path}`);
+    }
     const r = raw.match(routeObjRe);
-    if (r) out.add(`${r[1]!.toUpperCase()} ${r[2]}`);
+    if (r) {
+      const [, method, url] = r;
+      if (method && url) out.add(`${method.toUpperCase()} ${url}`);
+    }
   }
   return [...out];
 }
@@ -205,10 +209,10 @@ export function extractCrons(content: string): string[] {
   const cronExprRe = /\b(?:cron|schedule|CronJob)\s*[.(]?\s*\(?\s*['"`]([^'"`]*(?:\*|\d+\s+\d+)[^'"`]*)['"`]/i;
   const jobKindRe = /\b(?:register|enqueue)\s*\(\s*(?:[A-Za-z0-9_$.]+\s*,\s*)?['"`]([a-z][a-z0-9_]*)['"`]/i;
   for (const raw of lines) {
-    const m = raw.match(cronExprRe);
-    if (m) out.add(m[1]!.trim());
-    const j = raw.match(jobKindRe);
-    if (j && /poll|index|clone|digest|cron|sync|schedule|job/i.test(raw)) out.add(`job:${j[1]}`);
+    const expr = raw.match(cronExprRe)?.[1];
+    if (expr) out.add(expr.trim());
+    const kind = raw.match(jobKindRe)?.[1];
+    if (kind && /poll|index|clone|digest|cron|sync|schedule|job/i.test(raw)) out.add(`job:${kind}`);
   }
   return [...out];
 }

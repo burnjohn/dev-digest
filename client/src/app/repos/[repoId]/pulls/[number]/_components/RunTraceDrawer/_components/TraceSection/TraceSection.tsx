@@ -14,6 +14,8 @@ export function TraceSection({
 }: {
   icon: "Settings" | "Gauge" | "FileText" | "Wrench" | "Code" | "AlertOctagon";
   title: string;
+  /** Trailing content in the header. The header is a <button>, so this has to
+   *  stay non-interactive (a Badge, a count) — no links or nested buttons. */
   right?: React.ReactNode;
   children: React.ReactNode;
   defaultOpen?: boolean;
@@ -22,12 +24,14 @@ export function TraceSection({
   const I = Icon[icon];
   return (
     <div style={s.section}>
-      <div onClick={() => setOpen((o) => !o)} style={s.sectionHead}>
+      {/* A real button: this is nothing but an expand/collapse control, and it
+          holds no interactive children. Keyboard support comes for free. */}
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={s.sectionHead}>
         <I size={15} style={s.sectionIcon} />
         <span style={s.sectionTitle}>{title}</span>
         {right}
         <Icon.ChevronDown size={15} style={s.chevron(open)} />
-      </div>
+      </button>
       {open && <div style={s.sectionBody}>{children}</div>}
     </div>
   );

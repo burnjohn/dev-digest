@@ -62,6 +62,21 @@ const iconBtnStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
+// The delete affordance is a real <button> (it sits in a plain row, so nothing
+// interactive encloses it); the resets keep it looking like the bare icon it
+// was as a <span>.
+const deleteBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  padding: 3,
+  borderRadius: 5,
+  border: 0,
+  background: "none",
+  font: "inherit",
+  color: "var(--text-muted)",
+  flexShrink: 0,
+  cursor: "pointer",
+};
+
 // Commits are markers, not actions — lighter (dashed, transparent) so they read
 // as separators between the runs they sit chronologically between.
 const commitRowStyle: React.CSSProperties = {
@@ -114,7 +129,11 @@ function SeverityFindings({
   const t = useTranslations("prReview");
   const [open, setOpen] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasFindings = !!findings && findings.length > 0;
+  // One narrowed binding for both the count and the card: `hasFindings` is a
+  // boolean the compiler cannot carry back to `findings`, which is what the
+  // non-null assertions below used to bridge.
+  const list = findings ?? [];
+  const hasFindings = list.length > 0;
 
   const show = () => {
     if (!hasFindings) return;
@@ -137,7 +156,7 @@ function SeverityFindings({
             tabIndex: 0,
             role: "button",
             "aria-expanded": open,
-            "aria-label": t("timeline.findingsHoverTitle", { count: findings!.length }),
+            "aria-label": t("timeline.findingsHoverTitle", { count: list.length }),
             onMouseEnter: show,
             onMouseLeave: hide,
             onFocus: show,
@@ -155,7 +174,7 @@ function SeverityFindings({
       {blockersLabel && <span>{blockersLabel}</span>}
       {hasFindings && open && (
         <FindingsHoverCard
-          findings={findings!}
+          findings={list}
           repoFullName={repoFullName}
           headSha={headSha}
           onSelect={() => {
@@ -313,15 +332,15 @@ export function RunHistory({
               <Icon.FileText size={13} />
             </button>
             {onDelete && r.status !== "running" && (
-              <span
-                role="button"
+              <button
+                type="button"
                 aria-label={t("timeline.deleteRun")}
                 title={t("timeline.deleteRun")}
                 onClick={() => onDelete(r.run_id)}
-                style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
+                style={deleteBtnStyle}
               >
                 <Icon.Trash size={13} />
-              </span>
+              </button>
             )}
           </div>
         );

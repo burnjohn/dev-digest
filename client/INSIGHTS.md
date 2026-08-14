@@ -34,9 +34,39 @@ abandoned — that is exactly what this file is for._
 
 ## What Works
 
-_None yet._
+- **2026-08-14** — When a clickable container (`PRRow`, `AgentCard`,
+  `FindingCard`/`PromptBlock` headers) gains `role="button"` + `onKeyDown`, add
+  `if (e.target !== e.currentTarget) return;` as the handler's first line.
+  `keydown` bubbles, so without it Enter on any focusable descendant fires the
+  container's action *as well as* its own — Enter on `AgentCard`'s delete button
+  would both delete and navigate. The existing `onClick={(e) =>
+  e.stopPropagation()}` wrappers only cover clicks; nobody had to think about
+  keyboard because there was no keyboard path at all. One guard on the container
+  beats adding `stopPropagation` to every child, and it degrades correctly as
+  children are added. Which containers can be a plain `<button>` instead is
+  decided by their children, not by how button-like they feel: `TraceSection`
+  and `ToolCallRow` hold only spans and icons, so they are real buttons;
+  `FindingCard` cannot be, because `MonoLink` renders an `<a>` when it has an
+  `href` (`src/vendor/ui/primitives/MonoLink.tsx:26`) and interactive content
+  inside a `<button>` is invalid HTML.
+  `client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:33`
 
 ## What Doesn't Work
+
+- **2026-08-07** — `@/lib/hooks` cannot be imported from a Server Component.
+  `src/lib/hooks/index.ts` is a wildcard barrel (`export * from "./core"` ×5)
+  over TanStack Query hooks, and Next.js's cross-boundary tree-shaking
+  explicitly does not work through barrel files — a barrel that `export *`s
+  client hooks into a server import path can fail the build outright
+  (`nextjs.org/blog/next-14-2`, `vercel/next.js` discussion #65979). It has not
+  bitten yet only because all 5 consumers already carry `"use client"`; that is
+  a property of today's call sites, not of the module. The failure will point at
+  the barrel, not at the import that caused it. Before adding the first server
+  consumer, replace the wildcards with named re-exports — the file's own comment
+  already promises a curated surface ("the platform hooks") that `export *` does
+  not deliver. Check with:
+  `for f in $(grep -rl 'from "@/lib/hooks' src --include=*.tsx --include=*.ts); do grep -q '"use client"' "$f" || echo "SERVER: $f"; done`
+  `client/src/lib/hooks/index.ts:4`
 
 - **2026-08-07** — An absolutely-positioned popover inside a PR **list row** is
   clipped dead: `s.tableCard` sets `overflow: hidden` for its rounded corners,
@@ -61,6 +91,24 @@ _None yet._
 
 ## Codebase Patterns
 
+- **2026-08-14** — `jsx-a11y/no-static-element-interactions` (now `error`, see
+  `client/eslint.config.mjs`) fires on the plugin's default handler set, which
+  covers **mouse and focus, not just `onClick`** — so a wrapper carrying only
+  `onMouseEnter`/`onMouseLeave` trips it with no click target in sight. That is
+  the case on `diff-viewer/CodeLine`, where `role="button"` + `tabIndex={0}`
+  would be actively wrong: it adds one tab stop per line of every diff. Use
+  `role="presentation"` there.
+  `FindingsHoverCard` is the constrained one — it must keep `role="tooltip"`
+  **and** remain the fixed wrapper's first child, because `FindingsCell.test.tsx`
+  locates it by role and `FindingsCell`'s `useLayoutEffect` measures
+  `wrap.firstElementChild` for the flip-above logic (see the 2026-08-07 entry
+  above). A stop-propagation handler there therefore has to go on a new inner
+  `role="presentation"` node rather than on the card itself.
+  Known remaining gap, not a lint problem: `CodeLine`'s "+" comment affordance
+  is mouse-only — it is not rendered until hover, so it can never be tabbed to.
+  Closing it needs a visible change (reveal on focus).
+  `client/src/components/diff-viewer/CodeLine/CodeLine.tsx:39`
+
 - **2026-08-04** — Before adding a new hook/endpoint to show "more detail on
   X" in a component, check whether the detail is already fetched elsewhere on
   the same page and can be threaded down as a prop instead. `RunHistory` only
@@ -73,6 +121,18 @@ _None yet._
   API/hook. `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:75`
 
 ## Tool & Library Notes
+
+- **2026-08-14** — A wrapper `<div onClick={(e) => e.stopPropagation()}>` whose
+  only job is to keep a click off the parent trips both
+  `jsx-a11y/no-static-element-interactions` and
+  `click-events-have-key-events`, and it has no honest role or key handler to
+  give it. `role="none"` clears both: each rule bails out early on
+  `isPresentationRole()`, and the claim is true — the wrapper contributes
+  nothing to the a11y tree, the control inside it does. No `eslint-disable`
+  needed. Do not reach for `onClickCapture` to dodge the handler list instead:
+  it is not in the plugin's `interactiveHandlers`, but `stopPropagation` in the
+  capture phase stops the child from ever receiving the click.
+  `client/src/app/agents/_components/AgentCard/AgentCard.tsx:52`
 
 - **2026-08-04, corrected 2026-08-07** — The seeded dev DB has zero `agent_runs`
   rows with `findings_count > 0`, but that is a statement about the *run
@@ -98,6 +158,17 @@ _None yet._
   is on-screen and unclipped.
 
 ## Recurring Errors & Fixes
+
+- **2026-08-14** — Giving a row/card container `role="button"` breaks its
+  colocated test with `Found multiple elements with the role "button"` whenever
+  that test used a bare `screen.getByRole("button")` to reach a control *inside*
+  the row. Match by accessible name instead —
+  `getByRole("button", { name: "1 findings" })`. Do not switch to
+  `getAllByRole(...)[1]`: `role="button"` is name-from-content, so the
+  container's own name is the concatenation of every string it renders, which
+  means a `{ name: /findings/ }` regex matches the container too. Only an exact
+  name is unambiguous.
+  `client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.test.tsx:78`
 
 - **2026-08-04** — `fireEvent.mouseEnter` on a component whose hover-open
   logic uses `setTimeout` (e.g. an open delay to survive a mouse

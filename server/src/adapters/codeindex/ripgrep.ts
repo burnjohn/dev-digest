@@ -67,13 +67,14 @@ export class RipgrepCodeIndex implements CodeIndex {
         for (const line of buf.split('\n')) {
           // <path>:<line>:<text>
           const m = line.match(/^(.*?):(\d+):(.*)$/);
-          if (m) {
-            matches.push({
-              path: relative(root, m[1]!),
-              line: Number(m[2]),
-              text: m[3]!,
-            });
-          }
+          if (!m) continue;
+          const [, path, lineNo, text] = m;
+          if (path === undefined || lineNo === undefined || text === undefined) continue;
+          matches.push({
+            path: relative(root, path),
+            line: Number(lineNo),
+            text,
+          });
         }
         resolve(matches);
       });
@@ -86,9 +87,9 @@ export class RipgrepCodeIndex implements CodeIndex {
     for (const file of await this.walk(root)) {
       const content = await readFile(file, 'utf8').catch(() => '');
       const lines = content.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (re.test(lines[i]!)) {
-          matches.push({ path: relative(root, file), line: i + 1, text: lines[i]! });
+      for (const [i, text] of lines.entries()) {
+        if (re.test(text)) {
+          matches.push({ path: relative(root, file), line: i + 1, text });
         }
       }
     }

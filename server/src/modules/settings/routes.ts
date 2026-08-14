@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   SettingsUpdate,
   ConnTestRequest,

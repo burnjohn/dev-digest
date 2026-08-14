@@ -16,10 +16,14 @@ export function parsePatch(patch: string | null | undefined): Line[] {
   let newNo = 0;
   for (const raw of patch.split("\n")) {
     if (raw.startsWith("@@")) {
-      const m = raw.match(HUNK_HEADER_RE);
-      if (m) {
-        oldNo = parseInt(m[1]!, 10);
-        newNo = parseInt(m[2]!, 10);
+      // Both groups are mandatory in HUNK_HEADER_RE, so a match always carries
+      // them; destructuring is how the compiler gets told that under
+      // noUncheckedIndexedAccess. A `@@` line that doesn't match the full
+      // header keeps the running counters, exactly as before.
+      const [, oldStart, newStart] = raw.match(HUNK_HEADER_RE) ?? [];
+      if (oldStart !== undefined && newStart !== undefined) {
+        oldNo = parseInt(oldStart, 10);
+        newNo = parseInt(newStart, 10);
       }
       out.push({ kind: "hunk", text: raw });
     } else if (raw.startsWith("+")) {

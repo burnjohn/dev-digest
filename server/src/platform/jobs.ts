@@ -54,7 +54,10 @@ export class JobRunner {
       .insert(t.jobs)
       .values({ workspaceId, kind, payload: payload as object, status: 'queued' })
       .returning({ id: t.jobs.id });
-    const jobId = row!.id;
+    // A single-row INSERT ... RETURNING always yields exactly one row; the
+    // array type is just noUncheckedIndexedAccess widening it.
+    if (!row) throw new Error('insert into jobs returned no row');
+    const jobId = row.id;
 
     const done = this.queue.add(async () => {
       await this.db

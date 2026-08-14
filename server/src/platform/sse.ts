@@ -42,10 +42,20 @@ export class RunBus {
       this.emitters.set(runId, e);
       // Preserve any existing buffer/seq (e.g. a late subscriber after the run
       // completed must still be able to replay the buffered events).
-      if (!this.buffers.has(runId)) this.buffers.set(runId, []);
+      this.bufferFor(runId);
       if (!this.seq.has(runId)) this.seq.set(runId, 0);
     }
     return e;
+  }
+
+  /** The event buffer for a run, created on first use. */
+  private bufferFor(runId: string): RunEvent[] {
+    let buf = this.buffers.get(runId);
+    if (!buf) {
+      buf = [];
+      this.buffers.set(runId, buf);
+    }
+    return buf;
   }
 
   /** Publish a live event for a run. Returns the constructed RunEvent. */
@@ -54,7 +64,7 @@ export class RunBus {
     const next = (this.seq.get(runId) ?? 0) + 1;
     this.seq.set(runId, next);
     const event: RunEvent = { runId, seq: next, kind, msg, t: clockTime(), data };
-    this.buffers.get(runId)!.push(event);
+    this.bufferFor(runId).push(event);
     e.emit('event', event);
     return event;
   }

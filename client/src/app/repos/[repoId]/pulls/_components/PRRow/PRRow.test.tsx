@@ -75,6 +75,13 @@ function renderRow(meta: PrMeta = pr()) {
   );
 }
 
+/**
+ * The FINDINGS cell trigger. The row itself is also `role="button"` (it is a
+ * click target, so it carries the keyboard affordances to match), so this has
+ * to be matched by its accessible name rather than by role alone.
+ */
+const findingsTrigger = () => screen.getByRole("button", { name: "1 findings" });
+
 describe("PRRow", () => {
   it("routes to the PR detail page when the row is clicked", () => {
     renderRow();
@@ -84,7 +91,7 @@ describe("PRRow", () => {
 
   it("does NOT navigate when a finding inside the hover popup is clicked", () => {
     renderRow();
-    fireEvent.mouseEnter(screen.getByRole("button"));
+    fireEvent.mouseEnter(findingsTrigger());
     act(() => {
       vi.advanceTimersByTime(150);
     });
@@ -97,7 +104,7 @@ describe("PRRow", () => {
     // The trigger deliberately does not stop propagation — every other cell in
     // the row navigates, so this one should behave the same.
     renderRow();
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(findingsTrigger());
     expect(push).toHaveBeenCalledWith("/repos/r1/pulls/482");
   });
 

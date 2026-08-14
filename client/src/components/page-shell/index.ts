@@ -1,1 +1,1 @@
-export * from "./PageShell";
+export { PageContainer, FeaturePlaceholder } from "./PageShell";

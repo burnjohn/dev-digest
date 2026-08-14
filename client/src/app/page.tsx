@@ -12,11 +12,15 @@ export default function HomePage() {
   const router = useRouter();
   const { data: repos, isLoading, isError } = useRepos();
 
+  // `noUncheckedIndexedAccess` makes repos[0] `Repo | undefined`; binding it
+  // first lets the compiler see the same guard the length check encoded.
+  const firstRepo = repos?.[0];
+
   React.useEffect(() => {
-    if (repos && repos.length > 0) {
-      router.replace(`/repos/${repos[0]!.id}/pulls`);
+    if (firstRepo) {
+      router.replace(`/repos/${firstRepo.id}/pulls`);
     }
-  }, [repos, router]);
+  }, [firstRepo, router]);
 
   return (
     <AppShell crumb={[{ label: "DevDigest" }]}>
@@ -27,7 +31,7 @@ export default function HomePage() {
             <Skeleton height={48} />
             <Skeleton height={48} />
           </div>
-        ) : isError || !repos || repos.length === 0 ? (
+        ) : isError || !firstRepo ? (
           <EmptyState
             icon="GitBranch"
             title="No repositories yet"
@@ -38,8 +42,8 @@ export default function HomePage() {
         ) : (
           <div>
             <p style={{ color: "var(--text-secondary)", marginBottom: 14 }}>Taking you to your repository…</p>
-            <Button kind="primary" onClick={() => router.push(`/repos/${repos[0]!.id}/pulls`)}>
-              Open {repos[0]!.full_name}
+            <Button kind="primary" onClick={() => router.push(`/repos/${firstRepo.id}/pulls`)}>
+              Open {firstRepo.full_name}
             </Button>
           </div>
         )}

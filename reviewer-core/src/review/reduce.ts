@@ -41,7 +41,11 @@ const VERDICT_RANK: Record<string, number> = {
  * concat findings, take the worst verdict, mean score, joined summaries.
  */
 export function reduceReviews(partials: Review[]): Review {
-  if (partials.length === 1) return partials[0]!;
+  // Destructured rather than `partials[0]!` — noUncheckedIndexedAccess types
+  // the index access as `Review | undefined`, and binding it lets the compiler
+  // narrow instead of being told to trust us.
+  const [first] = partials;
+  if (first && partials.length === 1) return first;
   const findings = partials.flatMap((p) => p.findings);
   let verdict: Review['verdict'] = 'approve';
   for (const p of partials) {

@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { sql } from 'drizzle-orm';
-import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
@@ -12,7 +10,7 @@ const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
 if (!hasDocker) {
-  // eslint-disable-next-line no-console
+   
   console.warn(
     '[integration] Docker not available — skipping Testcontainers integration tests.',
   );

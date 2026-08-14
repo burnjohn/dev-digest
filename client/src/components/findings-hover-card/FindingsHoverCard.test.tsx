@@ -91,7 +91,19 @@ describe("FindingsHoverCard", () => {
     const onRowClick = vi.fn();
     render(
       <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-        <div onClick={onRowClick}>
+        {/* Stands in for the PR list row: click-to-navigate, plus the keyboard
+            path that makes it reachable (same shape as FindingsCell). */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onRowClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              if (e.key === " ") e.preventDefault();
+              onRowClick();
+            }
+          }}
+        >
           <FindingsHoverCard findings={[finding({ title: "Hardcoded secret" })]} />
         </div>
       </NextIntlClientProvider>,

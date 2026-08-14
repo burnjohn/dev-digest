@@ -19,11 +19,13 @@ on:
     paths:
       - 'server/**'
       - 'reviewer-core/**'
+      - 'scripts/check-contracts.sh'
       - '.github/workflows/server-unit.yml'
   pull_request:
     paths:
       - 'server/**'
       - 'reviewer-core/**'
+      - 'scripts/check-contracts.sh'
       - '.github/workflows/server-unit.yml'
 
 permissions:
@@ -34,6 +36,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Server is the canonical side of the two vendored @devdigest/shared copies
+  # (root CLAUDE.md). Editing a contract here without mirroring it into
+  # client/src/vendor/shared typechecks green in both packages and only breaks
+  # in the browser — this job is what notices.
+  contracts:
+    name: contract sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-contracts.sh
+
   typecheck:
     runs-on: ubuntu-latest
     defaults:
@@ -64,6 +77,12 @@ jobs:
         run: npm ci
 
       - run: pnpm typecheck
+
+      # The onion dependency rule is enforced here and nowhere else — the
+      # onion-architecture skill states plainly that no automated gate exists.
+      # eslint.config.js encodes it, including the four documented legacy
+      # exemptions, so the exemption list stays countable.
+      - run: pnpm lint
 
   unit:
     name: tests

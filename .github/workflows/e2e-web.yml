@@ -117,6 +117,10 @@ jobs:
         working-directory: e2e
         run: |
           npm ci
+          # lint also greps specs/*.flow.json for the AI `chat` command, which
+          # AGENTS.md bans — a flow that calls a model is neither reproducible
+          # nor key-free, and would fail here for a confusing reason.
+          npm run lint
           npm test
 
       - name: Upload failure artifacts

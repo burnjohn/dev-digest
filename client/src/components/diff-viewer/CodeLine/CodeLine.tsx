@@ -36,7 +36,12 @@ export function CodeLine({
   const showAdd = hover && !!target && !composing;
 
   return (
+    /* The row itself is not a control — it only reveals the "+" affordance on
+       hover, and the "+" is the real <button>. `presentation` says exactly
+       that: a <div> already exposes no role, and making the row a button or a
+       tab stop would put one focusable element on every line of every diff. */
     <div
+      role="presentation"
       style={cs.rowWrap}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

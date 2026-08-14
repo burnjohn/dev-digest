@@ -81,7 +81,8 @@ export async function runFullIndex(
     // Repo deleted between enqueue and run — no-op, no row to write to.
     return degradedResult(startedAt, 'repo_not_found');
   }
-  if (!repo.clonePath) {
+  const clonePath = repo.clonePath;
+  if (!clonePath) {
     // Clone hasn't completed yet (race against runCloneJob) — bail and let
     // the next enqueue (after clone) populate the index. Persist a row so
     // observability can see why no index exists.
@@ -97,7 +98,7 @@ export async function runFullIndex(
   const currentSha = await safeCurrentHead(container, ref);
 
   // Walk + filter -------------------------------------------------------
-  const walk = await walkClone(repo.clonePath);
+  const walk = await walkClone(clonePath);
   if (walk.files.length === 0) {
     await safePersist(repository, repoId, currentSha, 'partial', 0, walk.stats.skippedTooLarge, {
       ...walk.stats,
@@ -141,7 +142,7 @@ export async function runFullIndex(
       }
       let source: string;
       try {
-        source = await readFile(join(repo.clonePath!, relPath), 'utf8');
+        source = await readFile(join(clonePath, relPath), 'utf8');
       } catch (err) {
         filesSkipped += 1;
         recordParseDegraded(parseDegraded, relPath, asMessage(err));
@@ -213,7 +214,7 @@ export async function runFullIndex(
   let rankCount = 0;
   if (!softBudgetReached) {
     try {
-      const edges = await container.depgraph.buildEdges(repo.clonePath, walk.files);
+      const edges = await container.depgraph.buildEdges(clonePath, walk.files);
       edgeRows = edges.map((e) => ({ fromFile: e.from, toFile: e.to }));
     } catch (err) {
       graphFailed = asMessage(err);

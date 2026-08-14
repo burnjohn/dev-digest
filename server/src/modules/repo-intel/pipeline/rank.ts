@@ -58,11 +58,17 @@ export function computeFileRank(
   const n = asc.length;
   const pctByPath = new Map<string, number>();
   for (let i = 0; i < n; ) {
-    const groupRank = asc[i]!.rank;
+    const head = asc[i];
+    if (!head) break;
+    const groupRank = head.rank;
     let j = i;
-    while (j + 1 < n && asc[j + 1]!.rank === groupRank) j += 1;
+    for (;;) {
+      const next = asc[j + 1];
+      if (!next || next.rank !== groupRank) break;
+      j += 1;
+    }
     const pct = Math.round((100 * (j + 1)) / n);
-    for (let k = i; k <= j; k += 1) pctByPath.set(asc[k]!.filePath, pct);
+    for (const entry of asc.slice(i, j + 1)) pctByPath.set(entry.filePath, pct);
     i = j + 1;
   }
 

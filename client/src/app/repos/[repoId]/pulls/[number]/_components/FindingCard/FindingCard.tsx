@@ -53,7 +53,26 @@ export function FindingCard({
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
-      <div onClick={() => setExpanded((e) => !e)} style={s.header}>
+      {/* Not a <button>: the header holds a MonoLink, which renders an <a> (or a
+          <button>) for the file:line deep-link, and interactive content inside a
+          button is invalid HTML. Same role/tabIndex/onKeyDown shape as
+          FindingsCell instead. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(e) => {
+          // Only when the header itself holds focus — keydown bubbles, so
+          // otherwise Enter on the file link would also collapse the card.
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            if (e.key === " ") e.preventDefault(); // Space scrolls the page otherwise
+            setExpanded((x) => !x);
+          }
+        }}
+        style={s.header}
+      >
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as Severity} compact />
         </div>

@@ -32,7 +32,25 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
   };
   return (
     <div style={s.promptRow}>
-      <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
+      {/* Not a <button>: the header carries the copy and fullscreen buttons,
+          and a button inside a button is invalid HTML. Same role/tabIndex/
+          onKeyDown shape as FindingsCell instead. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          // Only when the header itself holds focus — keydown bubbles, so
+          // otherwise Enter on Copy would also toggle the block.
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            if (e.key === " ") e.preventDefault(); // Space scrolls the page otherwise
+            setOpen((o) => !o);
+          }
+        }}
+        style={s.promptHead}
+      >
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>

@@ -101,8 +101,11 @@ export class AgentsRepository {
         createdBy: values.createdBy ?? null,
       })
       .returning();
-    await this.snapshotVersion(row!, INITIAL_AGENT_VERSION);
-    return row!;
+    // A single-row INSERT ... RETURNING always yields exactly one row; the
+    // array type is just noUncheckedIndexedAccess widening it.
+    if (!row) throw new Error('insert into agents returned no row');
+    await this.snapshotVersion(row, INITIAL_AGENT_VERSION);
+    return row;
   }
 
   /**

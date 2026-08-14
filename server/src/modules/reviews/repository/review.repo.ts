@@ -23,7 +23,10 @@ export async function insertReview(
   },
 ): Promise<ReviewRow> {
   const [row] = await db.insert(t.reviews).values(values).returning();
-  return row!;
+  // A single-row INSERT ... RETURNING always yields exactly one row; the array
+  // type is just noUncheckedIndexedAccess widening it.
+  if (!row) throw new Error('insert into reviews returned no row');
+  return row;
 }
 
 export async function insertFindings(

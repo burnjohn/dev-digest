@@ -1,1 +1,1 @@
-export * from "./Showcase";
+export { Gallery } from "./Showcase";

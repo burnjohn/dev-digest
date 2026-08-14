@@ -12,7 +12,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadConfig, type AppConfig } from './platform/config.js';
-import { createDb, type Db } from './db/client.js';
+import { createDb, type Db, type DbHandle } from './db/client.js';
 import { Container, type ContainerOverrides } from './platform/container.js';
 import { AppError } from './platform/errors.js';
 import { modules } from './modules/index.js';
@@ -40,8 +40,16 @@ export interface BuildAppOptions {
  */
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = opts.config ?? loadConfig();
-  const handle = opts.db ? null : createDb(config.databaseUrl);
-  const db = opts.db ?? handle!.db;
+  // We only own (and therefore close) a handle when the caller didn't hand us
+  // a db. Assigning both in one branch keeps `handle.db` narrowed to non-null.
+  let handle: DbHandle | null = null;
+  let db: Db;
+  if (opts.db) {
+    db = opts.db;
+  } else {
+    handle = createDb(config.databaseUrl);
+    db = handle.db;
+  }
 
   const app = Fastify({
     // Explicit 1MB cap on request bodies (PR comments, settings payloads are

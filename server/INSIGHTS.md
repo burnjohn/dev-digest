@@ -51,6 +51,19 @@ _None yet._
 
 ## Codebase Patterns
 
+- **2026-08-14** — every package sets `noUncheckedIndexedAccess: true`, so the
+  `const [row] = await db.insert(...).returning()` idiom types `row` as
+  `Row | undefined` and used to be closed with `row!` in five places
+  (`modules/agents/repository.ts`, `modules/repos/repository.ts`,
+  `modules/reviews/repository/review.repo.ts`,
+  `modules/reviews/repository/run.repo.ts`, `platform/jobs.ts`). `!` is banned
+  (`@typescript-eslint/no-non-null-assertion`, `eslint.config.js`); the settled
+  shape is `if (!row) throw new Error('insert into <table> returned no row')`,
+  a plain `Error` (→ 500) and **not** `NotFoundError`, because a single-row
+  `INSERT ... RETURNING` yielding nothing is a broken invariant, not a missing
+  resource. Copy that line when adding a new repo insert.
+  `server/src/modules/repos/repository.ts:55`
+
 - **2026-08-04** — `agent_runs` counters (`findings_count`, `blockers`, and now
   `critical_count`/`warning_count`/`suggestion_count`) are denormalized onto the
   run row once, at run completion in `run-executor.ts`, and never recomputed —
@@ -86,13 +99,42 @@ _None yet._
   copy and get a real but confusing error pointing at the *caller*, not the
   missing field.
 
+- **2026-08-07** — the `routes.ts → service.ts → repository.ts` layering is a
+  convention, not something enforced: 4 of 8 feature modules —
+  `modules/pulls/routes.ts`, `modules/polling/routes.ts`,
+  `modules/settings/routes.ts`, `modules/workspace/routes.ts` — have no
+  `service.ts`/`repository.ts` at all and query Drizzle + hold business logic
+  directly in the route handler. The `dependency-cruiser` dep in `package.json`
+  is not a self-lint — it only analyzes *other people's* cloned repos for the
+  product feature. Treat those four as a documented exception (see
+  `.claude/skills/onion-architecture/SKILL.md`), not something to fix as a
+  drive-by — but apply the full split to any new module.
+  **Enforced 2026-08-14:** `no-restricted-imports` in `server/eslint.config.js`
+  now bans `drizzle-orm` and `db/schema` from every `src/modules/*/routes.ts`
+  and `service.ts`, and `pnpm lint` gates it in `server-unit.yml`. The four
+  legacy modules are exempted by an explicit `files:` list in that config
+  rather than by loosening the rule, so the exception stays countable — that
+  array should only ever get shorter. The other four modules were already
+  clean when the gate went in; this codified reality, it did not force a
+  refactor. `server/eslint.config.js`
+
 ## Tool & Library Notes
 
 _None yet._
 
 ## Recurring Errors & Fixes
 
-_None yet._
+- **2026-08-14** — a repository *update* that returns `Row | undefined` is
+  signalling a real read-modify-write race, not type noise, and asserting it
+  away turns a 404 into a 500. `actOnFinding` checked existence via
+  `repo.findingContext(findingId)` and then wrote
+  `findingRowToDto(row!)` on the result of `setFindingAccepted` /
+  `setFindingDismissed` — if the finding was deleted in that gap the `UPDATE`
+  matched zero rows and the route 500'd on `Cannot read properties of
+  undefined`. Fix is `if (!row) throw new NotFoundError('Finding not found')`;
+  `app.ts`'s error handler maps any `AppError.statusCode` straight through, so
+  that is the only thing needed for a 404. Assume the same gap in any
+  `lookup-then-update` pair here. `server/src/modules/reviews/findings.ts:25`
 
 ## Open Questions
 
