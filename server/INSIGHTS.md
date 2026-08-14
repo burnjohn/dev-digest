@@ -3,7 +3,7 @@
 Running log of non-obvious findings, decisions, and hard-won gotchas for
 `@devdigest/api`. Append newest at the top. Keep entries short: what surprised
 you, why it is that way, and what to do about it. This is the file Claude reads
-when a task in `server/` needs the *why*, not the *what* — the [CLAUDE.md](CLAUDE.md)
+when a task in `server/` needs the *why*, not the *what* — the [AGENTS.md](AGENTS.md)
 map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
