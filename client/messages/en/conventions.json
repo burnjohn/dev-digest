@@ -21,6 +21,33 @@
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "accept": "Accept",
+    "reject": "Reject",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ruleLabel": "Rule",
+    "categoryLabel": "Category"
+  },
+  "toolbar": {
+    "deselectAll": "Deselect all",
+    "selectedCount": "{selected} of {total} accepted",
+    "createSkill": "Create skill"
+  },
+  "createSkill": {
+    "title": "Create skill from conventions",
+    "mergedFrom": "Merged from {count, plural, one {# accepted convention} other {# accepted conventions}} in {repo}. Everything below is editable before you save.",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "typeLabel": "Type",
+    "enabledLabel": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "bodyLabel": "Skill body",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "cancel": "Cancel",
+    "success": "Created skill \"{name}\" — attach it to an agent from the Skills page.",
+    "defaultDescription": "{count, plural, one {# house convention} other {# house conventions}} extracted from {repo}"
   }
 }

@@ -41,6 +41,23 @@ serialization, or the two drift.
 validated input only, left responses unchecked, and duplicated the schema
 reference in every route.
 
+### 2026-08-14 — Conventions evidence is re-derived from disk, never trusted from the model
+
+**What:** `ConventionsService.extract`'s evidence gate
+(`modules/conventions/extract.ts`, `verifyEvidence`) checks only that
+`evidence_path` exists in the clone and `evidence_start_line..evidence_end_line`
+is in-bounds — then OVERWRITES `evidence_snippet` with the real on-disk lines
+before anything is persisted. The model's own snippet text is never stored.
+**Why:** citing a real line range is a much weaker claim than quoting it
+correctly, and a persisted quote a user might use to justify accepting a
+convention has to be trustworthy by construction, not by hoping the model
+transcribed it faithfully.
+**Rejected:** fuzzy-matching the model's `evidence_snippet` against the real
+source at that location and dropping candidates below a similarity threshold.
+Works, but adds a threshold to tune and still ships the model's wording on a
+match — verify-then-replace gives a stronger guarantee for less code.
+`server/src/modules/conventions/extract.ts` (`verifyEvidence`)
+
 ## What Works
 
 _None yet._

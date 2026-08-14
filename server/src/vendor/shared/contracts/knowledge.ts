@@ -260,13 +260,48 @@ export type CommunitySkill = z.infer<typeof CommunitySkill>;
 // ---- Conventions ----
 export const ConventionCandidate = z.object({
   id: z.string(),
+  /** Free-text label the model proposed, e.g. "naming", "error-handling". */
+  category: z.string(),
   rule: z.string(),
   evidence_path: z.string(),
+  evidence_start_line: z.number().int(),
+  evidence_end_line: z.number().int(),
+  /**
+   * Always the verified on-disk excerpt at [evidence_start_line,
+   * evidence_end_line] — never the model's raw paraphrase. See
+   * specs/03-conventions.md for why evidence is re-derived from disk rather
+   * than trusted from the model.
+   */
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
   accepted: z.boolean(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/** Response of both `POST /repos/:id/conventions/extract` and `GET /repos/:id/conventions`. */
+export const ConventionScan = z.object({
+  sampled_files: z.number().int(),
+  /** ISO timestamp of the last extraction run for this repo, null if never scanned. */
+  scanned_at: z.string().nullable(),
+  candidates: z.array(ConventionCandidate),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/**
+ * Body of `PATCH /conventions/:id`. Covers both the accept/reject toggle and
+ * editing a candidate's own prose (`rule`/`category`) — evidence fields are
+ * NOT editable here since they are mechanically grounded against disk.
+ */
+export const PatchConventionBody = z
+  .object({
+    accepted: z.boolean().optional(),
+    rule: z.string().min(1).optional(),
+    category: z.string().min(1).optional(),
+  })
+  .refine((b) => b.accepted !== undefined || b.rule !== undefined || b.category !== undefined, {
+    message: 'Provide at least one of accepted, rule, category',
+  });
+export type PatchConventionBody = z.infer<typeof PatchConventionBody>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

@@ -119,6 +119,18 @@ _None yet._
   (attachment *is* per-agent enablement; import is preview-then-confirm) that the
   written requirements left ambiguous. `client/messages/en/skills.json`,
   `specs/01-skills.md`
+  **Recurred 2026-08-14 (Conventions):** same shape, different lesson. The
+  `conventions` DB table, `ConventionCandidate` contract,
+  `container.repoIntel.getConventionSamples()`, the `SkillType`/`FeatureModelId`
+  enum members, and the full `client/messages/en/conventions.json` page copy
+  all pre-existed; the gap was routes/service/repository/extraction-pipeline —
+  and "turn accepted candidates into a skill" reuses the EXISTING skill-create
+  + agent-skill-link routes rather than building new ones. One inherited
+  wrinkle this time: `FEATURE_MODELS`'s `conventions` entry defaulted to
+  `openai/gpt-5.4`, not a cheap model — the starter's registry default was
+  actively wrong for what the feature needs, not just incomplete; check
+  registry *defaults*, not only presence, when inventorying. `specs/03-conventions.md`,
+  `server/src/modules/conventions/`
 
 - **2026-08-04** — `server/src/vendor/shared/contracts/*.ts` and
   `client/src/vendor/shared/contracts/*.ts` are two independent files with no

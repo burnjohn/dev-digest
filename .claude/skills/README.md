@@ -17,6 +17,9 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
+| [response-schema](response-schema/SKILL.md) | Full-stack | Changing an existing response field's type or requiredness — the contract/DB/client ripple |
+| [semver-discipline](semver-discipline/SKILL.md) | Full-stack | Is this change MAJOR, MINOR, or PATCH? — exported functions, contracts, routes, CLI flags |
+| [deprecation-policy](deprecation-policy/SKILL.md) | Full-stack | Mark a surface deprecated (with a replacement and removal trigger) instead of silently deleting it |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |

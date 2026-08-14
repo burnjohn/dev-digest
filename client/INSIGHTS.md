@@ -106,6 +106,20 @@ not show.
 
 ## Codebase Patterns
 
+- **2026-08-14** — `client/src/vendor/ui/` is documented as "do not touch"
+  (root `AGENTS.md`), but a NEW feature's sidebar entry has to land in
+  `vendor/ui/nav.ts` anyway — `Sidebar.tsx` imports the `NAV` constant
+  directly with no prop-based extension point, so there is no non-vendor place
+  to add a nav item. Confirmed by precedent, not by guessing: `git log -p --
+  client/src/vendor/ui/nav.ts` shows `LAB_L02` added the "SKILLS LAB" section
+  (`skills`/`agents` entries) the same way. `activeKeyFor` in
+  `components/app-shell/helpers.ts` (NOT vendored) already anticipates routes
+  the starter hasn't built yet — it maps `/conventions` to a `"conventions"`
+  key before any Conventions nav entry or page existed, which is a signal a
+  new feature's route was expected to land there, not an oversight to route
+  around. `client/src/vendor/ui/nav.ts`,
+  `client/src/components/app-shell/helpers.ts:31`
+
 - **2026-08-14** — `jsx-a11y/no-static-element-interactions` (now `error`, see
   `client/eslint.config.mjs`) fires on the plugin's default handler set, which
   covers **mouse and focus, not just `onClick`** — so a wrapper carrying only
