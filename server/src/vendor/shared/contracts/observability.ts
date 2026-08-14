@@ -93,6 +93,41 @@ export type MultiAgentRun = z.infer<typeof MultiAgentRun>;
 export const StatPoint = z.object({ label: z.string(), value: z.number() });
 export type StatPoint = z.infer<typeof StatPoint>;
 
+// ---------------------------------------------------------------------------
+// Per-skill Stats (GET /skills/:id/stats)
+// ---------------------------------------------------------------------------
+
+export const SkillCategoryTally = z.object({ category: z.string(), count: z.number().int() });
+export type SkillCategoryTally = z.infer<typeof SkillCategoryTally>;
+
+/**
+ * Aggregates for the Skill detail Stats tab. See specs/02-skill-detail-tabs.md
+ * for the exact definition of each field — `accept_rate` in particular is an
+ * ASSOCIATION (findings from runs that had this skill in the prompt), not
+ * attribution to the skill itself; no per-finding skill link exists.
+ */
+export const SkillStats = z.object({
+  skill_id: z.string(),
+  skill_name: z.string(),
+  window_days: z.number().int(),
+  /** Agents currently linking this skill — not windowed, a config fact. */
+  used_by_agents: z.number().int(),
+  /** Runs, in the window, that had this skill enabled in the prompt. */
+  runs_with_skill: z.number().int(),
+  /** Runs, in the window, by agents that CURRENTLY link this skill. */
+  runs_total: z.number().int(),
+  /** runs_with_skill / runs_total. Null when runs_total is 0. */
+  pull_rate: z.number().nullable(),
+  findings_total: z.number().int(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  pending: z.number().int(),
+  /** accepted / (accepted + dismissed). Null when neither has happened yet. */
+  accept_rate: z.number().nullable(),
+  findings_by_category: z.array(SkillCategoryTally),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
 export const AgentStats = z.object({
   agent_id: z.string(),
   agent_name: z.string(),

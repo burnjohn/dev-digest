@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -46,6 +46,15 @@ export interface UpdateAgent {
 export interface LinkedSkillRow {
   skill: typeof t.skills.$inferSelect;
   order: number;
+}
+
+/** One skill body destined for a prompt, with the name used in the run log. */
+export interface PromptSkillRow {
+  id: string;
+  name: string;
+  body: string;
+  /** The skill's version at resolution time — recorded into `run_skill_links`. */
+  version: number;
 }
 
 export class AgentsRepository {
@@ -202,9 +211,88 @@ export class AgentsRepository {
     return rows.map((r) => ({ skill: r.skill, order: r.order }));
   }
 
+  /**
+   * Attached-skill count per agent for a whole workspace, in ONE grouped query.
+   * Agents with no skills are absent from the map — the caller defaults to 0.
+   */
+  async skillCounts(workspaceId: string): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ agentId: t.agentSkills.agentId, count: count() })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agents.id, t.agentSkills.agentId))
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agentSkills.agentId);
+    return new Map(rows.map((r) => [r.agentId, Number(r.count)]));
+  }
+
   async skillIdsForAgent(agentId: string): Promise<string[]> {
     const links = await this.linkedSkills(agentId);
     return links.map((l) => l.skill.id);
+  }
+
+  /** Attached-skill count for ONE agent, without loading any skill bodies. */
+  async skillCount(agentId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ count: count() })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agentId));
+    return Number(row?.count ?? 0);
+  }
+
+  /**
+   * The skills that belong in this agent's PROMPT: linked, ENABLED, in the
+   * agent's configured order, and only the columns the prompt needs.
+   *
+   * Filtering on `skills.enabled` here — in SQL, on the read that feeds the
+   * prompt — is what makes the global toggle a real kill switch. Turning a skill
+   * off drops it from every agent at once without touching a single link, and a
+   * disabled skill can never reach a model via an agent whose link somebody
+   * forgot about.
+   *
+   * Distinct from `linkedSkills`, which the editor uses: that one returns every
+   * link regardless of `enabled`, because the editor has to render the ones the
+   * prompt is skipping.
+   *
+   * Workspace-scoped like every other skills read. The link table has no
+   * workspace column of its own, so without the predicate a link created across
+   * workspaces would put another tenant's skill body into this run's prompt and
+   * its trace — the one field this module treats as sensitive.
+   */
+  async enabledSkillsForPrompt(
+    workspaceId: string,
+    agentId: string,
+  ): Promise<PromptSkillRow[]> {
+    return this.db
+      .select({
+        id: t.skills.id,
+        name: t.skills.name,
+        body: t.skills.body,
+        version: t.skills.version,
+      })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+      .where(
+        and(
+          eq(t.agentSkills.agentId, agentId),
+          eq(t.skills.enabled, true),
+          eq(t.skills.workspaceId, workspaceId),
+        ),
+      )
+      .orderBy(asc(t.agentSkills.order));
+  }
+
+  /**
+   * Of `skillIds`, which actually live in this workspace. The caller rejects the
+   * difference — `agent_skills` has no workspace column, so a cross-workspace id
+   * would otherwise link cleanly and only surface later, inside a prompt.
+   */
+  async existingSkillIds(workspaceId: string, skillIds: string[]): Promise<Set<string>> {
+    if (skillIds.length === 0) return new Set();
+    const rows = await this.db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+    return new Set(rows.map((r) => r.id));
   }
 
   /** Link a skill to an agent at a given order (idempotent: upserts order). */

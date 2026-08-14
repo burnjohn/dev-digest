@@ -51,6 +51,20 @@ _None yet._
 
 ## Codebase Patterns
 
+- **2026-08-14** — a grouped-by-`X` aggregate query (`GROUP BY skill_id`, one
+  round trip for the whole list) and a single-item version of the same
+  aggregate (one skill's stats) don't need two query implementations. Give the
+  method an OPTIONAL `id?: string` and push it into the `WHERE` as one more
+  condition (via a plain `conditions: SQLWrapper[]` array, not `and(...,
+  maybe-undefined)` — TypeScript's overload resolution on `and()` gets
+  ambiguous with a conditionally-undefined argument): with the filter, the
+  `GROUP BY` result collapses to at most one row; without it, you get the map
+  for every skill in the workspace. `SkillsRepository.usedByCounts` /
+  `.runsWithSkillCounts` / `.runsTotalCounts` / `.findingsCounts` are all this
+  shape, called once with no `skillId` for `GET /skills`'s list footer and once
+  WITH `skillId` for `GET /skills/:id/stats` — no query is written twice.
+  `server/src/modules/skills/repository.ts`
+
 - **2026-08-14** — every package sets `noUncheckedIndexedAccess: true`, so the
   `const [row] = await db.insert(...).returning()` idiom types `row` as
   `Row | undefined` and used to be closed with `row!` in five places
@@ -120,7 +134,23 @@ _None yet._
 
 ## Tool & Library Notes
 
-_None yet._
+- **2026-08-14** — capping an uploaded archive's size does **not** cap what it
+  decompresses to, and with `fflate` the only place to stop a bomb is the
+  per-entry `filter`. `unzipSync` allocates each entry's output buffer from the
+  archive's self-declared `originalSize` *before* inflating a byte, so a check on
+  the extracted string runs far too late. Measured on the pinned `fflate@0.8.3`:
+  a 1,047,928-byte zip — half our 2MiB upload budget — inflated to 1GiB, drove
+  RSS to 2,122MB and blocked the event loop for 4.6s, and because `unzipSync` is
+  synchronous that stalls the whole API. Deflate reaches ~1024:1, so budget for
+  ~1000× the upload cap. The filter receives `size`/`originalSize`, so reject
+  there on both the single entry and a running total, and re-check the real
+  `bytes.length` afterwards because the header is the author's claim. Two traps
+  in the fix: the surrounding `try/catch` will swallow a `ValidationError` thrown
+  from the filter into a generic "is it a valid .zip?" unless you rethrow it, and
+  past ~512MB the failure surfaces as `RangeError: Cannot create a string longer
+  than 0x1fffffe8 characters` from `TextDecoder`, which a bare catch reports as
+  "not valid UTF-8". `server/src/modules/skills/import.ts:131`,
+  `server/test/skills-import.test.ts` ("refuses a zip bomb WITHOUT inflating it")
 
 ## Recurring Errors & Fixes
 

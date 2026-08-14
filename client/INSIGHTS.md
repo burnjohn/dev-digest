@@ -29,8 +29,23 @@ them here.
 
 ## Decisions
 
-_None yet. Add the first one the next time a UI approach is tried and
-abandoned — that is exactly what this file is for._
+### 2026-08-14 — `/skills` selection + tab live in query params, not a `[id]` route
+
+**What:** the skill detail panel is `/skills?skill=<id>&tab=<tab>`, both parsed
+from `useSearchParams()` in `SkillsListView`, not `/skills/[id]` the way
+`/agents/[id]` is a dynamic route with its OWN `?tab=`.
+**Why:** the mockup keeps the list and the detail panel on one screen at all
+times (no drill-down), and the breadcrumb never grows a third "skill name"
+crumb the way the agent editor's does — so there is no page-identity reason for
+a second route. Encoding both the selection and the tab as query params on the
+existing route gets "survives reload and back" for free from the URL, without a
+new `[id]/page.tsx`, a loading skeleton for it, or a not-found route.
+**Rejected:** an `/skills/[id]` route mirroring `/agents/[id]`. It is the more
+"consistent" shape on paper, but it would have added a whole second page (with
+its own loading/error states) to buy nothing the query-param version doesn't
+already give, and it would have grown the breadcrumb in a way the design does
+not show.
+`client/src/app/skills/_components/SkillsListView/SkillsListView.tsx`
 
 ## What Works
 
@@ -158,6 +173,19 @@ abandoned — that is exactly what this file is for._
   is on-screen and unclipped.
 
 ## Recurring Errors & Fixes
+
+- **2026-08-14** — `getByDisplayValue(multilineString)` silently fails to find
+  a `<textarea>` whose value contains `\n\n`, even when the DOM clearly shows
+  the right text (visible in `screen.debug()`). RTL's default normalizer
+  collapses whitespace — including embedded newlines — before comparing, so a
+  search string with a literal blank line never matches the (collapsed)
+  rendered value. This bit `ConfigTab.test.tsx`'s skill-body field (a bare
+  `<textarea>` in `SkillBodyEditor`, not the vendored single-line `Textarea`).
+  Fix: don't query multi-line fields by display value at all — select the
+  element directly, e.g. `container.querySelector('textarea[wrap="off"]')`,
+  then assert/mutate on `.value` yourself. Single-line fields (name,
+  description) are unaffected and keep using `getByDisplayValue` as normal.
+  `client/src/app/skills/_components/SkillDetail/_components/ConfigTab/ConfigTab.test.tsx`
 
 - **2026-08-14** — Giving a row/card container `role="button"` breaks its
   colocated test with `Found multiple elements with the role "button"` whenever

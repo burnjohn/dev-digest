@@ -71,8 +71,9 @@ flowchart TB
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
-  subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+  subgraph Agents["Agents & skills"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
+    skills["skills<br/>/skills · /skills/:id · /skills/:id/(versions|agents)<br/>/skills/import/preview"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -106,7 +107,8 @@ through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data
-(`acme/payments-api`, PR #482, the two built-in agents).
+(`acme/payments-api`, PR #482, the five built-in agents, and the built-in skills
+linked to the two that use them).
 
 ## Review context (non-obvious)
 
@@ -131,6 +133,16 @@ What the reviewer actually sends to the model is assembled in
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.
+- **Skills are the one unfenced user-supplied block.** An agent's linked skills
+  are resolved to bodies in `run-executor.ts` (`repo.skillsForPrompt`, which
+  filters on `skills.enabled` in SQL and orders by `agent_skills.order`) and
+  rendered as INSTRUCTIONS in `## Skills / rules` — deliberately NOT
+  `<untrusted>`-fenced, because a fenced skill falls under `INJECTION_GUARD` and
+  cannot change a review at all. The trust boundary is `enabled`: imported skills
+  are stored disabled and a person has to turn them on. See `specs/01-skills.md`.
+  An agent with no enabled skills produces a prompt byte-identical to the
+  pre-skills one, which is what makes a with/without comparison meaningful —
+  `pnpm experiment:skills` runs exactly that comparison.
 
 ## Testing
 

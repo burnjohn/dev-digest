@@ -68,6 +68,21 @@ input but left responses unchecked, so contract drift surfaced in the browser.
 
 ## What Works
 
+- **2026-08-14** — A/B-ing a prompt change against a real model needs **repeats,
+  and the right metric** — a single pair of runs is noise, not evidence. Building
+  the skills control experiment, the first version ran each condition once and
+  reported "0 findings without skills"; the very next invocation of the identical
+  input reported 1 WARNING that already spotted the thing the skill was supposed
+  to add. What is stable across repeats is **severity and verdict**, not finding
+  count or wording — and since only `CRITICAL` trips the merge gate, that is also
+  the only difference that changes anything operationally. Report it as a
+  fraction: "blocks in 0/5 runs without skills, 5/5 with". Two more things that
+  bit: the two conditions must run against the **same** PR row, or repo-intel
+  enrichment silently differs between them and the comparison is confounded; and
+  `tokensIn` roughly doubles on a structured-output reprompt, so it is not a
+  proxy for prompt size — use the per-section breakdown for that.
+  `cd server && pnpm experiment:skills --runs 5`
+
 - **2026-08-14** — A "you may not proceed until you have run X" gate has to bind
   its verdict to **both** `git rev-parse HEAD` **and** a hash of the working
   tree; the sha alone lets a PASS earned on one set of changes be spent on
@@ -85,6 +100,25 @@ input but left responses unchecked, so contract drift surfaced in the browser.
 _None yet._
 
 ## Codebase Patterns
+
+- **2026-08-14** — Before building a lesson's feature, **inventory what the
+  starter already wired**, because it is far more than the schema. `server/AGENTS.md`
+  only warns that the DB has every table; in fact the Skills lesson also found
+  its Zod contracts (`Skill`, `SkillType`, `SkillSource`, `AgentSkillLink` in
+  `contracts/knowledge.ts`), the whole agent side of the relationship
+  (`GET`/`POST /agents/:id/skills`, `setSkills`, `linkSkill`, plus skill ids
+  already snapshotted into `agent_versions.config_json`), the engine slot and its
+  rendering (`assemblePrompt`'s `skills` param → `## Skills / rules`), the trace
+  field, the sidebar key in `activeKeyFor`, and **every user-facing string**
+  pre-written in `client/messages/en/skills.json` — down to the import drawer's
+  three tabs and the version label. The actual gap was one un-passed argument:
+  `run-executor.ts` never handed `skills` to `reviewPullRequest` and wrote
+  `skills: null` into every trace, so the feature was fully stored, fully
+  versioned and completely inert. Read the i18n file first — it is the closest
+  thing to a spec for the intended UI, and it settled two design questions
+  (attachment *is* per-agent enablement; import is preview-then-confirm) that the
+  written requirements left ambiguous. `client/messages/en/skills.json`,
+  `specs/01-skills.md`
 
 - **2026-08-04** — `server/src/vendor/shared/contracts/*.ts` and
   `client/src/vendor/shared/contracts/*.ts` are two independent files with no

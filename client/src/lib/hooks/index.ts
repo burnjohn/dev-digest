@@ -27,6 +27,21 @@ export {
 export type { CreateAgentInput, UpdateAgentInput } from "./agents";
 
 export {
+  useSkills,
+  useSkill,
+  useCreateSkill,
+  useUpdateSkill,
+  useDeleteSkill,
+  useImportSkillPreview,
+  useAgentSkills,
+  useSetAgentSkills,
+  useSkillAgentIds,
+  useSkillVersions,
+  useSkillStats,
+} from "./skills";
+export type { CreateSkillInput, UpdateSkillInput } from "./skills";
+
+export {
   usePrActiveRuns,
   usePrRuns,
   usePrReviews,

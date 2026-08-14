@@ -1,0 +1,63 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the agent editor's Skills tab. */
+export const s = {
+  header: { display: "flex", alignItems: "center", gap: 10, marginBottom: 8 } satisfies CSSProperties,
+  title: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
+  spacer: { flex: 1 } satisfies CSSProperties,
+  filter: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "7px 11px",
+    borderRadius: 7,
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+    width: 200,
+  } satisfies CSSProperties,
+  filterIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
+  filterInput: {
+    flex: 1,
+    fontSize: 13,
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  hint: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    marginBottom: 16,
+  } satisfies CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
+  row: (attached: boolean, dragging: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "9px 12px",
+    borderRadius: 8,
+    border: `1px solid ${attached ? "var(--border-strong)" : "var(--border)"}`,
+    background: attached ? "var(--bg-elevated)" : "var(--bg-surface)",
+    opacity: dragging ? 0.6 : 1,
+  }),
+  handle: (draggable: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    padding: 2,
+    border: "none",
+    background: "transparent",
+    color: "var(--text-muted)",
+    cursor: draggable ? "grab" : "not-allowed",
+    opacity: draggable ? 1 : 0.4,
+    touchAction: "none",
+  }),
+  name: {
+    flex: 1,
+    fontSize: 13,
+    color: "var(--text-primary)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  disabledNote: { fontSize: 11, color: "var(--warn)" } satisfies CSSProperties,
+} as const;

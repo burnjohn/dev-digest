@@ -128,8 +128,125 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /**
+   * Read-only usage aggregates for the list-card footer. Nullish because a
+   * caller with no cheap way to compute them (a version snapshot, an export)
+   * should omit the fields rather than report a wrong 0 — see `skill_count` on
+   * `Agent` for the same convention.
+   *
+   * `pull_rate`/`accept_rate` come from `run_skill_links`, a record of which
+   * runs had this skill in their prompt — see specs/02-skill-detail-tabs.md.
+   * `accept_rate` is an ASSOCIATION, not attribution: a skill sitting in the
+   * prompt beside four others gets credit for all five's findings.
+   */
+  used_by_agents: z.number().int().nullish(),
+  pull_rate: z.number().nullable().optional(),
+  accept_rate: z.number().nullable().optional(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** One immutable body snapshot from `skill_versions`, newest first in listings. */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/**
+ * Caps on a persisted skill. They live in the CONTRACT, not only in the
+ * importer, because import is stateless by design: the extractor returns a
+ * preview and the client POSTs it back through the ordinary create route. A cap
+ * enforced only in `import.ts` is therefore a cap on the polite path — and a
+ * skill body is rendered into every linked agent's prompt as instructions.
+ */
+export const MAX_SKILL_BODY_CHARS = 200_000;
+export const MAX_SKILL_NAME_CHARS = 200;
+export const MAX_SKILL_DESCRIPTION_CHARS = 2_000;
+
+export const CreateSkillBody = z.object({
+  name: z.string().min(1).max(MAX_SKILL_NAME_CHARS),
+  description: z.string().max(MAX_SKILL_DESCRIPTION_CHARS).default(''),
+  type: SkillType,
+  /**
+   * Provenance. Immutable once set — `UpdateSkillBody` deliberately omits it, so
+   * a skill that arrived from someone else's archive can never be relabelled
+   * `manual` and lose the "untrusted source" badge it is meant to carry.
+   */
+  source: SkillSource.default('manual'),
+  body: z.string().min(1).max(MAX_SKILL_BODY_CHARS),
+  /**
+   * Whether this skill contributes to any agent's prompt. Imported skills are
+   * created with `false`: a skill body reaches the model as INSTRUCTIONS (it is
+   * not `<untrusted>`-fenced — see specs/01-skills.md), so a human vetting it is
+   * the only gate between a downloaded file and the agent's prompt.
+   */
+  enabled: z.boolean().default(true),
+});
+/**
+ * Post-parse shape — every defaulted field is present. This is what a handler
+ * sees; it is NOT what a caller sends.
+ */
+export type CreateSkillBody = z.infer<typeof CreateSkillBody>;
+/** What a CALLER sends: the defaulted fields are optional. Use this client-side. */
+export type CreateSkillBodyInput = z.input<typeof CreateSkillBody>;
+
+export const UpdateSkillBody = z.object({
+  name: z.string().min(1).max(MAX_SKILL_NAME_CHARS).optional(),
+  description: z.string().max(MAX_SKILL_DESCRIPTION_CHARS).optional(),
+  type: SkillType.optional(),
+  body: z.string().min(1).max(MAX_SKILL_BODY_CHARS).optional(),
+  enabled: z.boolean().optional(),
+});
+export type UpdateSkillBody = z.infer<typeof UpdateSkillBody>;
+
+/**
+ * Body of `POST /skills/import/preview`.
+ *
+ * Base64 in a JSON body rather than multipart, so the upload is validated by a
+ * Zod schema at the edge like every other route instead of bypassing that path.
+ * Skills are prose measured in kilobytes; the streaming multipart would buy is
+ * worth nothing here.
+ */
+export const SkillImportPreviewBody = z.object({
+  filename: z.string().min(1).max(255),
+  content_base64: z.string().min(1),
+});
+export type SkillImportPreviewBody = z.infer<typeof SkillImportPreviewBody>;
+
+/**
+ * The result of extracting a skill from an uploaded `.md` or `.zip`. Nothing is
+ * persisted to produce this — the user confirms the preview, and the client then
+ * POSTs it as a normal create. Round-tripping through the client (rather than
+ * holding server-side state between the two steps) keeps import stateless and
+ * makes "saved only after confirmation" true by construction.
+ */
+export const SkillImportPreview = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  /**
+   * Provenance, decided by the EXTRACTOR and forwarded verbatim by the confirm
+   * step. It is here so the disabled-on-arrival rule does not depend on a client
+   * remembering to declare where the body came from — a second import entry
+   * point that forgot would otherwise persist someone else's instructions as
+   * `manual`, enabled, with no "untrusted source" badge.
+   */
+  source: SkillSource,
+  body: z.string(),
+  /** Entry the body was taken from — `skill.md`, or `security/SKILL.md` in a zip. */
+  source_path: z.string(),
+  /**
+   * Archive entries that were NOT read. The extractor takes markdown only, so
+   * scripts, binaries and manifests all land here. Surfaced in the preview so
+   * "executable parts are not processed" is something the user can see, not just
+   * something we claim.
+   */
+  ignored: z.array(z.string()),
+  size_bytes: z.number().int(),
+});
+export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
@@ -188,6 +305,13 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  /**
+   * How many skills are attached to this agent — a read-only count for the
+   * agent card, not part of the agent's config. Nullish so a caller that has no
+   * cheap way to count (a version snapshot, an export) can omit it rather than
+   * report a wrong 0.
+   */
+  skill_count: z.number().int().nullish(),
 });
 export type Agent = z.infer<typeof Agent>;
 

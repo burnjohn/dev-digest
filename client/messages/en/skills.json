@@ -3,18 +3,25 @@
     "crumbLab": "Skills Lab",
     "crumbSkills": "Skills",
     "heading": "Skills",
+    "subtitle": "Reusable review rules. A skill is a markdown block that any agent can link — write it once, and every agent that uses it stays in step.",
     "addSkill": "Add Skill",
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
+      "create": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
-      "community": "Search community skills…"
+      "community": "Search community skills…",
+      "notAvailable": "Not available yet"
     },
     "empty": {
       "title": "No skills yet",
-      "body": "Import a skill from a file, a URL, or the community catalog.",
-      "cta": "Import from file"
+      "body": "A skill is a rule an agent follows — a severity rubric, a secret-leakage gate, a house convention. Write one, or import a markdown file or archive.",
+      "cta": "Create a skill"
+    },
+    "noMatch": {
+      "title": "No matching skills",
+      "body": "Try a different search term."
     },
     "selectPrompt": {
       "title": "Select a skill",
@@ -28,48 +35,70 @@
     "notFound": {
       "title": "Skill not found",
       "body": "It may have been deleted."
+    },
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "evals": "Evals",
+      "stats": "Stats",
+      "versions": "Versions"
     }
   },
   "drawer": {
     "title": "Add a skill",
-    "subtitle": "Import from a file, a URL, or search vetted community skills",
+    "subtitle": "Write one yourself, or import a markdown file or archive",
     "tabs": {
+      "create": "Write it",
       "file": "From file",
       "url": "From URL",
       "community": "Community"
     },
-    "importFailed": "Import failed"
+    "importFailed": "Import failed",
+    "cancel": "Cancel"
+  },
+  "create": {
+    "nameLabel": "Name",
+    "namePlaceholder": "pr-quality-rubric",
+    "descriptionLabel": "Description",
+    "descriptionHint": "This is the skill's interface — how you and an agent decide it applies. Write it as a directive: “Use when the diff adds a test.”",
+    "descriptionPlaceholder": "Use when …",
+    "typeLabel": "Type",
+    "bodyLabel": "Skill body (Markdown)",
+    "bodyHint": "This text goes into the agent's prompt as instructions, in the order you arrange it on the agent.",
+    "bodyPlaceholder": "# Rule\n\nDescribe the rule…",
+    "creating": "Creating…",
+    "create": "Create skill",
+    "success": "Created “{name}”."
   },
   "file": {
-    "nameLabel": "Skill name",
-    "nameHint": "Optional — derived from the first heading if blank.",
-    "namePlaceholder": "pr-quality-rubric",
-    "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
-    "bodyPlaceholder": "# Rule\nDescribe the rule…",
-    "importing": "Importing…",
-    "import": "Import skill",
-    "success": "Imported \"{name}\" (stored as untrusted data)."
+    "pickLabel": "Skill file",
+    "pickHint": "A .md file, or a .zip whose markdown is read and whose executable entries are ignored.",
+    "pick": "Choose a file…",
+    "readError": "The browser could not read that file.",
+    "reading": "Reading…",
+    "extracting": "Extracting…",
+    "previewTitle": "Preview",
+    "previewHint": "Nothing is saved until you confirm.",
+    "extractedFrom": "Read from {path}",
+    "ignoredLabel": "{count, plural, one {# entry ignored} other {# entries ignored}}",
+    "ignoredHint": "Not read, not run — only markdown is extracted from an archive.",
+    "trustWarning": "A skill body reaches the agent as instructions, not as quoted data. Read it before you enable it — importing someone else's skill puts someone else's instructions in your agent's prompt.",
+    "importing": "Saving…",
+    "import": "Save skill",
+    "success": "Imported “{name}”. Disabled until you vet and enable it."
   },
   "url": {
     "label": "Skill URL",
-    "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
-    "placeholder": "https://example.com/skills/security.md",
-    "fetching": "Fetching…",
-    "import": "Import from URL",
-    "success": "Imported \"{name}\". Disabled until you vet + enable it."
+    "hint": "Fetching a user-supplied address server-side needs its own allow-list and size limits — out of scope for now. Download the file and import it instead.",
+    "placeholder": "https://example.com/skills/security.md"
   },
   "community": {
-    "searchPlaceholder": "Search community skills (e.g. security)…",
-    "allLanguages": "All languages",
-    "loadError": "Could not load community skills",
-    "retry": "Retry",
-    "noMatch": {
-      "title": "No matching skills",
-      "body": "Try a different search term."
-    },
-    "importing": "Importing…",
-    "import": "Import"
+    "hint": "A catalog of vetted community skills is not wired up yet. Download a skill and import it from file."
+  },
+  "card": {
+    "usedBy": "{count, plural, one {# agent} other {# agents}}",
+    "pull": "{pct}% pull",
+    "accept": "{pct}% accept"
   },
   "listItem": {
     "needsVetting": "needs vetting",
@@ -91,11 +120,66 @@
     "untrustedBadge": "untrusted source",
     "enabled": "Enabled",
     "disabled": "Disabled",
+    "delete": "Delete skill",
+    "deleteConfirm": "Delete “{name}”? Agents that link it lose it from their prompt. This cannot be undone.",
+    "untrustedNotice": "This skill came from an untrusted source and its body reaches the agent as instructions, not as quoted data. Read it in full before enabling it — while it is disabled it contributes nothing to any prompt.",
+    "usedBy": "{count, plural, =0 {Not linked to any agent} one {Linked to # agent} other {Linked to # agents}}",
+    "version": "v{version}",
+    "savedToast": "Saved “{name}” (v{version})",
+    "deletedToast": "Deleted “{name}”"
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "descriptionHint": "The skill's interface — write it as a directive: “Use when …”.",
+    "typeLabel": "Type",
+    "bodyLabel": "Skill body",
+    "bodyHint": "Saving a changed body creates a new immutable version. Renaming does not — see the Versions tab.",
+    "unsaved": "unsaved",
+    "tokenCount": "{count} tokens",
+    "tokenEstimateHint": "Estimated as chars ÷ 4, same as the run trace — not a billed figure.",
     "save": "Save",
-    "edit": "Edit",
-    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
-    "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Saving a changed body creates a new immutable version.",
-    "version": "v{version}"
+    "saving": "Saving…"
+  },
+  "previewTab": {
+    "title": "Preview",
+    "subtitle": "Rendered as the reviewing agent receives it."
+  },
+  "versionsTab": {
+    "title": "Versions",
+    "current": "current",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "restoreConfirm": "Restore v{version}? This creates a new version with this body — it does not delete anything.",
+    "restoredToast": "Restored the body from v{version} (now v{newVersion})",
+    "loadError": "Could not load version history.",
+    "empty": {
+      "title": "No history yet",
+      "body": "Every body change creates a version here — nothing to show until the first edit."
+    }
+  },
+  "evalsTab": {
+    "title": "Evals",
+    "comingSoon": {
+      "title": "Evals arrive with their own lesson",
+      "body": "Scoring a skill's recall, precision and citation accuracy against saved cases is a separate build — this tab is a placeholder until then."
+    }
+  },
+  "statsTab": {
+    "title": "Stats",
+    "loadError": "Could not load stats.",
+    "usedBy": "USED BY",
+    "usedBySuffix": "{count, plural, one {agent} other {agents}}",
+    "pullFrequency": "PULL FREQUENCY",
+    "pullFrequencyHint": "Runs, in the last {days} days, that had this skill enabled in the prompt — out of all runs by agents that currently link it.",
+    "acceptRate": "ACCEPT RATE",
+    "acceptRateHint": "Accepted ÷ (accepted + dismissed) findings from runs that had this skill in the prompt — an ASSOCIATION, not attribution. A skill sitting in the prompt beside others gets credit for all of their findings too.",
+    "findings": "FINDINGS ({days}D)",
+    "agentsUsingTitle": "AGENTS USING THIS SKILL",
+    "openAgent": "Open",
+    "categoryTitle": "FINDINGS BY CATEGORY",
+    "categoryEmpty": "No findings yet in this window."
   }
 }

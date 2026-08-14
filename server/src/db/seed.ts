@@ -3,10 +3,13 @@ import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
 import {
+  API_CONTRACT_REVIEWER_PROMPT,
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SEED_AGENT_SKILLS, SEED_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -18,11 +21,13 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, the five built-in agents (General + Security +
+ * Performance + Test Quality + API Contract), all on the default
+ * openrouter/deepseek-v4-flash provider+model, and the built-in skills, linked
+ * in prompt order to the two agents that use them.
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * Course lessons populate the other tables (conventions, memory, eval, …) once
+ * their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -229,7 +234,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     ]);
   }
 
-  // ---- built-in agents (the three starter presets) ----
+  // ---- built-in agents ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
     {
@@ -265,6 +270,29 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description:
+        'Checks the tests, not the code: uncovered branches, missing corner cases, over-mocking.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description: 'Catches breaking changes to routes, schemas, signatures and columns.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -274,7 +302,77 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (!existing) await db.insert(t.agents).values(a);
   }
 
+  await seedSkills(db, workspaceId);
+
   return { workspaceId, userId };
+}
+
+/**
+ * Seed the built-in skills and attach them to the agents that use them.
+ *
+ * Idempotent in the same shape as the agents above: a skill is inserted only
+ * when no skill of that name exists in the workspace, so re-running the seed
+ * never clobbers a body the user has since edited (and never bumps its version).
+ * Links are upserted, because the order is part of the preset.
+ */
+async function seedSkills(db: Db, workspaceId: string): Promise<void> {
+  const idByName = new Map<string, string>();
+
+  for (const skill of SEED_SKILLS) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, skill.name)));
+
+    if (existing) {
+      idByName.set(skill.name, existing.id);
+      continue;
+    }
+
+    const row = insertedRow(
+      await db
+        .insert(t.skills)
+        .values({
+          workspaceId,
+          name: skill.name,
+          description: skill.description,
+          type: skill.type,
+          source: 'manual',
+          body: skill.body,
+          enabled: true,
+          version: 1,
+        })
+        .returning(),
+      `skill "${skill.name}"`,
+    );
+    idByName.set(skill.name, row.id);
+    // Mirror the repository's contract: v1 is a real snapshot, so the history a
+    // seeded skill shows is the same shape as a hand-created one's.
+    await db
+      .insert(t.skillVersions)
+      .values({ skillId: row.id, version: 1, body: skill.body })
+      .onConflictDoNothing();
+  }
+
+  for (const [agentName, skillNames] of Object.entries(SEED_AGENT_SKILLS)) {
+    const [agent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+    if (!agent) continue;
+
+    for (const [order, skillName] of skillNames.entries()) {
+      const skillId = idByName.get(skillName);
+      if (!skillId) continue;
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: agent.id, skillId, order })
+        .onConflictDoUpdate({
+          target: [t.agentSkills.agentId, t.agentSkills.skillId],
+          set: { order },
+        });
+    }
+  }
 }
 
 // CLI entrypoint

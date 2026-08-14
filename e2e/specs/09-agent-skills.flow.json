@@ -1,0 +1,16 @@
+{
+  "name": "Agent editor's Skills tab shows the agent's attached skills in prompt order",
+  "description": "Opens the seeded Test Quality Reviewer and switches to its Skills tab, confirming the attached-count badge and the rows. The order shown here is the order of the blocks in the assembled prompt, so this flow is what catches the tab silently losing the agent's configuration. Read-only against seeded data (no model call, no write) — it asserts state, it does not tick or drag.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "open the agent editor" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agent fetch settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Skills"], "label": "switch to the Skills tab" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills + links fetch settles" },
+    { "cmd": ["wait", "--text", "3 of 5 enabled"], "label": "three of the five seeded skills are attached" },
+    { "cmd": ["wait", "--text", "uncovered-branch-gate"], "label": "the first attached skill is listed" },
+    { "cmd": ["wait", "--text", "contract-copy-drift"], "label": "an unattached skill is listed too" }
+  ]
+}

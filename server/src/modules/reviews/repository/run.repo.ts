@@ -204,3 +204,21 @@ export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | und
   const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
   return row ? (row.trace as RunTrace) : undefined;
 }
+
+/**
+ * Record which skills were rendered into this run's prompt. Called right after
+ * skills are resolved in `run-executor.ts`, BEFORE the model call — so a run
+ * that later fails or is cancelled still has an honest record of what it would
+ * have used. A no-op for an agent with no enabled skills.
+ */
+export async function recordSkillsUsed(
+  db: Db,
+  runId: string,
+  skills: { id: string; version: number }[],
+): Promise<void> {
+  if (skills.length === 0) return;
+  await db
+    .insert(t.runSkillLinks)
+    .values(skills.map((s) => ({ runId, skillId: s.id, version: s.version })))
+    .onConflictDoNothing();
+}
