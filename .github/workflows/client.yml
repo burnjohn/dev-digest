@@ -9,10 +9,16 @@ on:
     branches: [main]
     paths:
       - 'client/**'
+      # The canonical contracts live in the server tree; a change there must
+      # re-run the drift check below.
+      - 'server/src/vendor/shared/**'
+      - 'scripts/sync-vendor.sh'
       - '.github/workflows/client.yml'
   pull_request:
     paths:
       - 'client/**'
+      - 'server/src/vendor/shared/**'
+      - 'scripts/sync-vendor.sh'
       - '.github/workflows/client.yml'
 
 permissions:
@@ -31,6 +37,17 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
+
+      # The client vendors its own copy of @devdigest/shared (Next's webpack
+      # can't resolve the server tree). Fail loudly the moment the two diverge —
+      # a stale client copy silently rejects values the server legitimately emits.
+      # Invoked as `bash <script>`, not `./<script>`: the exec bit is recorded in the
+      # index, but this repo is developed on a clone with core.filemode=false, where a
+      # re-add silently drops the mode back to 100644 and `./…` starts exiting 126.
+      # That regression is invisible until CI runs, and this step is first and blocking.
+      - name: vendored contracts in sync
+        working-directory: .
+        run: bash scripts/sync-vendor.sh --check
 
       - uses: pnpm/action-setup@v4
         with:

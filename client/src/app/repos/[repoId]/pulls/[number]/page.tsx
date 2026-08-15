@@ -69,10 +69,10 @@ export default function PRDetailPage() {
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
-  const allFindings: FindingRecord[] = React.useMemo(
-    () => runs.flatMap((r) => r.findings),
-    [reviews],
-  );
+  // Not memoized: flattening a handful of runs is cheaper than the comparison,
+  // and the memo it replaced listed `[reviews]` while its body read `runs` —
+  // the exact mismatch exhaustive-deps exists to catch.
+  const allFindings: FindingRecord[] = runs.flatMap((r) => r.findings);
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
 

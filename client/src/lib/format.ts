@@ -17,3 +17,24 @@ export function formatCost(usd: number | null | undefined): string {
   if (dec.length < 2) s = usd.toFixed(2);
   return `$${s}`;
 }
+
+/**
+ * Compact relative time (e.g. "3h", "2d") for list columns. `null`/unparseable
+ * → `"—"`, matching formatCost's null rule.
+ *
+ * Lives here rather than beside the PR list because it knows nothing about pull
+ * requests — it is a formatter, like its neighbour. Its old home
+ * (`app/repos/[repoId]/pulls/helpers.ts`) is for helpers that DO know the
+ * domain, which is why `sizeOf` stayed there.
+ */
+export function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "—";
+  const m = Math.max(0, Math.round((Date.now() - then) / 60_000));
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}

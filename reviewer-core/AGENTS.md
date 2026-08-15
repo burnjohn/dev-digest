@@ -6,8 +6,8 @@ filesystem — the only side effect is an LLM call through an **injected** `LLMP
 
 ## Commands (run from `reviewer-core/`)
 
-- `pnpm test` — vitest, hermetic units with a stubbed `LLMProvider` (no keys, no network).
-- `pnpm typecheck` — `tsc --noEmit`; **this is also the build** (the package never emits JS).
+- `npm test` — vitest, hermetic units with a stubbed `LLMProvider` (no keys, no network).
+- `npm run typecheck` — `tsc --noEmit`; **this is also the build** (the package never emits JS).
 
 ## Where things live (`src/`, files at root — no `src/` wrapper dir)
 

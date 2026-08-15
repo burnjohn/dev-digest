@@ -25,7 +25,16 @@ export const memory = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   },
-  (t) => ({ wsIdx: index('memory_ws_idx').on(t.workspaceId) }),
+  (t) => ({
+    wsIdx: index('memory_ws_idx').on(t.workspaceId),
+    // Same reasoning as code_chunks: recall over memory is a vector search, and
+    // without an HNSW index it degrades to a full scan with a 1536-dim distance
+    // computation per row.
+    embeddingIdx: index('memory_embedding_hnsw').using(
+      'hnsw',
+      t.embedding.op('vector_cosine_ops'),
+    ),
+  }),
 );
 
 export const conventions = pgTable('conventions', {

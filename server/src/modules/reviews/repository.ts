@@ -148,24 +148,16 @@ export class ReviewRepository {
     return runRepo.createAgentRun(this.db, values);
   }
 
+  /**
+   * The values type is DERIVED from the repo function rather than restated.
+   * Restating it made this façade a third copy of the same shape, and adding a
+   * field to a run meant editing all three — miss this one and the TS error
+   * lands at the call site in run-executor.ts, pointing away from the real
+   * cause (logged in INSIGHTS.md, 2026-08-09).
+   */
   completeAgentRun(
     runId: string,
-    values: {
-      status: 'done' | 'failed' | 'cancelled';
-      durationMs: number;
-      tokensIn: number;
-      tokensOut: number;
-      findingsCount: number;
-      grounding: string;
-      /** Review score (0-100); null on failed/cancelled runs. */
-      score?: number | null;
-      /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
-      blockers?: number | null;
-      /** Exact per-run LLM cost in USD; null for unknown-price/free models. */
-      costUsd?: number | null;
-      /** Failure reason (status='failed') / cancellation note. Null clears it. */
-      error?: string | null;
-    },
+    values: Parameters<typeof runRepo.completeAgentRun>[2],
   ): Promise<void> {
     return runRepo.completeAgentRun(this.db, runId, values);
   }

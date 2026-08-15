@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
 import { withTimeout, withRetry } from './resilience.js';
+import { redactCredentials } from './errors.js';
 
 /**
  * JobRunner — async work (clone, PR import, indexing, polling) on a
@@ -90,12 +91,21 @@ export class JobRunner {
           .set({
             status: 'failed',
             finishedAt: new Date(),
-            error: (err as Error).message,
+            error: redactCredentials((err as Error).message),
           })
           .where(eq(t.jobs.id, jobId));
         throw err;
       }
     }) as Promise<void>;
+
+    // Every caller today does `await jobs.enqueue(...)` — which awaits the
+    // ENQUEUE, not the job — so nothing observes `done`. Without a terminal
+    // handler its rejection is a floating unhandledRejection, and Node's default
+    // for that is to throw: one failed clone (private repo, no token, network
+    // blip) would take the API process down. Attaching the no-op here marks the
+    // promise handled; a caller that DOES await `done` still sees the rejection,
+    // and the failure is recorded in the `jobs` row above either way.
+    done.catch(() => {});
 
     return { id: jobId, done };
   }

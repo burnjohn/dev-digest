@@ -201,9 +201,9 @@ export async function runFullIndex(
   // Persist phase -------------------------------------------------------
   // Delete-then-insert is the idempotent shape blast already uses. Keeps
   // the new UNIQUE index (symbols_repo_path_name_kind_line_uq) happy.
-  await repository.deleteAllForRepo(repoId);
-  await repository.insertSymbols(symbolsBuf);
-  await repository.insertReferences(refsBuf);
+  // Wrapped in one transaction so a failure mid-insert can't leave the repo
+  // indexed as empty — see replaceAllForRepo.
+  await repository.replaceAllForRepo(repoId, symbolsBuf, refsBuf);
 
   // --- T3: graph → resolve → rank → repo-map → facts -------------------
   // Skipped when the soft budget tripped: we're already over time, and the

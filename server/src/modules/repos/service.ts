@@ -2,7 +2,7 @@ import type { Container } from '../../platform/container.js';
 import { type Repo } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { RepoRepository } from './repository.js';
-import { parseRepoUrl, withGitHubToken, toRepoDto } from './helpers.js';
+import { parseRepoUrl, cloneUrlFor, toRepoDto } from './helpers.js';
 import {
   CLONE_JOB_KIND,
   CLONE_DEPTH,
@@ -51,7 +51,12 @@ export class RepoService {
   async runCloneJob(payload: CloneJobPayload): Promise<void> {
     const { repoId, owner, name, url } = payload;
     const token = await this.container.secrets.get(GITHUB_TOKEN_SECRET);
-    const cloneUrl = token ? withGitHubToken(url, token) : url;
+    // Rebuild the https remote from the validated owner/name instead of reusing
+    // the user's string, so nothing but a github.com URL can reach `git clone`.
+    // The ssh form is passed through — GITHUB_URL_REGEX only accepts
+    // `git@github.com:`, so a URL that parsed is already known-good, and
+    // rewriting it to https would break key-based clones.
+    const cloneUrl = url.startsWith('git@') ? url : cloneUrlFor(owner, name, token);
     const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
       depth: CLONE_DEPTH,
     });

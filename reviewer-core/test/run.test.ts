@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { LLMProvider, StructuredResult } from '@devdigest/shared';
+import type { LLMProvider, StructuredRequest, StructuredResult } from '@devdigest/shared';
 import { MockLLMProvider, MockGitClient } from '../../server/src/adapters/mocks.js';
 import { reviewPullRequest } from '../src/index.js';
 
@@ -108,7 +108,7 @@ describe('reviewPullRequest (engine)', () => {
     const seen: (string | undefined)[] = [];
     const recorder: LLMProvider = {
       id: 'openrouter',
-      async completeStructured<T>(req): Promise<StructuredResult<T>> {
+      async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
         seen.push(req.sessionId);
         return {
           data: fixture as unknown as T,

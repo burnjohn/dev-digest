@@ -35,7 +35,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     try {
       gh = await container.github();
     } catch (err) {
-      app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
+      req.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
     }
 
     // Local-first: sync from GitHub when a token is configured, but never
@@ -73,7 +73,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
             });
         }
       } catch (err) {
-        app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+        req.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
       }
     }
 
@@ -106,7 +106,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           r.deletions = detail.deletions;
           r.filesCount = detail.files_count;
         } catch (err) {
-          app.log.warn({ err, number: r.number }, 'PR diff-stat backfill skipped');
+          req.log.warn({ err, number: r.number }, 'PR diff-stat backfill skipped');
         }
       }
     }
@@ -236,45 +236,52 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const gh = await container.github();
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
-      await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
-      if (detail.files.length > 0) {
-        await container.db.insert(t.prFiles).values(
-          detail.files.map((f) => ({
-            prId: pr.id,
-            path: f.path,
-            additions: f.additions,
-            deletions: f.deletions,
-            patch: f.patch ?? null,
-          })),
-        );
-      }
-      await container.db.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
-      if (detail.commits.length > 0) {
-        await container.db.insert(t.prCommits).values(
-          detail.commits.map((c) => ({
-            prId: pr.id,
-            sha: c.sha,
-            message: c.message,
-            author: c.author,
-            committedAt: c.committed_at ? new Date(c.committed_at) : null,
-          })),
-        );
-      }
-      await container.db
-        .update(t.pullRequests)
-        .set({
-          body: detail.body ?? null,
-          // Diff stats aren't on GitHub's PR-list payload — backfill them from
-          // the detail fetch so the Pull Requests list shows real size/files.
-          additions: detail.additions,
-          deletions: detail.deletions,
-          filesCount: detail.files_count,
-        })
-        .where(eq(t.pullRequests.id, pr.id));
+      // One transaction for the whole cache swap. These same rows are what the
+      // offline fallback below reads, so a failure between the delete and the
+      // insert would permanently drop the PR's cached files/commits — turning a
+      // transient GitHub hiccup into missing data. The network call above stays
+      // outside: never hold a transaction open across a remote request.
+      await container.db.transaction(async (tx) => {
+        await tx.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
+        if (detail.files.length > 0) {
+          await tx.insert(t.prFiles).values(
+            detail.files.map((f) => ({
+              prId: pr.id,
+              path: f.path,
+              additions: f.additions,
+              deletions: f.deletions,
+              patch: f.patch ?? null,
+            })),
+          );
+        }
+        await tx.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
+        if (detail.commits.length > 0) {
+          await tx.insert(t.prCommits).values(
+            detail.commits.map((c) => ({
+              prId: pr.id,
+              sha: c.sha,
+              message: c.message,
+              author: c.author,
+              committedAt: c.committed_at ? new Date(c.committed_at) : null,
+            })),
+          );
+        }
+        await tx
+          .update(t.pullRequests)
+          .set({
+            body: detail.body ?? null,
+            // Diff stats aren't on GitHub's PR-list payload — backfill them from
+            // the detail fetch so the Pull Requests list shows real size/files.
+            additions: detail.additions,
+            deletions: detail.deletions,
+            filesCount: detail.files_count,
+          })
+          .where(eq(t.pullRequests.id, pr.id));
+      });
 
       return { ...detail, id: pr.id };
     } catch (err) {
-      app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
+      req.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
       const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
       return {
@@ -333,13 +340,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       try {
         gh = await container.github();
       } catch (err) {
-        app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
+        req.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
         return [];
       }
       try {
         return await gh.listReviewComments({ owner: repo.owner, name: repo.name }, pr.number);
       } catch (err) {
-        app.log.warn({ err }, 'GitHub review-comments fetch skipped (offline / error)');
+        req.log.warn({ err }, 'GitHub review-comments fetch skipped (offline / error)');
         return [];
       }
     },

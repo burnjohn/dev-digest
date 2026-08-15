@@ -8,6 +8,17 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-15 — `Container` structurally satisfies a per-service `Deps` interface
+Replacing `constructor(private container: Container)` with an explicit
+`interface XServiceDeps { db; jobs; git; secrets }` needs **no** call-site or container change —
+`Container` exposes those as public members/getters, so `new RepoService(app.container)` still
+compiles. Verified end-to-end on `modules/repos/service.ts` with `pnpm typecheck`.
+
+### 2026-08-15 — `pnpm typecheck` is already red on `main` (2 pre-existing errors)
+`db/migrate.ts` and `db/seed.ts` both do `const url = process.env.DATABASE_URL` and pass it
+straight to a `string` parameter → `TS2345: 'string | undefined' is not assignable`. Don't chase
+these when validating your own change; check whether the errors are only in those two files.
+
 ### 2026-08-10 — `reviews.run_id` is a `uuid` — don't seed string run-ids in `.it` tests
 `reviews.runId` (`db/schema/reviews.ts`) is a `uuid` column, so seeding `runId: 'run-1'` fails
 with `invalid input syntax for type uuid`. To model "findings across N runs" in a `.it` test,

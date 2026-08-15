@@ -224,8 +224,11 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
   return { workspaceId, userId };
 }
 
-// CLI entrypoint
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+// CLI entrypoint. `process.argv[1]` is typed `string | undefined` under
+// noUncheckedIndexedAccess (it is absent when the runtime is fed code via stdin
+// or -e), so guard it rather than asserting — this file is also imported as a
+// module by the test harness, where the entrypoint check must simply be false.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is required');

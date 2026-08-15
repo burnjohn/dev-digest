@@ -41,7 +41,11 @@ export function buildLineIndex(diff: UnifiedDiff): Map<string, Set<number>> {
 function rangeIntersects(lines: Set<number>, start: number, end: number): boolean {
   const lo = Math.min(start, end);
   const hi = Math.max(start, end);
-  for (let n = lo; n <= hi; n++) if (lines.has(n)) return true;
+  // Walk the DIFF's lines, not the model's range: `start_line`/`end_line` come
+  // from untrusted model output, so iterating [lo..hi] lets one finding with
+  // `end_line: 2_000_000_000` block the event loop. The diff is bounded; the
+  // claimed range is not. Same idiom as `resolveCommentLine` in output/to-review.ts.
+  for (const n of lines) if (n >= lo && n <= hi) return true;
   return false;
 }
 

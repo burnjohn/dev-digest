@@ -4,6 +4,20 @@
  * stable structured body (ApiErrorBody): { error: { code, message, details } }.
  */
 
+/**
+ * Strip credentials out of any URL userinfo in a message before it is persisted
+ * or logged.
+ *
+ * Why this exists: private clones authenticate by embedding the GitHub PAT in the
+ * remote URL (`https://x-access-token:<PAT>@github.com/...`, see
+ * modules/repos/helpers.ts). git echoes the remote verbatim in its failure text
+ * ("repository '...' not found"), so the plain "wrong repo / revoked token" path
+ * would otherwise write a live credential into the `jobs.error` column and stderr.
+ */
+export function redactCredentials(message: string): string {
+  return message.replace(/\/\/[^@/\s]+@/g, '//***@');
+}
+
 export class AppError extends Error {
   constructor(
     public readonly code: string,

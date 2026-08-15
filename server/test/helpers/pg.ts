@@ -19,12 +19,21 @@ export interface PgFixture {
 
 let dockerCache: boolean | undefined;
 
-/** Cheap check: can we reach a Docker daemon? */
+/**
+ * Cheap check: can we reach a Docker daemon?
+ *
+ * The timeout is generous on purpose. A failure here doesn't fail the suite —
+ * it silently SKIPS every DB-backed test, so a probe that is merely slow looks
+ * exactly like a green run. `docker info` answers in well under a second warm,
+ * but each vitest worker pays a cold CLI start of its own, and on Windows a
+ * freshly-started Docker Desktop routinely blew past a 5s budget — which is how
+ * a full 29-test lane could report itself as passing while running nothing.
+ */
 export async function dockerAvailable(): Promise<boolean> {
   if (dockerCache !== undefined) return dockerCache;
   try {
     const { execSync } = await import('node:child_process');
-    execSync('docker info', { stdio: 'ignore', timeout: 5000 });
+    execSync('docker info', { stdio: 'ignore', timeout: 30_000 });
     dockerCache = true;
   } catch {
     dockerCache = false;

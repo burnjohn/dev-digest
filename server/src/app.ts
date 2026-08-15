@@ -52,6 +52,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
         ? false
         : {
             level: config.logLevel,
+            // Fastify's default serializer logs request headers on errors, which
+            // is where a bearer token or cookie would otherwise land in the log.
+            redact: ['req.headers.authorization', 'req.headers.cookie'],
             transport:
               config.nodeEnv === 'development'
                 ? { target: 'pino-pretty', options: { colorize: true } }
@@ -77,11 +80,16 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // between listening and an async reaper finishing.
   // NOTE: assumes a SINGLE API instance per DB. With multiple replicas this
   // would need per-instance scoping / heartbeats (not this app's deployment).
-  try {
-    const reaped = await new ReviewService(container).reapStaleRuns();
-    if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
-  } catch (err) {
-    app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+  // Skipped under test for the same reason the rate limit below is: the hermetic
+  // lane has no Postgres, so every buildApp() would otherwise wait out a real
+  // connection timeout before the catch swallows it. WHEN it runs is unchanged.
+  if (config.nodeEnv !== 'test') {
+    try {
+      const reaped = await new ReviewService(container).reapStaleRuns();
+      if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
+    } catch (err) {
+      app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+    }
   }
 
   // Security headers (X-Content-Type-Options, X-Frame-Options, …). The API
@@ -109,6 +117,19 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       app.log.warn({ err: (err as Error).message }, 'readiness check failed: db unreachable');
       return reply.status(503).send({ ready: false });
     }
+  });
+
+  // An unmatched route would otherwise return Fastify's default body
+  // ({ statusCode, error, message }), breaking the ApiErrorBody shape every
+  // other response follows — so client code doing `body.error.code` throws a
+  // TypeError on the single most common error there is.
+  app.setNotFoundHandler((req, reply) => {
+    reply.status(404).send({
+      error: {
+        code: 'not_found',
+        message: `Route ${req.method}:${req.url} not found`,
+      },
+    });
   });
 
   // Structured error handler. Registered BEFORE modules so encapsulated

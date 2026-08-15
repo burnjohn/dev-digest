@@ -56,7 +56,16 @@ export class OpenAIProvider implements LLMProvider {
     return withRetry(async () => {
       const res = await this.client.models.list();
       return res.data
-        .filter((m) => m.id.startsWith('gpt') || m.id.includes('o1') || m.id.includes('o3'))
+        // Keep in sync with isReasoningModel above — it already matches `o4`,
+        // so without it here an o4-* model is treated as reasoning-capable but
+        // never appears in the picker.
+        .filter(
+          (m) =>
+            m.id.startsWith('gpt') ||
+            m.id.includes('o1') ||
+            m.id.includes('o3') ||
+            m.id.includes('o4'),
+        )
         .map((m) => ({ id: m.id, provider: 'openai' as const, created: m.created }));
     });
   }

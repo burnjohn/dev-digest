@@ -1,11 +1,22 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  index,
+} from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
 
 // ============================================================ Observability
 
-export const agentRuns = pgTable('agent_runs', {
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id')
     .notNull()
@@ -31,7 +42,17 @@ export const agentRuns = pgTable('agent_runs', {
   /** Exact per-run LLM cost in USD at run time (OpenRouter usage.cost, else
    *  estimateCost). Null for unknown-price models and pre-cost rows. */
   costUsd: doublePrecision('cost_usd'),
-});
+  },
+  // Postgres does not index foreign keys automatically. All three columns below
+  // are filtered/joined on in every run query.
+  (t) => ({
+    // Covers listRunsForPull's filter AND its `ORDER BY ran_at DESC`.
+    prRanIdx: index('agent_runs_pr_ran_idx').on(t.prId, t.ranAt.desc()),
+    agentIdx: index('agent_runs_agent_idx').on(t.agentId),
+    // Serves reapStaleRunningRuns, which scans by workspace + status.
+    wsStatusIdx: index('agent_runs_ws_status_idx').on(t.workspaceId, t.status),
+  }),
+);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

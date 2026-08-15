@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { runFullIndex } from '../src/modules/repo-intel/pipeline/full.js';
 import { runIncremental } from '../src/modules/repo-intel/pipeline/incremental.js';
 import type { RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
@@ -68,6 +68,15 @@ function makeRepoStub(opts: {
     },
     insertReferences: async (rows: unknown[]) => {
       references.push(...rows);
+    },
+    // The full-index persist path goes through this one method so the wipe and
+    // the re-insert share a transaction (see repository.replaceAllForRepo). The
+    // stub composes the same three primitives, which keeps the assertions below
+    // reading real inserted rows.
+    replaceAllForRepo: async (repoId: string, syms: unknown[], refs: unknown[]) => {
+      await stub.deleteAllForRepo(repoId);
+      await stub.insertSymbols(syms);
+      await stub.insertReferences(refs);
     },
     upsertIndexState: async (s: {
       repoId: string;
@@ -139,8 +148,11 @@ function makeContainer(git: MiniGit): Container {
 
 async function writeFileAt(root: string, rel: string, contents: string): Promise<void> {
   const full = join(root, rel);
-  const slash = full.lastIndexOf('/');
-  if (slash > 0) await mkdir(full.slice(0, slash), { recursive: true });
+  // Use dirname rather than searching for '/': join() emits the platform
+  // separator, so on Windows the path is backslash-delimited and a '/' scan
+  // finds nothing — the parent directory was never created and every write of
+  // a nested path (e.g. 'src/a.ts') failed with ENOENT.
+  await mkdir(dirname(full), { recursive: true });
   await writeFile(full, contents);
 }
 

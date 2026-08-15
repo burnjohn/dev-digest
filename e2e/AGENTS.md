@@ -5,10 +5,12 @@ Deterministic UI end-to-end flows driven by Vercel **agent-browser** (native CDP
 
 ## Commands (run from `e2e/`, npm — not pnpm)
 
-- `pnpm e2e:hermetic` (or `../scripts/e2e.sh`) — **recommended.** Boots an isolated,
+- `npm run e2e:hermetic` (or `../scripts/e2e.sh`) — **recommended.** Boots an isolated,
   freshly-seeded stack on alt ports (PG :5433, API :3101, web :3100), runs flows, tears down.
-- `pnpm test` — `tsx run.ts` against your own running stack (only safe with a clean DB, below).
-- `pnpm typecheck`.
+  Bash only (uses `lsof`/`pgrep`): on Windows run it from Git Bash or WSL, or follow the
+  manual steps in README.md.
+- `npm test` — `tsx run.ts` against your own running stack (only safe with a clean DB, below).
+- `npm run typecheck`.
 
 ## Where things live
 

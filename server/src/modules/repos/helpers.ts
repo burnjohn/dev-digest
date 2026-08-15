@@ -3,6 +3,8 @@ import * as t from '../../db/schema.js';
 import { AppError } from '../../platform/errors.js';
 import {
   GITHUB_URL_REGEX,
+  GITHUB_OWNER_REGEX,
+  GITHUB_REPO_NAME_REGEX,
   GIT_TOKEN_USERNAME,
   GITHUB_HTTPS_HOST,
 } from './constants.js';
@@ -12,33 +14,37 @@ import {
  * Pure functions only — no I/O, no DB, no container.
  */
 
-/** Parse `owner`/`name` from a GitHub URL (https or ssh form). */
+/**
+ * Parse `owner`/`name` from a GitHub URL (https or ssh form).
+ *
+ * Both captures are validated against GitHub's charset, not just extracted: they
+ * end up as path segments in `clones/<owner>/<name>` and in the clone remote, so
+ * a value like `..` would write outside the clone directory.
+ */
 export function parseRepoUrl(url: string): { owner: string; name: string } {
   // https://github.com/owner/repo(.git)  |  git@github.com:owner/repo.git
   const match = url.match(GITHUB_URL_REGEX);
   if (!match?.[1] || !match[2]) {
     throw new AppError('invalid_repo_url', `Could not parse owner/repo from '${url}'`, 400);
   }
-  return { owner: match[1], name: match[2] };
+  const [, owner, name] = match;
+  if (!GITHUB_OWNER_REGEX.test(owner) || !GITHUB_REPO_NAME_REGEX.test(name)) {
+    throw new AppError('invalid_repo_url', `Invalid owner/repo in '${url}'`, 400);
+  }
+  return { owner, name };
 }
 
 /**
- * Embed a token into an https github.com URL so private clones authenticate
- * non-interactively. SSH/non-GitHub URLs are left untouched.
+ * The https clone remote for an already-parsed repo, optionally authenticated.
+ *
+ * Built from the validated `owner`/`name` rather than reusing the user's original
+ * string, so whatever reaches `git clone` cannot be anything but a github.com URL.
  */
-export function withGitHubToken(url: string, token: string): string {
-  try {
-    const u = new URL(url);
-    if (u.protocol === 'https:' && u.hostname === GITHUB_HTTPS_HOST) {
-      u.username = GIT_TOKEN_USERNAME;
-      u.password = token;
-      return u.toString();
-    }
-  } catch {
-    /* non-URL (e.g. git@github.com:...) — leave as-is */
-  }
-  return url;
+export function cloneUrlFor(owner: string, name: string, token?: string | null): string {
+  const auth = token ? `${GIT_TOKEN_USERNAME}:${token}@` : '';
+  return `https://${auth}${GITHUB_HTTPS_HOST}/${owner}/${name}.git`;
 }
+
 
 /** Map a persisted repo row to the API `Repo` DTO. */
 export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {

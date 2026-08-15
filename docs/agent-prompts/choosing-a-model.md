@@ -37,8 +37,8 @@ tokens) as surfaced by the studio's model list; verify live before relying on th
 | `anthropic/claude-haiku-4.5` | 1 / 5 | ~$0.02 | Cheapest Claude; good at holding the rubric. |
 | `google/gemini-2.5-pro` | 1.25 / 10 | ~$0.03 | Strong, good value. |
 | `openai/gpt-4.1` | 2 / 8 | ~$0.035 | Reliable instruction-following. |
-| **`anthropic/claude-sonnet-4.6`** ⭐ | 3 / 15 | **~$0.05** | **Quality benchmark.** Best severity calibration, lowest false-positive rate of the practical options. Use to see what a great review looks like. |
-| `anthropic/claude-opus-4.8` | 5 / 25 | ~$0.10 | Top-tier reasoning; overkill for routine review, useful as a gold-standard reference. |
+| **`anthropic/claude-sonnet-5`** ⭐ | 3 / 15 | **~$0.05** | **Quality benchmark.** Best severity calibration, lowest false-positive rate of the practical options. Same list price as the Sonnet 4.6 it supersedes — and cheaper still while the $2/$10 introductory rate runs (through 2026-08-31). |
+| `anthropic/claude-opus-5` | 5 / 25 | ~$0.10 | Top-tier reasoning; overkill for routine review, useful as a gold-standard reference. Supersedes Opus 4.8 at the same price. |
 
 (All ~40× the default still lands at ≈5 cents/run — trivial for evaluating quality.)
 

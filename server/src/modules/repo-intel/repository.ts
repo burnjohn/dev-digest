@@ -19,6 +19,14 @@ import * as t from '../../db/schema.js';
 import { clampIndexedName } from '../../db/schema/context.js';
 import type { DegradedReason, FileRankRow, IndexState, IndexStatus } from './types.js';
 
+/**
+ * The Drizzle handle a write runs on: either the pooled client or an open
+ * transaction. Derived from `Db['transaction']` so it tracks the schema type
+ * automatically instead of restating it.
+ */
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type DbOrTx = Db | Tx;
+
 /** Chunk size for batched inserts — same value blast already uses. */
 const INSERT_CHUNK_SIZE = 500;
 
@@ -243,9 +251,31 @@ export class RepoIntelRepository {
   // -------------------------------------------------------------------------
 
   /** Wipe every cached symbol + reference row for a repo (full-index reset). */
-  async deleteAllForRepo(repoId: string): Promise<void> {
-    await this.db.delete(t.symbols).where(eq(t.symbols.repoId, repoId));
-    await this.db.delete(t.references).where(eq(t.references.repoId, repoId));
+  async deleteAllForRepo(repoId: string, exec: DbOrTx = this.db): Promise<void> {
+    await exec.delete(t.symbols).where(eq(t.symbols.repoId, repoId));
+    await exec.delete(t.references).where(eq(t.references.repoId, repoId));
+  }
+
+  /**
+   * Full-index persist: wipe the repo's symbols/references and write the new
+   * ones as ONE transaction.
+   *
+   * The wipe and the re-insert must not be separable. Run apart, a failure
+   * between them (or a timeout — `withTimeout` does not cancel the underlying
+   * work, so a JobRunner retry can run a second indexer against the same repo)
+   * leaves the repo indexed as EMPTY, which reads as "this codebase has no
+   * symbols" rather than as an error.
+   */
+  async replaceAllForRepo(
+    repoId: string,
+    symbols: IndexerSymbolRow[],
+    references: IndexerReferenceRow[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.deleteAllForRepo(repoId, tx);
+      await this.insertSymbols(symbols, tx);
+      await this.insertReferences(references, tx);
+    });
   }
 
   /**
@@ -266,22 +296,22 @@ export class RepoIntelRepository {
   }
 
   /** Batched insert into `symbols`. Uses the same chunk size as blast. */
-  async insertSymbols(rows: IndexerSymbolRow[]): Promise<void> {
+  async insertSymbols(rows: IndexerSymbolRow[], exec: DbOrTx = this.db): Promise<void> {
     if (rows.length === 0) return;
     // Clamp the indexed `name` so a pathological multi-KB identifier can't blow
     // the btree row-size limit and crash the indexer (see clampIndexedName).
     const safe = rows.map((r) => ({ ...r, name: clampIndexedName(r.name) }));
     for (let i = 0; i < safe.length; i += INSERT_CHUNK_SIZE) {
-      await this.db.insert(t.symbols).values(safe.slice(i, i + INSERT_CHUNK_SIZE));
+      await exec.insert(t.symbols).values(safe.slice(i, i + INSERT_CHUNK_SIZE));
     }
   }
 
   /** Batched insert into `references`. */
-  async insertReferences(rows: IndexerReferenceRow[]): Promise<void> {
+  async insertReferences(rows: IndexerReferenceRow[], exec: DbOrTx = this.db): Promise<void> {
     if (rows.length === 0) return;
     const safe = rows.map((r) => ({ ...r, toSymbol: clampIndexedName(r.toSymbol) }));
     for (let i = 0; i < safe.length; i += INSERT_CHUNK_SIZE) {
-      await this.db.insert(t.references).values(safe.slice(i, i + INSERT_CHUNK_SIZE));
+      await exec.insert(t.references).values(safe.slice(i, i + INSERT_CHUNK_SIZE));
     }
   }
 

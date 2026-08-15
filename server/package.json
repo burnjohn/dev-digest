@@ -16,7 +16,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",
     "@ast-grep/napi": "0.43.0",
-    "@fastify/autoload": "^6.0.3",
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^11.0.0",

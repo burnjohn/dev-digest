@@ -35,16 +35,41 @@ export default function PullsPage() {
   const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId);
   const refresh = useRefreshRepo();
 
+  // Filter, search and sort all live in the URL so a reloaded or shared link
+  // shows the same list. `status` already did; `q` and `sort` used to be local
+  // state, which meant a reload silently reset two of the three controls.
+  const setParam = (key: string, val: string, dflt: string) => {
+    const sp = new URLSearchParams(search.toString());
+    // Keep the URL free of params that only restate the default.
+    if (val === dflt) sp.delete(key);
+    else sp.set(key, val);
+    const qs = sp.toString();
+    router.replace(`/repos/${repoId}/pulls${qs ? `?${qs}` : ""}`);
+  };
+
   // Default to "needs review" — the most actionable filter on open.
   const status = search.get("status") ?? "needs_review";
+  // Always explicit so "all" sticks over the needs_review default.
   const setStatus = (k: string) => {
     const sp = new URLSearchParams(search.toString());
-    sp.set("status", k); // always explicit so "all" sticks over the needs_review default
+    sp.set("status", k);
     router.replace(`/repos/${repoId}/pulls?${sp.toString()}`);
   };
 
-  const [query, setQuery] = React.useState("");
-  const [sort, setSort] = React.useState("newest");
+  const sort = search.get("sort") ?? "newest";
+  const setSort = (s: string) => setParam("sort", s, "newest");
+
+  // The search box keeps its own state so typing stays instant — writing to the
+  // URL on every keystroke would soft-navigate per character. The URL catches up
+  // shortly after typing stops, which is what makes the link shareable.
+  const urlQuery = search.get("q") ?? "";
+  const [query, setQuery] = React.useState(urlQuery);
+  React.useEffect(() => {
+    if (query === urlQuery) return;
+    const id = setTimeout(() => setParam("q", query, ""), 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, urlQuery]);
 
   const q = query.trim().toLowerCase();
   const filtered = (pulls ?? [])

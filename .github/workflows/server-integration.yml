@@ -15,10 +15,14 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      # The server consumes reviewer-core as TypeScript SOURCE via a tsconfig
+      # alias, so an engine change can break this suite without touching server/.
+      - 'reviewer-core/**'
       - '.github/workflows/server-integration.yml'
   pull_request:
     paths:
       - 'server/**'
+      - 'reviewer-core/**'
       - '.github/workflows/server-integration.yml'
 
 permissions:

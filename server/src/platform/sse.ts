@@ -16,12 +16,19 @@ function clockTime(): string {
   return new Date().toTimeString().slice(0, 8);
 }
 
+/**
+ * How long a completed run's event buffer stays replayable for late SSE
+ * subscribers before it is evicted.
+ */
+const COMPLETED_BUFFER_TTL_MS = 5 * 60_000;
+
 export class RunBus {
   private emitters = new Map<string, EventEmitter>();
   private buffers = new Map<string, RunEvent[]>();
   private seq = new Map<string, number>();
   private completed = new Set<string>();
   private cancelled = new Set<string>();
+  private evictions = new Map<string, NodeJS.Timeout>();
 
   /** Request cancellation of an in-flight run. The runner checks `isCancelled`
    *  at its next checkpoint (between map-reduce files) and stops. */
@@ -80,6 +87,24 @@ export class RunBus {
     e?.emit('done');
     // Keep the buffer briefly available for late subscribers; clear emitter.
     this.emitters.delete(runId);
+
+    // "Briefly" has to be enforced, or it means "forever": this bus is a
+    // process-lifetime singleton, so without eviction every run's full event
+    // log stays resident until restart.
+    //
+    // `completed` is deliberately NOT evicted — it is one id per run (bytes,
+    // not a log), and dropping it would make a late subscriber to an old run
+    // hang waiting for a 'done' that already fired instead of ending cleanly.
+    clearTimeout(this.evictions.get(runId));
+    const timer = setTimeout(() => {
+      this.buffers.delete(runId);
+      this.seq.delete(runId);
+      this.evictions.delete(runId);
+    }, COMPLETED_BUFFER_TTL_MS);
+    // Don't hold the event loop open on this timer alone (matters for tests
+    // and for a clean shutdown).
+    timer.unref();
+    this.evictions.set(runId, timer);
   }
 
   /** Whether a run has already completed (for replay-then-end late subscribers). */

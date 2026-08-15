@@ -24,8 +24,11 @@ export function DiffViewer({
   }
   return (
     <div style={s.list}>
-      {files.map((f, i) => (
-        <FileCard key={i} file={f} commenting={commenting} />
+      {/* Keyed by path, not index: FileCard owns per-file UI state (expand,
+          comment draft), and an index key would hand that state to a different
+          file the moment the list is re-fetched with a file added or removed. */}
+      {files.map((f) => (
+        <FileCard key={f.path} file={f} commenting={commenting} />
       ))}
     </div>
   );

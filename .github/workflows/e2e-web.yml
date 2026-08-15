@@ -14,12 +14,15 @@ on:
     paths:
       - 'client/**'
       - 'server/**'
+      # The stack this suite boots runs reviewer-core from source.
+      - 'reviewer-core/**'
       - 'e2e/**'
       - '.github/workflows/e2e-web.yml'
   pull_request:
     paths:
       - 'client/**'
       - 'server/**'
+      - 'reviewer-core/**'
       - 'e2e/**'
       - '.github/workflows/e2e-web.yml'
 
@@ -49,6 +52,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
       # --- Postgres (pgvector) via the repo's compose file ---
       - name: Start Postgres
@@ -117,6 +122,9 @@ jobs:
         working-directory: e2e
         run: |
           npm ci
+          # No other job type-checks e2e/, so without this a type error here
+          # only shows up as a runtime crash after a full stack boot.
+          npm run typecheck
           npm test
 
       - name: Upload failure artifacts

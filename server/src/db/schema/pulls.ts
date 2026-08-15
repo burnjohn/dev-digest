@@ -33,24 +33,34 @@ export const pullRequests = pgTable(
   }),
 );
 
-export const prFiles = pgTable('pr_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  path: text('path').notNull(),
-  additions: integer('additions').notNull().default(0),
-  deletions: integer('deletions').notNull().default(0),
-  patch: text('patch'),
-});
+// Both child tables below are deleted and re-selected by `pr_id` on every
+// GET /pulls/:id — and Postgres does not index foreign keys automatically.
+export const prFiles = pgTable(
+  'pr_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    additions: integer('additions').notNull().default(0),
+    deletions: integer('deletions').notNull().default(0),
+    patch: text('patch'),
+  },
+  (t) => ({ prIdx: index('pr_files_pr_idx').on(t.prId) }),
+);
 
-export const prCommits = pgTable('pr_commits', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  sha: text('sha').notNull(),
-  message: text('message').notNull(),
-  author: text('author').notNull(),
-  committedAt: timestamp('committed_at', { withTimezone: true }),
-});
+export const prCommits = pgTable(
+  'pr_commits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    sha: text('sha').notNull(),
+    message: text('message').notNull(),
+    author: text('author').notNull(),
+    committedAt: timestamp('committed_at', { withTimezone: true }),
+  },
+  (t) => ({ prIdx: index('pr_commits_pr_idx').on(t.prId) }),
+);

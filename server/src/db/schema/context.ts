@@ -43,7 +43,18 @@ export const codeChunks = pgTable(
     embedding: vector('embedding', { dimensions: 1536 }),
     source: text('source', { enum: ['code', 'docs', 'spec'] }).notNull().default('code'),
   },
-  (t) => ({ repoIdx: index('code_chunks_repo_idx').on(t.repoId) }),
+  (t) => ({
+    repoIdx: index('code_chunks_repo_idx').on(t.repoId),
+    wsIdx: index('code_chunks_ws_idx').on(t.workspaceId),
+    // Without this, every similarity search is a sequential scan computing a
+    // 1536-dimension distance per row — i.e. pgvector is enabled but unused as
+    // an index. HNSW (not ivfflat) needs no training pass and stays correct as
+    // rows are added, which suits an index that grows with each repo import.
+    embeddingIdx: index('code_chunks_embedding_hnsw').using(
+      'hnsw',
+      t.embedding.op('vector_cosine_ops'),
+    ),
+  }),
 );
 
 /**
