@@ -10,7 +10,7 @@
     { "cmd": ["wait", "--text", "flaky-test-patterns"], "label": "a second seeded skill renders" },
     { "cmd": ["wait", "--text", "1 agent"], "label": "used_by count rendered from the join" },
     {
-      "cmd": ["find", "text", "uncovered-branch-gate"],
+      "cmd": ["find", "text", "uncovered-branch-gate", "text"],
       "label": "the card resolves as a deterministic locator",
       "assert": { "stdoutIncludes": "uncovered-branch-gate" }
     }
