@@ -6,6 +6,31 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-16 — Row order that outlives a checkbox must be client-held, not re-derived
+`agent_skills` stores an order for LINKED skills only, so re-deriving "linked first, rest
+alphabetical" (`orderForDisplay`) on every toggle made an unchecked row jump out of place.
+`SkillsTab` now freezes the row order in state at the first edit and derives prompt order as
+`displayOrder.filter(checked)`; `reorderLinked` permutes only the linked slots so unchecked
+rows stay anchored at their index.
+
+### 2026-08-16 — HTML5 drag reorder: keep the dragged id in a ref, not just state
+In `SkillsTab`, `onDragOver`/`onDrop` read the dragged id set by `onDragStart`; from
+`useState` alone they can see the pre-`dragstart` `null` (React batches, and `dragover` is a
+continuous-priority event) and the drop silently no-ops. Mirror it into a `useRef` and read
+that in the handlers — keep the state copy only for drag/drop-target styling.
+
+### 2026-08-16 — `vendor/ui` interactive primitives have NO accessible name by default
+`Toggle` and `Checkbox` render a `<button role="switch|checkbox">`, and a wrapping `<label>`
+does not name them — implicit label association only works for *labelable* elements, which a
+button is not. They now take an optional `ariaLabel`; pass it, or the control announces unnamed.
+`FormField` likewise only labels its control when given `htmlFor` (+ a matching `id`).
+
+### 2026-08-16 — A clickable card must not be a `<button>` if it contains one
+Making a list card a `<button>` (or `<Link>`) and putting a `Toggle`/`IconBtn` inside it nests
+interactive elements — invalid HTML the parser breaks apart, and the inner control drops out of
+the tab order. Shape it as a plain container `<div>` + a `<Link>` over the navigable region +
+the control as a SIBLING (see `app/skills/_components/SkillCard`).
+
 ### 2026-08-10 — React inline styles: `borderColor` is a shorthand, conflicts with `borderLeftColor`
 In our inline-style-object convention, setting `borderColor` alongside `borderLeftColor` (e.g.
 `FindingCard/styles.ts` focus ring) triggers React's "Updating a style property during rerender…

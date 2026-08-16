@@ -115,7 +115,16 @@ export type MemoryItem = z.infer<typeof MemoryItem>;
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
-export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
+// Where a skill came from. Display provenance only — NOT a trust gate: every
+// enabled skill body is injected into the prompt as trusted instructions.
+// Mirrored by the Drizzle column enum in db/schema/skills.ts — widen both.
+export const SkillSource = z.enum([
+  'manual',
+  'imported_url',
+  'extracted',
+  'community',
+  'imported_file',
+]);
 export type SkillSource = z.infer<typeof SkillSource>;
 
 export const Skill = z.object({
@@ -188,6 +197,10 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  // How many skills are linked to this agent. Denormalized onto the list
+  // response so the agent cards don't need N requests to `/agents/:id/skills`.
+  // Defaults to 0 on endpoints that don't compute it.
+  skill_count: z.number().int().default(0),
 });
 export type Agent = z.infer<typeof Agent>;
 

@@ -1,5 +1,5 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import type { Db, Transaction } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
@@ -11,7 +11,7 @@ import { isConfigChange } from './helpers.js';
  * agent side: link/reorder/list for an agent). Workspace-scoped throughout.
  */
 
-import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
+import type { AgentRow, AgentVersionRow, SkillRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
 
 export interface InsertAgent {
@@ -44,7 +44,7 @@ export interface UpdateAgent {
 
 /** A skill linked to an agent (with its order), joined from agent_skills. */
 export interface LinkedSkillRow {
-  skill: typeof t.skills.$inferSelect;
+  skill: SkillRow;
   order: number;
 }
 
@@ -53,6 +53,23 @@ export class AgentsRepository {
 
   async list(workspaceId: string): Promise<AgentRow[]> {
     return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+  }
+
+  /**
+   * Agents with their linked-skill counts, for the list screen's cards.
+   *
+   * A LEFT join + `groupBy` rather than N calls to `/agents/:id/skills` — the
+   * cards render the number, they don't need the links. Counting
+   * `agentSkills.skillId` (not `*`) keeps a skill-less agent at 0, not 1.
+   */
+  async listWithSkillCounts(workspaceId: string): Promise<{ agent: AgentRow; skillCount: number }[]> {
+    const rows = await this.db
+      .select({ agent: t.agents, skillCount: count(t.agentSkills.skillId) })
+      .from(t.agents)
+      .leftJoin(t.agentSkills, eq(t.agentSkills.agentId, t.agents.id))
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agents.id);
+    return rows.map((r) => ({ agent: r.agent, skillCount: Number(r.skillCount) }));
   }
 
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {
@@ -145,25 +162,36 @@ export class AgentsRepository {
     return row;
   }
 
-  private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
-    await this.db
-      .insert(t.agentVersions)
-      .values({
-        agentId: row.id,
-        version,
-        configJson: {
-          provider: row.provider,
-          model: row.model,
-          system_prompt: row.systemPrompt,
-          output_schema: row.outputSchema,
-          strategy: row.strategy,
-          ci_fail_on: row.ciFailOn,
-          repo_intel: row.repoIntel,
-          skills,
-        },
-      })
-      .onConflictDoNothing();
+  /**
+   * Write the immutable config snapshot for `version`.
+   *
+   * This used to end in `.onConflictDoNothing()`, which turned a genuine
+   * "version already snapshotted" collision into a silent no-op — losing a
+   * snapshot while reporting success, and defeating the reproducibility that
+   * `agent_versions` exists for. It now surfaces. Callers hold a row lock (see
+   * `setSkills`) or compute the version from a row they just wrote, so a
+   * collision here means a real bug, not contention.
+   */
+  private async snapshotVersion(
+    row: AgentRow,
+    version: number,
+    tx: Db | Transaction = this.db,
+  ): Promise<void> {
+    const skills = await this.skillIdsForAgent(row.id, tx);
+    await tx.insert(t.agentVersions).values({
+      agentId: row.id,
+      version,
+      configJson: {
+        provider: row.provider,
+        model: row.model,
+        system_prompt: row.systemPrompt,
+        output_schema: row.outputSchema,
+        strategy: row.strategy,
+        ci_fail_on: row.ciFailOn,
+        repo_intel: row.repoIntel,
+        skills,
+      },
+    });
   }
 
   // ---- agent_versions (immutable config snapshots) ------------------------
@@ -189,8 +217,8 @@ export class AgentsRepository {
   // ---- agent_skills link table (A2 owns the agent side) -------------------
 
   /** Skills linked to an agent, in `order` ascending. */
-  async linkedSkills(agentId: string): Promise<LinkedSkillRow[]> {
-    const rows = await this.db
+  async linkedSkills(agentId: string, tx: Db | Transaction = this.db): Promise<LinkedSkillRow[]> {
+    const rows = await tx
       .select({ skill: t.skills, order: t.agentSkills.order })
       .from(t.agentSkills)
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
@@ -199,9 +227,49 @@ export class AgentsRepository {
     return rows.map((r) => ({ skill: r.skill, order: r.order }));
   }
 
-  async skillIdsForAgent(agentId: string): Promise<string[]> {
-    const links = await this.linkedSkills(agentId);
+  async skillIdsForAgent(agentId: string, tx: Db | Transaction = this.db): Promise<string[]> {
+    const links = await this.linkedSkills(agentId, tx);
     return links.map((l) => l.skill.id);
+  }
+
+  /**
+   * Of `skillIds`, the ones that exist in `workspaceId`.
+   *
+   * The tenancy gate for linking. `agent_skills.skill_id` has an FK to `skills`
+   * but no workspace column, so without this check a caller could post another
+   * tenant's skill id and have its body injected verbatim into this workspace's
+   * review prompts. Reading the `skills` table from here is fine — the onion rule
+   * forbids importing another MODULE, not reading its table.
+   */
+  async skillIdsInWorkspace(
+    workspaceId: string,
+    skillIds: string[],
+    tx: Db | Transaction = this.db,
+  ): Promise<string[]> {
+    if (skillIds.length === 0) return [];
+    const rows = await tx
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Next free order for an agent's list: `max(order) + 1`.
+   *
+   * NOT `links.length`: link 3 skills (0,1,2), unlink the middle one, and the
+   * length is 2 — colliding with the surviving order 2. Duplicate orders make
+   * `orderBy(asc(order))` nondeterministic, silently reshuffling the prompt
+   * between runs and destroying review reproducibility. `coalesce(…, -1)` handles
+   * the no-links case, where `max` is NULL and would otherwise write NULL into a
+   * NOT NULL column.
+   */
+  async nextLinkOrder(agentId: string, tx: Db | Transaction = this.db): Promise<number> {
+    const [row] = await tx
+      .select({ maxOrder: sql<number>`coalesce(max(${t.agentSkills.order}), -1)` })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agentId));
+    return Number(row?.maxOrder ?? -1) + 1;
   }
 
   /** Link a skill to an agent at a given order (idempotent: upserts order). */
@@ -222,15 +290,50 @@ export class AgentsRepository {
   }
 
   /**
-   * Replace the full set of linked skills for an agent with `skillIds`, assigning
-   * order = index. Used by the "Skills" editor tab (attach/reorder). Skills not in
-   * the list are unlinked.
+   * Replace the full set of linked skills for an agent with `skillIds`, in that
+   * order, and snapshot a new agent version.
+   *
+   * ONE transaction, for two independent reasons:
+   *  1. It was a bare delete-then-insert. A single bad uuid failed the insert on
+   *     the FK *after* the delete had committed, leaving the agent with NO links —
+   *     silent data loss on a validation error.
+   *  2. The link set is part of `agent_versions.config_json.skills`, so changing
+   *     it changes the agent's effective prompt. Bumping the version here is what
+   *     keeps `agent_versions` an honest record of "what this agent was" — without
+   *     it, the prompt could change with no new version at all.
+   *
+   * Returns the new version, or undefined if the agent vanished mid-flight.
    */
-  async setSkills(agentId: string, skillIds: string[]): Promise<void> {
-    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  async setSkills(
+    workspaceId: string,
+    agentId: string,
+    skillIds: string[],
+  ): Promise<number | undefined> {
+    return this.db.transaction(async (tx) => {
+      // Lock the agent row first: the version bump below is a read-modify-write,
+      // and two concurrent saves would otherwise compute the same next version.
+      const [agent] = await tx
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+        .for('update');
+      if (!agent) return undefined;
+
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+      if (skillIds.length > 0) {
+        await tx
+          .insert(t.agentSkills)
+          .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+      }
+
+      const nextVersion = agent.version + 1;
+      const [updated] = await tx
+        .update(t.agents)
+        .set({ version: nextVersion })
+        .where(eq(t.agents.id, agentId))
+        .returning();
+      if (updated) await this.snapshotVersion(updated, nextVersion, tx);
+      return nextVersion;
+    });
   }
 }

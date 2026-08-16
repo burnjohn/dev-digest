@@ -8,6 +8,23 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-16 — SUPERSEDES 2026-08-15: `pnpm typecheck` is GREEN on `main` again
+The two `DATABASE_URL` errors below were fixed in `9421f37` — both entrypoints now sit behind
+an `if (!url) { … process.exit(1) }` guard that narrows `string | undefined` to `string`.
+`pnpm typecheck` exits 0; treat **any** error as yours, not pre-existing.
+
+### 2026-08-16 — `run_traces` is ONE jsonb document, not columns
+The table is `(run_id, trace jsonb)` — there is no `prompt_assembly` or `log` column. Read it as
+`(row.trace as RunTrace).prompt_assembly.skills`, with **snake_case** keys inside (it is the wire
+contract verbatim). Selecting `t.runTraces.promptAssembly` silently yields `undefined`.
+
+### 2026-08-16 — Widening a contract enum takes 3 edits, not 1 — but never a migration
+A value added to a Zod enum in `vendor/shared/contracts/` (e.g. `SkillSource`) also has to
+be added to the matching Drizzle `text(col, { enum: [...] })` in `db/schema/`, or
+`$inferInsert` rejects it at the repository — the DDL itself needs nothing, since
+`0000_init.sql` declares these as plain `text` with **zero** `CHECK` constraints
+(`grep -c CHECK` → 0). Third edit is `./scripts/sync-vendor.sh` to re-copy the client vendor tree.
+
 ### 2026-08-15 — `Container` structurally satisfies a per-service `Deps` interface
 Replacing `constructor(private container: Container)` with an explicit
 `interface XServiceDeps { db; jobs; git; secrets }` needs **no** call-site or container change —

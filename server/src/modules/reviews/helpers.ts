@@ -74,6 +74,32 @@ export function reviewToDto(
 }
 
 /**
+ * A skill linked to an agent, as far as prompt assembly cares. Structurally a
+ * subset of `LinkedSkillRow` from the agents module — declared here rather than
+ * imported so this stays a pure, module-local shape (and so the test can build
+ * one without touching Drizzle).
+ */
+export interface SkillLinkForPrompt {
+  skill: { name: string; body: string; enabled: boolean };
+  order: number;
+}
+
+/**
+ * The skill bodies that go into the prompt, in prompt order.
+ *
+ * Two rules, both deliberate:
+ *  - `skills.enabled` is the gate. `agent_skills` carries membership + order and
+ *    has no `enabled` column, so there is no per-link toggle: a linked skill that
+ *    is globally disabled is EXCLUDED.
+ *  - Link order is prompt order. Callers pass rows already ordered by
+ *    `agent_skills.order` ASC; `assemblePrompt` joins with a blank line, so the
+ *    order the user drags in the editor is the order the model reads.
+ */
+export function selectSkillBodies(links: SkillLinkForPrompt[]): string[] {
+  return links.filter((l) => l.skill.enabled).map((l) => l.skill.body);
+}
+
+/**
  * Build the per-run task instruction line for a PR.
  *
  * The TRUSTED part (ours) states the task and the non-negotiable rule: review

@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
 import { ConfigTab } from "./_components/ConfigTab";
+import { SkillsTab } from "./_components/SkillsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -23,7 +24,11 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
         {/* `key` makes switching agents remount the form, which is what resets it.
             Without it ConfigTab has to mirror all nine agent fields into state and
             re-sync them in an effect — the same reset, done by hand. */}
-        <ConfigTab key={agent.id} agent={agent} />
+        {tab === "skills" ? (
+          <SkillsTab key={agent.id} agent={agent} />
+        ) : (
+          <ConfigTab key={agent.id} agent={agent} />
+        )}
       </div>
     </div>
   );

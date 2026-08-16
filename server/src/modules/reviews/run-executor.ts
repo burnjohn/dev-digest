@@ -6,7 +6,7 @@ import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { selectSkillBodies, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
@@ -183,6 +183,51 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // ---- L02: linked skills → the "## Skills / rules" prompt section -------
+      // `linkedSkills` returns joined skill rows already ordered by
+      // `agent_skills.order` ASC, so link order IS prompt order. No cross-module
+      // import needed — `this.agents` is the agents REPOSITORY, held by the
+      // container.
+      //
+      // Failure policy: let it throw. This is deliberately the opposite of the
+      // repo-intel calls above, which degrade to `undefined` on error. Repo intel
+      // is enrichment — a review without it is merely thinner. Skills are the
+      // user's own instructions, so a review that silently ran without the rubric
+      // they attached is WRONG, not degraded. The catch in this method persists a
+      // failed run with the error text, which is the honest outcome.
+      const linkedSkills = await this.agents.linkedSkills(agent.id);
+      const skills = selectSkillBodies(linkedSkills);
+      const disabledCount = linkedSkills.length - skills.length;
+
+      if (linkedSkills.length === 0) {
+        runLog.info('No skills linked to this agent — prompt has no "## Skills / rules" section');
+      } else {
+        const activeNames = linkedSkills
+          .filter((l) => l.skill.enabled)
+          .map((l) => l.skill.name)
+          .join(', ');
+        runLog.info(
+          `Skills: ${skills.length}/${linkedSkills.length} enabled${activeNames ? ` — ${activeNames}` : ''}`,
+        );
+        if (disabledCount > 0) {
+          const disabledNames = linkedSkills
+            .filter((l) => !l.skill.enabled)
+            .map((l) => l.skill.name)
+            .join(', ');
+          runLog.info(`Skipped ${disabledCount} disabled skill(s): ${disabledNames}`);
+        }
+        if (skills.length > 0) {
+          // Char count, never bodies. Under map-reduce `assemblePrompt` runs once
+          // per changed file, so this cost is paid per call, not per run — and the
+          // trace stores only the whole-diff assembly, so it under-reports.
+          const chars = skills.reduce((n, b) => n + b.length, 0);
+          const perCall = (agent.strategy ?? REVIEW_STRATEGY) === 'single-pass' ? '' : ' per model call';
+          runLog.info(
+            `Injecting ${skills.length} skill(s) (${chars} chars) into the prompt${perCall}`,
+          );
+        }
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -200,6 +245,10 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // L02 — linked, enabled skill bodies in link order. Same omit-when-empty
+        // contract: with no skills the assembled prompt is byte-identical to
+        // before this feature existed.
+        ...(skills.length > 0 ? { skills } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),

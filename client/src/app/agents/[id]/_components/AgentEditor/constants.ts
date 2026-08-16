@@ -7,7 +7,14 @@ export interface EditorTab {
   icon: IconName;
 }
 
-/** Editor tabs. Part-0 ships Config only; later lessons add the rest. */
+/**
+ * Editor tabs. Evals / Stats / CI have i18n keys but no data source yet (L06/L08),
+ * so they stay out rather than shipping empty shells.
+ */
 export const TABS: readonly EditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
+  { key: "skills", labelKey: "editor.tabs.skills", icon: "Sparkles" },
 ];
+
+/** Tab keys the `?tab=` param may take — the page validates against this. */
+export const VALID_TABS: readonly string[] = TABS.map((t) => t.key);

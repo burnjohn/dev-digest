@@ -7,11 +7,16 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SEED_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+
+/** Named once: the seed looks this agent up again to attach its skills. */
+const TEST_QUALITY_AGENT_NAME = 'Test Quality Reviewer';
 
 /**
  * Seed the starter's demo data. Idempotent: re-running upserts the default
@@ -19,11 +24,13 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, the four built-in agents (General + Security +
+ * Performance + Test Quality), all on the default openrouter/deepseek-v4-flash
+ * provider+model, and the four test-quality skills linked to the Test Quality
+ * Reviewer.
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * Course lessons populate the remaining tables (conventions, memory, eval, …)
+ * once their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -176,6 +183,49 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     ]);
   }
 
+  // ---- PR #483 (the L02 control-experiment fixture) ----
+  // Deliberately has NO seeded reviews/findings, so the first run on it is clean
+  // and the "unlink skills → run → re-link → run" comparison is honest.
+  // `applyTierDiscount` has two branches; the test covers only the happy path,
+  // and the `rate < 0` boundary is unchecked — that is what the four
+  // test-quality skills are supposed to surface.
+  const [pr483] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 483)));
+  if (!pr483) {
+    const [created] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 483,
+        title: 'Add tiered discount calculation',
+        author: 'dan.whitfield',
+        branch: 'feat/tiered-discounts',
+        base: 'main',
+        headSha: 'b7c8d9e0f1a2',
+        additions: 61,
+        deletions: 3,
+        filesCount: 2,
+        status: 'needs_review',
+        body: 'Adds volume-tier discounts to order totals, with a unit test for the standard tier.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values([
+      { prId: created!.id, path: 'src/pricing/discount.ts', additions: 44, deletions: 3 },
+      { prId: created!.id, path: 'src/pricing/discount.test.ts', additions: 17, deletions: 0 },
+    ]);
+
+    await db.insert(t.prCommits).values({
+      prId: created!.id,
+      sha: 'b7c8d9e0f1a2',
+      message: 'Add tiered discount calculation',
+      author: 'dan.whitfield',
+    });
+  }
+
   // ---- built-in agents (the three starter presets) ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
@@ -212,6 +262,17 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: TEST_QUALITY_AGENT_NAME,
+      description: 'Judges the tests: uncovered branches, corner cases, over-mocking, flakiness.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -219,6 +280,60 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- skills + their v1 snapshots (L02) ----
+  // Idempotency comes from the select-then-insert loop, NOT from a unique index —
+  // there is none on (workspace_id, name). Each skill also gets its `skill_versions`
+  // v1 row, or the editor's Versions tab renders empty for every seeded skill and
+  // no later write would repair it.
+  const skillIdsByName = new Map<string, string>();
+  for (const s of SEED_SKILLS) {
+    let [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (!existing) {
+      [existing] = await db
+        .insert(t.skills)
+        .values({
+          workspaceId,
+          name: s.name,
+          description: s.description,
+          type: s.type,
+          source: 'manual',
+          body: s.body,
+          enabled: true,
+          version: 1,
+        })
+        .returning();
+      await db
+        .insert(t.skillVersions)
+        .values({ skillId: existing!.id, version: 1, body: s.body })
+        .onConflictDoNothing();
+    }
+    skillIdsByName.set(s.name, existing!.id);
+  }
+
+  // ---- link all four skills to the Test Quality Reviewer, in listed order ----
+  // Order is prompt order (agent_skills.order ASC drives assembly), so the array
+  // order in seed-skills.ts is what the model reads. onConflictDoNothing on the
+  // composite PK (agent_id, skill_id) keeps a re-run a no-op.
+  const [testQualityAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(
+      and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, TEST_QUALITY_AGENT_NAME)),
+    );
+  if (testQualityAgent) {
+    const links = SEED_SKILLS.map((s, i) => ({
+      agentId: testQualityAgent.id,
+      skillId: skillIdsByName.get(s.name)!,
+      order: i,
+    })).filter((l) => l.skillId !== undefined);
+    if (links.length > 0) {
+      await db.insert(t.agentSkills).values(links).onConflictDoNothing();
+    }
   }
 
   return { workspaceId, userId };

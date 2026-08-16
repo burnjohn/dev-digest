@@ -10,6 +10,7 @@ import type {
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { ValidationError } from '../../platform/errors.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -55,9 +56,10 @@ export class AgentsService {
     this.repo = new AgentsRepository(container.db);
   }
 
+  /** Agents for the list screen — each carrying its linked-skill count. */
   async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.repo.list(workspaceId);
-    return rows.map(toAgentDto);
+    const rows = await this.repo.listWithSkillCounts(workspaceId);
+    return rows.map((r) => toAgentDto(r.agent, r.skillCount));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
@@ -142,8 +144,31 @@ export class AgentsService {
   }
 
   /**
+   * Reject any skill id that does not belong to this workspace.
+   *
+   * Checking the AGENT's workspace is not enough: `agent_skills` has an FK to
+   * `skills` but no workspace column, so a foreign uuid would link cleanly and
+   * then be injected verbatim into this tenant's review prompts. Also catches
+   * ids that simply don't exist, which would otherwise surface as an opaque FK
+   * violation (500) instead of a 422 naming the bad ids.
+   */
+  private async assertSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<void> {
+    if (skillIds.length === 0) return;
+    const unique = [...new Set(skillIds)];
+    const found = await this.repo.skillIdsInWorkspace(workspaceId, unique);
+    if (found.length === unique.length) return;
+    const known = new Set(found);
+    throw new ValidationError('Unknown skill id(s) for this workspace', {
+      skill_ids: unique.filter((id) => !known.has(id)),
+    });
+  }
+
+  /**
    * Set / reorder the agent's linked skills. If `skillIds` is provided, replaces
    * the whole set in that order. Returns the resulting ordered links.
+   *
+   * Changing the set changes the agent's effective prompt, so the repository
+   * bumps the agent version and snapshots it — reproducibility depends on it.
    */
   async setSkills(
     workspaceId: string,
@@ -152,7 +177,9 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    await this.repo.setSkills(agentId, skillIds);
+    await this.assertSkillsInWorkspace(workspaceId, skillIds);
+    const version = await this.repo.setSkills(workspaceId, agentId, skillIds);
+    if (version === undefined) return undefined;
     return this.skillLinks(agentId);
   }
 
@@ -165,8 +192,9 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    const existing = await this.repo.linkedSkills(agentId);
-    const resolvedOrder = order ?? existing.length;
+    await this.assertSkillsInWorkspace(workspaceId, [skillId]);
+    // max(order) + 1, not links.length — see AgentsRepository.nextLinkOrder.
+    const resolvedOrder = order ?? (await this.repo.nextLinkOrder(agentId));
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
   }

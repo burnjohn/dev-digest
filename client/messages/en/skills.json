@@ -3,10 +3,13 @@
     "crumbLab": "Skills Lab",
     "crumbSkills": "Skills",
     "heading": "Skills",
+    "subtitle": "Reusable review rules. Link them to agents to shape what gets flagged.",
     "addSkill": "Add Skill",
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
+    "retry": "Retry",
     "menu": {
+      "createFromScratch": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
@@ -15,6 +18,10 @@
       "title": "No skills yet",
       "body": "Import a skill from a file, a URL, or the community catalog.",
       "cta": "Import from file"
+    },
+    "noMatch": {
+      "title": "No matching skills",
+      "body": "Try a different search term."
     },
     "selectPrompt": {
       "title": "Select a skill",
@@ -28,6 +35,67 @@
     "notFound": {
       "title": "Skill not found",
       "body": "It may have been deleted."
+    }
+  },
+  "card": {
+    "usedBy": "{count, plural, one {# agent} other {# agents}}"
+  },
+  "create": {
+    "title": "New skill",
+    "subtitle": "Give it a name and a body. You can refine it in the editor.",
+    "nameLabel": "Name",
+    "namePlaceholder": "uncovered-branch-gate",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "One line — what this skill makes the agent look for.",
+    "typeLabel": "Type",
+    "submit": "Create skill",
+    "cancel": "Cancel",
+    "creating": "Creating…",
+    "success": "Created \"{name}\"."
+  },
+  "editor": {
+    "unsaved": "unsaved",
+    "tokens": "{count} tokens",
+    "enabled": "Enabled",
+    "save": "Save skill",
+    "saving": "Saving…",
+    "saved": "Saved \"{name}\".",
+    "cancel": "Cancel",
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "versions": "Versions"
+    },
+    "config": {
+      "heading": "Configuration",
+      "nameLabel": "Name",
+      "nameHint": "Lowercase and hyphenated reads best in the prompt.",
+      "descriptionLabel": "Description",
+      "descriptionHint": "Shown on the card. Not sent to the model.",
+      "typeLabel": "Type",
+      "bodyLabel": "Skill body",
+      "bodyHint": "Saving a changed body creates a new immutable version."
+    },
+    "preview": {
+      "heading": "Preview",
+      "subtitle": "Rendered as the reviewing agent receives it.",
+      "empty": "This skill has no body yet."
+    },
+    "versions": {
+      "heading": "Versions",
+      "subtitle": "Every body change is snapshotted. Older versions are read-only.",
+      "current": "current",
+      "loadError": "Could not load version history.",
+      "empty": "No versions recorded yet."
+    },
+    "delete": {
+      "action": "Delete skill",
+      "title": "Delete \"{name}\"?",
+      "body": "This cannot be undone.",
+      "linked": "It is currently linked to {count, plural, one {# agent} other {# agents}} and will be unlinked from all of them.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "success": "Deleted \"{name}\"."
     }
   },
   "drawer": {
@@ -45,19 +113,30 @@
     "nameHint": "Optional — derived from the first heading if blank.",
     "namePlaceholder": "pr-quality-rubric",
     "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
+    "bodyHint": "This text becomes instructions in your agent's prompt. Only add rules you'd give a human reviewer.",
     "bodyPlaceholder": "# Rule\nDescribe the rule…",
     "importing": "Importing…",
     "import": "Import skill",
-    "success": "Imported \"{name}\" (stored as untrusted data)."
+    "success": "Imported \"{name}\". Read it, then enable it for an agent.",
+    "pickLabel": "Markdown file or .zip archive",
+    "pickAction": "Choose a file",
+    "dropHint": "or drop it here",
+    "zipHint": "Only SKILL.md and .md files are imported. Scripts, hooks and binaries in the archive are ignored.",
+    "skipped": "Skipped {count} non-markdown file(s)",
+    "reading": "Reading…",
+    "tooLarge": "That file is larger than {max} MB.",
+    "bodyTooLong": "This skill body is {count} characters — the limit is {max}. Trim it and try again.",
+    "noMarkdown": "No SKILL.md or .md file found in that archive.",
+    "tooManyEntries": "That archive has more than {max} entries.",
+    "empty": "That file is empty."
   },
   "url": {
     "label": "Skill URL",
-    "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
+    "hint": "Fetched from the web. Imported disabled — read the body before you enable it.",
     "placeholder": "https://example.com/skills/security.md",
     "fetching": "Fetching…",
     "import": "Import from URL",
-    "success": "Imported \"{name}\". Disabled until you vet + enable it."
+    "success": "Imported \"{name}\", disabled. Read it before enabling."
   },
   "community": {
     "searchPlaceholder": "Search community skills (e.g. security)…",
@@ -72,8 +151,8 @@
     "import": "Import"
   },
   "listItem": {
-    "needsVetting": "needs vetting",
-    "vettingTitle": "Untrusted source — vet before enabling",
+    "needsVetting": "unread",
+    "vettingTitle": "Came from outside this workspace — read the body before enabling it.",
     "type": {
       "rubric": "rubric",
       "convention": "convention",
@@ -84,16 +163,18 @@
       "manual": "Manual",
       "extracted": "Extracted",
       "community": "Community",
-      "imported_url": "Imported"
+      "imported_url": "Imported",
+      "imported_file": "File"
     }
   },
   "preview": {
-    "untrustedBadge": "untrusted source",
+    "unvettedBadge": "not reviewed yet",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "save": "Save",
     "edit": "Edit",
-    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
+    "trustNotice": "A skill is instructions, not data. When enabled, this body is inserted verbatim into every review prompt for the agents it's linked to. Read it before you enable it.",
+    "enableWarning": "Enabling adds this text to every review prompt for the agents it's linked to.",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
     "version": "v{version}"

@@ -10,8 +10,14 @@ export const skills = pgTable('skills', {
   name: text('name').notNull(),
   description: text('description').notNull(),
   type: text('type', { enum: ['rubric', 'convention', 'security', 'custom'] }).notNull(),
+  // Display provenance, NOT a trust gate — skill bodies are trusted instructions
+  // either way (see reviewer-core prompt.ts: the skills slot is never
+  // wrapUntrusted'd). Keep in lockstep with `SkillSource` in
+  // vendor/shared/contracts/knowledge.ts: this TS-level enum narrows
+  // $inferInsert, so a value missing here is a compile error at the repository.
+  // The DB column is plain `text` with no CHECK — widening needs no migration.
   source: text('source', {
-    enum: ['manual', 'imported_url', 'extracted', 'community'],
+    enum: ['manual', 'imported_url', 'extracted', 'community', 'imported_file'],
   }).notNull(),
   body: text('body').notNull(),
   enabled: boolean('enabled').notNull().default(true),

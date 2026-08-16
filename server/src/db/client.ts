@@ -4,6 +4,16 @@ import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/**
+ * The handle Drizzle hands to a `.transaction()` callback.
+ *
+ * Derived from `Db` rather than imported, so it can never drift from the schema
+ * generic. Widen a repository method's first/last parameter to `Db | Transaction`
+ * when it has to be callable both standalone and inside a unit of work — `tx`
+ * must never escape the callback or appear in a SERVICE signature.
+ */
+export type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export interface DbHandle {
   db: Db;
   sql: postgres.Sql;

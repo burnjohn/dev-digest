@@ -6,10 +6,20 @@ export function Checkbox({
   checked,
   onChange,
   label,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange?: (v: boolean) => void;
   label?: React.ReactNode;
+  /**
+   * Accessible name for the control.
+   *
+   * Needed because the visible `label` is NOT programmatically associated: the
+   * wrapping `<label>` only names *labelable* elements, and this is a `<button
+   * role="checkbox">`, which is not one. Without this the control announces as
+   * an unnamed checkbox. Pass it whenever `label` is empty or purely visual.
+   */
+  ariaLabel?: string;
 }) {
   return (
     <label
@@ -26,6 +36,7 @@ export function Checkbox({
         type="button"
         role="checkbox"
         aria-checked={checked}
+        {...(ariaLabel ? { "aria-label": ariaLabel } : {})}
         onClick={() => onChange?.(!checked)}
         style={{
           width: 16,
