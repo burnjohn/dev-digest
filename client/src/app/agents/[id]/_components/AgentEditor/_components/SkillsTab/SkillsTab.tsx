@@ -30,7 +30,7 @@ import {
 import type { Agent } from "@devdigest/shared";
 import { useAgentSkills, useSetAgentSkills, useSkills } from "../../../../../../../lib/hooks/skills";
 import { TYPE_COLOR } from "../../../../../../skills/_components/SkillCard/constants";
-import { filterByName, orderForDisplay, reconcileOrder, reorderLinked } from "./helpers";
+import { filterByName, move, orderForDisplay, reconcileOrder, sameIds } from "./helpers";
 import { s } from "./styles";
 
 export function SkillsTab({ agent }: { agent: Agent }) {
@@ -121,11 +121,26 @@ export function SkillsTab({ agent }: { agent: Agent }) {
     commit(displayIds, displayIds.filter((x) => next.has(x)));
   };
 
-  /** Drop `fromId` onto `toId`'s prompt slot; unlinked rows stay put. */
+  /**
+   * Drop `fromId` onto `toId`'s ROW, linked or not.
+   *
+   * The move is over the display list, so a row lands exactly where it was
+   * dropped and the rows it passed shift by one — what any sortable list does.
+   * Prompt order stays the derived thing (`displayIds` filtered to checked), so
+   * dropping onto an unchecked row is still meaningful: it decides where the
+   * skill will sit in the prompt if it is ever checked.
+   */
   const reorder = (fromId: string, toId: string) => {
-    const nextOrder = reorderLinked(displayIds, linkedSet, fromId, toId);
-    if (nextOrder === displayIds) return;
-    commit(nextOrder, nextOrder.filter((x) => linkedSet.has(x)));
+    const nextOrder = move(displayIds, displayIds.indexOf(fromId), displayIds.indexOf(toId));
+    if (nextOrder === displayIds) return; // `move` is total: a no-op returns the input
+    const nextLinked = nextOrder.filter((x) => linkedSet.has(x));
+    // Stepping past an unchecked row moves the row without changing the prompt.
+    // Remember the new row order, but don't spend a write on it.
+    if (sameIds(nextLinked, effectiveIds)) {
+      setOrder(nextOrder);
+      return;
+    }
+    commit(nextOrder, nextLinked);
   };
 
   /**
@@ -139,9 +154,24 @@ export function SkillsTab({ agent }: { agent: Agent }) {
     if (target) reorder(id, target);
   };
 
-  const beginDrag = (id: string) => {
+  /**
+   * Start a drag from either drag source: the row, or the grip inside it.
+   *
+   * `setData` is not optional decoration — Firefox refuses to begin a drag whose
+   * `dragstart` wrote no data at all. The whole block is guarded because jsdom's
+   * `fireEvent.dragStart` supplies no `dataTransfer` object.
+   */
+  const beginDrag = (e: React.DragEvent<HTMLElement>, id: string) => {
     dragRef.current = id;
     setDragId(id);
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    dt.setData("text/plain", id);
+    dt.effectAllowed = "move";
+    // Dragging by the grip makes the grip the drag source, and with it the drag
+    // image. Point it back at the row so the ghost is the row either way.
+    const row = e.currentTarget.closest("li");
+    if (row && dt.setDragImage) dt.setDragImage(row, 16, row.clientHeight / 2);
   };
 
   const endDrag = () => {
@@ -224,12 +254,16 @@ export function SkillsTab({ agent }: { agent: Agent }) {
             <li
               key={skill.id}
               draggable={isLinked}
-              onDragStart={() => isLinked && beginDrag(skill.id)}
+              onDragStart={(e) => isLinked && beginDrag(e, skill.id)}
               onDragOver={(e) => {
-                if (!dragRef.current || !isLinked) return;
-                e.preventDefault(); // without this the browser refuses the drop
+                if (!dragRef.current) return;
+                // EVERY row must preventDefault. A target that skips it refuses
+                // the drop silently — the row just snaps back.
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
                 if (skill.id !== overId) setOverId(skill.id);
               }}
+              onDragLeave={() => setOverId((cur) => (cur === skill.id ? null : cur))}
               onDrop={(e) => {
                 e.preventDefault();
                 onDrop(skill.id);
@@ -238,10 +272,22 @@ export function SkillsTab({ agent }: { agent: Agent }) {
               style={s.row(isLinked, dragId === skill.id, overId === skill.id && dragId !== skill.id)}
             >
               {/* Drag affordance AND the keyboard path: pointer users drag the
-                  row, keyboard users focus the handle and press ↑/↓. */}
+                  row, keyboard users focus the handle and press ↑/↓.
+
+                  It carries `draggable` itself because a mousedown on a form
+                  control does not start an ancestor's drag — without this the
+                  one element advertising `cursor: grab` is the one place a drag
+                  can't begin. */}
               <button
                 type="button"
                 disabled={!isLinked}
+                draggable={isLinked}
+                onDragStart={(e) => {
+                  if (!isLinked) return;
+                  e.stopPropagation(); // the row is a drag source too; only one drag
+                  beginDrag(e, skill.id);
+                }}
+                onDragEnd={endDrag}
                 aria-label={
                   isLinked
                     ? t("skills.reorder", {
@@ -260,7 +306,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
                     shift(skill.id, 1);
                   }
                 }}
-                style={s.handle(isLinked)}
+                style={s.handle(isLinked, dragId === skill.id)}
               >
                 <Icon.Menu size={14} />
               </button>

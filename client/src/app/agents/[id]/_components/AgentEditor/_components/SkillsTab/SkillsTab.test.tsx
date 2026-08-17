@@ -79,12 +79,34 @@ function lastPosted(): string[] {
   return setSkills.mock.calls.at(-1)?.[0] as string[];
 }
 
+/**
+ * jsdom implements no `DataTransfer`, so every drag test has to carry its own.
+ * It is not decoration: `dragstart` MUST write to it (Firefox aborts a drag that
+ * doesn't) and `dragover` MUST set `dropEffect`, and a stub is the only way this
+ * suite can see either happen.
+ */
+function stubDataTransfer() {
+  return {
+    setData: vi.fn(),
+    getData: vi.fn(),
+    setDragImage: vi.fn(),
+    effectAllowed: "none",
+    dropEffect: "none",
+  };
+}
+
+/** Drag `source` onto row `to`, via the same dataTransfer the browser would reuse. */
+function dragFrom(source: Element, to: number, dataTransfer = stubDataTransfer()) {
+  const rows = screen.getAllByRole("listitem");
+  fireEvent.dragStart(source, { dataTransfer });
+  fireEvent.dragOver(rows[to]!, { dataTransfer });
+  fireEvent.drop(rows[to]!, { dataTransfer });
+  return dataTransfer;
+}
+
 /** Drag row `from` onto row `to` (indices into the rendered list). */
 function dragRow(from: number, to: number) {
-  const rows = screen.getAllByRole("listitem");
-  fireEvent.dragStart(rows[from]!);
-  fireEvent.dragOver(rows[to]!);
-  fireEvent.drop(rows[to]!);
+  return dragFrom(screen.getAllByRole("listitem")[from]!, to);
 }
 
 describe("SkillsTab", () => {
@@ -151,15 +173,15 @@ describe("SkillsTab", () => {
     expect(rowNames()[0]).toContain("bravo-rule");
   });
 
-  it("dragging past an unchecked row does not drag that row along", () => {
+  it("dragging past an unchecked row shifts that row down — it is a real sortable list", () => {
     renderTab();
     fireEvent.click(screen.getByRole("checkbox", { name: "charlie-rule" })); // link all three
     fireEvent.click(screen.getByRole("checkbox", { name: "alpha-rule" })); // unlink the middle row
     dragRow(2, 0); // charlie-rule onto bravo-rule, over the unchecked alpha-rule
     expect(lastPosted()).toEqual(["s3", "s2"]);
     expect(rowNames()[0]).toContain("charlie-rule");
-    expect(rowNames()[1]).toContain("alpha-rule"); // anchored at its index
-    expect(rowNames()[2]).toContain("bravo-rule");
+    expect(rowNames()[1]).toContain("bravo-rule");
+    expect(rowNames()[2]).toContain("alpha-rule"); // pushed down by one, like any row
   });
 
   it("dragging a row onto another reorders and saves", () => {
@@ -169,10 +191,46 @@ describe("SkillsTab", () => {
     expect(rowNames()[0]).toContain("alpha-rule");
   });
 
-  it("dropping onto an unlinked row is a no-op — order only exists for linked skills", () => {
+  it("dropping onto an UNLINKED row lands there — every row is a drop target", () => {
+    // The bug this file exists to guard: unlinked rows used to refuse the drop
+    // (no preventDefault in dragover), so a list with disabled skills mixed in
+    // silently ate most drags.
     renderTab();
     dragRow(0, 2); // bravo-rule onto charlie-rule (unlinked)
+    expect(lastPosted()).toEqual(["s1", "s2"]);
+    expect(rowNames()[0]).toContain("alpha-rule");
+    expect(rowNames()[1]).toContain("charlie-rule");
+    expect(rowNames()[2]).toContain("bravo-rule");
+  });
+
+  it("moving a row without changing the prompt order writes nothing", () => {
+    renderTab();
+    dragRow(1, 2); // alpha-rule below the unlinked charlie-rule
+    // bravo still precedes alpha, so the assembled prompt is untouched…
     expect(setSkills).not.toHaveBeenCalled();
+    // …but the row did move, and that position is remembered.
+    expect(rowNames()[1]).toContain("charlie-rule");
+    expect(rowNames()[2]).toContain("alpha-rule");
+  });
+
+  it("writes to dataTransfer on dragstart — Firefox aborts a drag that doesn't", () => {
+    renderTab();
+    const dt = dragRow(1, 0);
+    expect(dt.setData).toHaveBeenCalledWith("text/plain", "s1");
+    expect(dt.effectAllowed).toBe("move");
+    expect(dt.dropEffect).toBe("move");
+  });
+
+  it("the grip handle is itself a drag source, not just a cursor", () => {
+    // A mousedown on a <button> does not start an ancestor's drag, so the handle
+    // has to carry `draggable` or the only grab-cursor in the row is a dead spot.
+    renderTab();
+    const handles = screen.getAllByRole("button", { name: /^Reorder/ });
+    expect(handles[1]).toHaveAttribute("draggable", "true");
+    expect(handles[2]).not.toHaveAttribute("draggable", "true"); // unlinked row
+    dragFrom(handles[1]!, 0); // alpha-rule's grip, onto bravo-rule
+    expect(lastPosted()).toEqual(["s1", "s2"]);
+    expect(rowNames()[0]).toContain("alpha-rule");
   });
 
   it("the drag handle reorders from the keyboard", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterByName, move, orderForDisplay, reconcileOrder, reorderLinked } from "./helpers";
+import { filterByName, move, orderForDisplay, reconcileOrder, sameIds } from "./helpers";
 
 describe("move — the primitive behind the reorder buttons", () => {
   it("moves an item up", () => {
@@ -77,32 +77,21 @@ describe("reconcileOrder", () => {
   });
 });
 
-describe("reorderLinked — unchecked rows are anchored", () => {
-  const linked = new Set(["a", "c"]);
-
-  it("moves a linked row into another linked row's slot", () => {
-    // 'b' is unchecked and sits between them: it must not shift.
-    expect(reorderLinked(["a", "b", "c"], linked, "c", "a")).toEqual(["c", "b", "a"]);
+describe("sameIds — tells a row-only move from a prompt-order change", () => {
+  it("is true for the same ids in the same order", () => {
+    expect(sameIds(["a", "b"], ["a", "b"])).toBe(true);
   });
 
-  it("leaves every unlinked row at its own index across a long move", () => {
-    const display = ["a", "x", "b", "y", "c"];
-    const all = new Set(["a", "b", "c"]);
-    // a → c's slot: linked sequence becomes b, c, a; x and y keep indices 1 and 3.
-    expect(reorderLinked(display, all, "a", "c")).toEqual(["b", "x", "c", "y", "a"]);
+  it("is false when the order differs", () => {
+    expect(sameIds(["a", "b"], ["b", "a"])).toBe(false);
   });
 
-  it("returns the SAME array when the drop is a no-op, so callers can skip the write", () => {
-    const display = ["a", "b", "c"];
-    expect(reorderLinked(display, linked, "a", "a")).toBe(display);
-    expect(reorderLinked(display, linked, "a", "b")).toBe(display); // 'b' is unlinked
-    expect(reorderLinked(display, linked, "ghost", "a")).toBe(display);
+  it("is false when the length differs", () => {
+    expect(sameIds(["a"], ["a", "b"])).toBe(false);
   });
 
-  it("does not mutate the input", () => {
-    const display = ["a", "b", "c"];
-    reorderLinked(display, linked, "c", "a");
-    expect(display).toEqual(["a", "b", "c"]);
+  it("is true for two empty lists", () => {
+    expect(sameIds([], [])).toBe(true);
   });
 });
 

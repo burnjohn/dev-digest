@@ -58,8 +58,11 @@ export const s = {
     background: linked ? "var(--bg-hover)" : "var(--bg-surface)",
     opacity: dragging ? 0.45 : 1,
     transition: "border-color .12s, opacity .12s",
+    // Otherwise a press-and-move over the skill name starts a text selection
+    // instead of the drag.
+    userSelect: "none",
   }),
-  handle: (linked: boolean): CSSProperties => ({
+  handle: (linked: boolean, dragging: boolean): CSSProperties => ({
     display: "inline-grid",
     placeItems: "center",
     width: 20,
@@ -70,7 +73,7 @@ export const s = {
     background: "transparent",
     color: "var(--text-muted)",
     opacity: linked ? 1 : 0.35,
-    cursor: linked ? "grab" : "default",
+    cursor: dragging ? "grabbing" : linked ? "grab" : "default",
   }),
   name: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
   disabled: { fontSize: 11, color: "var(--text-muted)" } satisfies CSSProperties,

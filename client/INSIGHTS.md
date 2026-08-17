@@ -6,6 +6,21 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-17 — A `dragover` handler that returns before `preventDefault()` eats the drop silently
+`SkillsTab` guarded `onDragOver` with `if (!dragRef.current || !isLinked) return`, so unchecked
+rows never called `preventDefault()` and the browser refused every drop onto them — the row just
+snapped back, no error. In a list where valid targets are interleaved with invalid ones, most
+drags land on a dead row. Always `preventDefault()` on every potential target, then decide what
+the drop *means* in `onDrop`. jsdom cannot catch this: `fireEvent.dragOver` has no default action
+to prevent, so the tests passed the whole time.
+
+### 2026-08-17 — HTML5 drag sources: `setData` is mandatory, and a `<button>` handle is not a source
+Firefox aborts a drag whose `dragstart` wrote nothing, so always
+`e.dataTransfer.setData("text/plain", id)` (guard the block — jsdom's `fireEvent` supplies no
+`dataTransfer`). And a mousedown on a form control does not start an *ancestor's* drag: a grip
+`<button>` inside a `draggable` row needs its own `draggable` + `dragstart`, plus
+`setDragImage(row)` so the ghost stays the row rather than the icon.
+
 ### 2026-08-17 — `%5BrepoId%5D` is correct; GitHub's `html_url` disagrees with its own UI
 For bracketed App Router paths, github.com's file-tree anchors link to
 `…/repos/%5BrepoId%5D/pulls/%5Bnumber%5D` — what `encodeURIComponent` emits — while
