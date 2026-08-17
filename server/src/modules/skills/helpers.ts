@@ -28,7 +28,7 @@ export function toSkillDto(row: SkillRow): Skill {
  * repository's join, not fetched here — this stays pure.
  */
 export function toSkillListItemDto(row: SkillRow, usedBy: number): SkillListItem {
-  return { ...toSkillDto(row), used_by: usedBy };
+  return { ...toSkillDto(row), agent_count: usedBy };
 }
 
 /** Map a `skill_versions` row to the public DTO. `created_at` is ISO-8601. */

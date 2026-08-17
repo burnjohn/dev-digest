@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Skill, SkillListItem, SkillSource, SkillType, SkillVersion } from '@devdigest/shared';
+import { Skill, SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -10,23 +10,18 @@ import { DEFAULT_SKILL_SOURCE, DEFAULT_SKILL_TYPE, MAX_SKILL_BODY_CHARS } from '
 
 /**
  * A1 — skills module.
- *   GET    /skills               → list (workspace-scoped) + used_by counts
+ *   GET    /skills               → list envelope (workspace-scoped) + agent_count
  *   GET    /skills/:id           → one skill
  *   POST   /skills               → create (v1 snapshot written with it)
  *   PUT    /skills/:id           → update; a body change bumps the version
  *   DELETE /skills/:id           → delete (cascades to versions + agent links)
- *   GET    /skills/:id/versions  → body history, newest first
- *
- * Every route declares `schema.response`. Nothing else in the repo does yet, and
- * it is not ceremony: the DTO gate is what keeps `workspace_id` off the wire even
- * if a helper starts spreading a raw row. New module, existing contract — the
- * precedent is cheapest to set here.
+ *   GET    /skills/:id/history   → body history, newest first
  */
 
 const CreateSkillBody = z.object({
-  // Optional: derived from the body's first `# H1` when absent (see the service).
-  name: z.string().min(1).optional(),
-  description: z.string().default(''),
+  // A skill without a name is not useful in the picker — require it up front.
+  name: z.string().min(1),
+  description: z.string().min(1),
   type: SkillType.default(DEFAULT_SKILL_TYPE),
   source: SkillSource.default(DEFAULT_SKILL_SOURCE),
   body: z.string().min(1).max(MAX_SKILL_BODY_CHARS),
@@ -52,14 +47,12 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
   // satisfies `SkillsServiceDeps` (it exposes `db`), so no container change.
   const service = new SkillsService(app.container);
 
-  app.get(
-    '/skills',
-    { schema: { response: { 200: z.array(SkillListItem) } } },
-    async (req) => {
-      const { workspaceId } = await getContext(app.container, req);
-      return service.list(workspaceId);
-    },
-  );
+  app.get('/skills', async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const items = await service.list(workspaceId);
+    // Envelope so we can hang pagination off it later without another reshape.
+    return { items, total: items.length };
+  });
 
   app.get(
     '/skills/:id',
@@ -74,20 +67,19 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/skills',
-    { schema: { body: CreateSkillBody, response: { 201: Skill } } },
-    async (req, reply) => {
+    { schema: { body: CreateSkillBody, response: { 200: Skill } } },
+    async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       const body = req.body;
       const skill = await service.create(workspaceId, {
+        name: body.name,
         description: body.description,
         type: body.type,
         source: body.source,
         body: body.body,
         enabled: body.enabled,
-        ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.evidence_files !== undefined ? { evidence_files: body.evidence_files } : {}),
       });
-      reply.status(201);
       return skill;
     },
   );
@@ -114,14 +106,10 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     },
   );
 
-  app.get(
-    '/skills/:id/versions',
-    { schema: { params: IdParams, response: { 200: z.array(SkillVersion) } } },
-    async (req) => {
-      const { workspaceId } = await getContext(app.container, req);
-      const versions = await service.listVersions(workspaceId, req.params.id);
-      if (!versions) throw new NotFoundError('Skill not found');
-      return versions;
-    },
-  );
+  app.get('/skills/:id/history', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const versions = await service.listVersions(workspaceId, req.params.id);
+    if (!versions) throw new NotFoundError('Skill not found');
+    return versions;
+  });
 }

@@ -13,10 +13,10 @@ import { Skill } from './knowledge.js';
  * A skill plus how many agents link it. Powers the list card's meta row and the
  * "this will be unlinked from N agents" line in the delete confirmation.
  *
- * `used_by` counts LINKS, not enabled links — a linked-but-disabled skill still
- * shows up here, because unlinking it is still a change the user is making.
+ * `agent_count` counts LINKS, not enabled links — a linked-but-disabled skill
+ * still shows up here, because unlinking it is still a change the user is making.
  */
-export const SkillListItem = Skill.extend({ used_by: z.number().int() });
+export const SkillListItem = Skill.extend({ agent_count: z.number().int() });
 export type SkillListItem = z.infer<typeof SkillListItem>;
 
 /**
