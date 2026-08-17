@@ -34,7 +34,9 @@ the finding gets.
 | **TEST** | test quality and lane placement | `react-testing-library` |
 | **DOCS** | diagrams and prose | `mermaid-diagram` |
 
-Priority order — also the truncation order when the file limit bites:
+Priority order — the dispatch order for phase 3 (there is no file-count cap; a large group is
+batched into ~25-file chunks). It decides what gets covered first if a run is cancelled or the
+time budget expires:
 
 ```
 SEC → CORRECT → BE → DATA → CONTRACT → FE → TEST → DOCS
