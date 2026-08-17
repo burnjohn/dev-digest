@@ -15,6 +15,8 @@ import type {
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
 const TIMEOUT = 30_000;
+/** Upper bound on paginated PR files — 30 pages, well past any reviewable PR. */
+const MAX_PR_FILES = 3000;
 
 function mapStatus(state: string, merged: boolean | undefined): PrStatus {
   if (merged) return 'merged';
@@ -29,8 +31,12 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 export class OctokitGitHubClient implements GitHubClient {
   private octokit: Octokit;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  /**
+   * `options` is a test seam — it lets a test hand in `{ request: { fetch } }` so
+   * paging behaviour can be exercised without network. Production passes only a token.
+   */
+  constructor(token: string, options?: ConstructorParameters<typeof Octokit>[0]) {
+    this.octokit = new Octokit({ auth: token, ...options });
   }
 
   async listPullRequests(repo: RepoRef): Promise<PrMeta[]> {
@@ -76,12 +82,23 @@ export class OctokitGitHubClient implements GitHubClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: n,
-            per_page: 100,
-          });
+          // Paginated: a single per_page:100 page silently truncates a big PR to
+          // its first 100 files while `changed_files` below still reports the real
+          // total — the UI then renders "300 files" over 100 cards, and those 100
+          // rows overwrite the cached diff. Capped so a pathological PR can't hold
+          // the 30s timeout open indefinitely.
+          let fetched = 0;
+          const files = await this.octokit.paginate(
+            this.octokit.rest.pulls.listFiles,
+            { owner: repo.owner, repo: repo.name, pull_number: n, per_page: 100 },
+            (res, done) => {
+              fetched += res.data.length;
+              if (fetched >= MAX_PR_FILES) done();
+              return res.data;
+            },
+          );
+          // Not paginated: commits are display-only on the Overview tab, and
+          // GitHub itself caps this endpoint at 250 commits per PR.
           const { data: commits } = await this.octokit.rest.pulls.listCommits({
             owner: repo.owner,
             repo: repo.name,

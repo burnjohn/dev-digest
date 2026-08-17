@@ -8,6 +8,20 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-17 — a delete-then-guarded-insert cache swap loses data on an upstream `200 []`
+`pulls/routes.ts` `GET /pulls/:id` deleted `pr_files` unconditionally and re-inserted only
+`if (detail.files.length > 0)`, so one empty-but-successful GitHub reply permanently wiped a PR's
+cached patches — wrapping it in a transaction does NOT help, that only guards against a crash
+*between* the two statements. Delete and insert must share one guard, and the trust check is
+cross-field: `files_count > 0 && files.length === 0` means the sub-resource failed.
+
+### 2026-08-17 — GitHub's PR sub-resources fail INDEPENDENTLY of `pulls.get`
+In the 2026-08-17 incident `GET /repos/:o/:r/pulls/:n` returned 200 with a correct `changed_files`
+while `…/files` and `…/commits` 404'd (and at times answered `200 []`) — "PR exists, diff is empty"
+is a real upstream state, not a caller bug. Never treat an empty sub-resource as authoritative;
+`PrDetail.diff_source` (`github` | `cache` | `unavailable`) now carries that verdict to the UI so
+the fallback stops rendering as "No changed files." Related: the fail-open entry below.
+
 ### 2026-08-17 — CORRECTS the `{}`-parses entry below: `.default()` breaks the REAL call
 That entry's advice — give a new structured schema all-`.default()` fields so the mock's `{}`
 fallback parses — is wrong, and cost a whole feature. Calls go out with `strict: true`, where

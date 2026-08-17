@@ -210,11 +210,30 @@ export const IssueMeta = z.object({
 });
 export type IssueMeta = z.infer<typeof IssueMeta>;
 
+/**
+ * Where the `files`/`commits` on a PrDetail came from. Without this the UI cannot
+ * tell "this PR really has no changes" from "GitHub was unreachable", because the
+ * detail route degrades to the local cache and still answers 200.
+ *   github      — live from the API, authoritative.
+ *   cache       — GitHub failed or answered inconsistently; these are the last known good rows.
+ *   unavailable — GitHub failed AND nothing is cached; `files` is empty and means nothing.
+ */
+export const PrDiffSource = z.enum(['github', 'cache', 'unavailable']);
+export type PrDiffSource = z.infer<typeof PrDiffSource>;
+
+/** Why the diff isn't live: the user's credential vs. upstream being down. */
+export const PrDiffSourceReason = z.enum(['auth', 'unavailable']);
+export type PrDiffSourceReason = z.infer<typeof PrDiffSourceReason>;
+
 export const PrDetail = PrMeta.extend({
   body: z.string().nullish(),
   files: z.array(PrFile),
   commits: z.array(PrCommit),
   linked_issue: IssueMeta.nullish(),
+  // Nullish: additive, so an older client (or a fixture built before this field)
+  // keeps parsing. Absent is read as 'github' — the pre-existing assumption.
+  diff_source: PrDiffSource.nullish(),
+  diff_source_reason: PrDiffSourceReason.nullish(),
 });
 export type PrDetail = z.infer<typeof PrDetail>;
 

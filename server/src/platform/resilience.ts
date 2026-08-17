@@ -32,11 +32,31 @@ export interface RetryOptions {
   onRetry?: (attempt: number, err: unknown) => void;
 }
 
-function defaultIsRetryable(err: unknown): boolean {
+/** Dig the HTTP status out of whichever shape the thrower used (Octokit, fetch, AppError). */
+export function httpStatusOf(err: unknown): number | undefined {
   const status =
     (err as { status?: number })?.status ??
     (err as { statusCode?: number })?.statusCode ??
     (err as { response?: { status?: number } })?.response?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * Why an external call failed, at the granularity a *user* can act on:
+ * `auth` → their credential is wrong/insufficient (fix it in Settings);
+ * `unavailable` → upstream is down, throttled, or unreachable (wait and retry).
+ *
+ * Note 403 lands in `auth` even though GitHub also returns it for rate limits —
+ * both are "your token can't do this right now", and the distinction needs
+ * `x-ratelimit-*` headers this layer doesn't see.
+ */
+export function classifyFailure(err: unknown): 'auth' | 'unavailable' {
+  const status = httpStatusOf(err);
+  return status === 401 || status === 403 ? 'auth' : 'unavailable';
+}
+
+function defaultIsRetryable(err: unknown): boolean {
+  const status = httpStatusOf(err);
   if (typeof status === 'number') return status === 429 || status >= 500;
   // network-ish errors
   const code = (err as { code?: string })?.code;
