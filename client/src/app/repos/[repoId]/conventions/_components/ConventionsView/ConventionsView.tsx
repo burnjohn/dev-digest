@@ -194,6 +194,10 @@ export function ConventionsView() {
                 key={c.id}
                 candidate={c}
                 repoId={repoId}
+                // NOT the `fullName` const above — that falls back to `repoId`, a
+                // uuid, which would build a github.com URL that cannot resolve.
+                repoFullName={activeRepo?.full_name ?? null}
+                gitRef={activeRepo?.default_branch ?? null}
                 onAccept={() => setStatus(c.id, "accepted")}
                 onReject={() => setStatus(c.id, "rejected")}
               />

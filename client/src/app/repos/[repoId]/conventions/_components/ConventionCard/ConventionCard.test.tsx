@@ -37,19 +37,29 @@ afterEach(() => {
 
 function renderCard(
   c: ConventionCandidate,
-  handlers: { onAccept?: () => void; onReject?: () => void } = {},
+  opts: {
+    onAccept?: () => void;
+    onReject?: () => void;
+    repoFullName?: string | null;
+    gitRef?: string | null;
+  } = {},
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ conventions: messages }}>
       <ConventionCard
         candidate={c}
         repoId="r1"
-        onAccept={handlers.onAccept ?? vi.fn()}
-        onReject={handlers.onReject ?? vi.fn()}
+        repoFullName={opts.repoFullName}
+        gitRef={opts.gitRef}
+        onAccept={opts.onAccept ?? vi.fn()}
+        onReject={opts.onReject ?? vi.fn()}
       />
     </NextIntlClientProvider>,
   );
 }
+
+/** The repo coordinates the blob link is built from. */
+const repo = { repoFullName: "acme/api", gitRef: "main" };
 
 describe("evidenceRef", () => {
   it("renders a range, and collapses a single-line one", () => {
@@ -70,6 +80,60 @@ describe("ConventionCard", () => {
     expect(screen.getByText("const user = await db.users.find(id);")).toBeInTheDocument();
     expect(screen.getByText("91%")).toBeInTheDocument();
     expect(screen.getByText("6 files follow this")).toBeInTheDocument();
+  });
+
+  it("links the citation to the file on GitHub at the cited line range", () => {
+    renderCard(candidate(), repo);
+    const link = screen.getByRole("link", { name: "src/api/users.ts:23-31" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://github.com/acme/api/blob/main/src/api/users.ts#L23-L31",
+    );
+    // The citation opens beside the triage list, not on top of it.
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("collapses a single-line citation to one anchor, and omits it when unlined", () => {
+    renderCard(candidate({ evidence_end_line: 23 }), repo);
+    expect(screen.getByRole("link", { name: "src/api/users.ts:23" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/api/blob/main/src/api/users.ts#L23",
+    );
+
+    cleanup();
+    renderCard(candidate({ evidence_start_line: null, evidence_end_line: null }), repo);
+    expect(screen.getByRole("link", { name: "src/api/users.ts" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/api/blob/main/src/api/users.ts",
+    );
+  });
+
+  // Matches the form github.com's own file-tree anchors use for these segments.
+  it("percent-encodes bracketed path segments, which this repo's own routes use", () => {
+    renderCard(
+      candidate({ evidence_path: "client/src/app/repos/[repoId]/page.tsx" }),
+      repo,
+    );
+    expect(screen.getByRole("link", { name: /page\.tsx:23-31$/ })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/api/blob/main/client/src/app/repos/%5BrepoId%5D/page.tsx#L23-L31",
+    );
+  });
+
+  it("still escapes what genuinely must be escaped in a path segment", () => {
+    renderCard(candidate({ evidence_path: "src/my file #1.ts" }), repo);
+    expect(screen.getByRole("link", { name: /#1\.ts:23-31$/ })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/api/blob/main/src/my%20file%20%231.ts#L23-L31",
+    );
+  });
+
+  // A half-known repo would build a URL that 404s — worse than the text it replaces.
+  it("stays plain text when the repo coordinates are unknown", () => {
+    renderCard(candidate(), { gitRef: "main" });
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("src/api/users.ts:23-31")).toBeInTheDocument();
   });
 
   it("accepting and rejecting call their handlers, not each other", () => {

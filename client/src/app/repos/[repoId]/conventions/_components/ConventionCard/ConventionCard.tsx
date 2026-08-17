@@ -8,7 +8,8 @@
 
    The evidence reference is the point of the card. It names a real line the
    snippet was found on (the server corrects the model's claim before storing it),
-   so a user can check the citation in the repo before accepting the rule. */
+   so a user can check the citation in the repo before accepting the rule — which
+   is why it links out to the file on github.com at that line range. */
 "use client";
 
 import React from "react";
@@ -16,6 +17,7 @@ import { useTranslations } from "next-intl";
 import { Button, Icon, IconBtn, ProgressBar, TextInput } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
 import { useUpdateConvention } from "@/lib/hooks/conventions";
+import { githubBlobUrl } from "@/lib/github-urls";
 import { s } from "./styles";
 
 /** `src/api/users.ts:23-31`, or `…:23` when the evidence is one line. */
@@ -32,11 +34,17 @@ function meterColor(pct: number): string {
 export function ConventionCard({
   candidate,
   repoId,
+  repoFullName,
+  gitRef,
   onAccept,
   onReject,
 }: {
   candidate: ConventionCandidate;
   repoId: string;
+  /** `owner/repo`. Absent when the repo isn't resolved — the ref stays plain text. */
+  repoFullName?: string | null;
+  /** Branch or sha the blob link is pinned to (the repo's default branch today). */
+  gitRef?: string | null;
   onAccept: () => void;
   onReject: () => void;
 }) {
@@ -46,6 +54,7 @@ export function ConventionCard({
   const [rule, setRule] = React.useState(candidate.rule);
   const [snippet, setSnippet] = React.useState(candidate.evidence_snippet);
   const [copied, setCopied] = React.useState(false);
+  const [refHover, setRefHover] = React.useState(false);
 
   const pct = Math.round((candidate.confidence ?? 0) * 100);
   // `null` is not 0 here: it means no denominator could be measured, which is a
@@ -55,6 +64,18 @@ export function ConventionCard({
   const accepted = candidate.status === "accepted";
   const rejected = candidate.status === "rejected";
   const ref = evidenceRef(candidate);
+  // Both coordinates or nothing: a half-known repo would build a URL that 404s,
+  // which is worse than the plain text it replaces (same rule as `FindingCard`).
+  const href =
+    repoFullName && gitRef
+      ? githubBlobUrl(
+          repoFullName,
+          gitRef,
+          candidate.evidence_path,
+          candidate.evidence_start_line ?? undefined,
+          candidate.evidence_end_line ?? undefined,
+        )
+      : undefined;
 
   const startEdit = () => {
     // Re-seed from the row, so cancelling an edit and reopening doesn't resume
@@ -138,10 +159,30 @@ export function ConventionCard({
             {candidate.rationale && <p style={s.rationale}>{candidate.rationale}</p>}
 
             <div style={s.evidenceBox}>
+              {/* The link is a SIBLING of the copy button, never its ancestor —
+                  nesting interactive elements is invalid HTML (client/INSIGHTS.md).
+                  The path text stays the accessible name; `title` carries the
+                  "opens on GitHub" hint without overriding it. */}
               <div style={s.evidenceHead}>
-                <span className="mono" style={s.evidenceRef} translate="no">
-                  {ref}
-                </span>
+                {href ? (
+                  <a
+                    className="mono"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t("card.openOnGitHub")}
+                    translate="no"
+                    style={s.evidenceLink(refHover)}
+                    onMouseEnter={() => setRefHover(true)}
+                    onMouseLeave={() => setRefHover(false)}
+                  >
+                    {ref}
+                  </a>
+                ) : (
+                  <span className="mono" style={s.evidenceRef} translate="no">
+                    {ref}
+                  </span>
+                )}
                 <IconBtn
                   icon={copied ? "Check" : "Copy"}
                   label={copied ? t("card.copied") : t("card.copyEvidence")}

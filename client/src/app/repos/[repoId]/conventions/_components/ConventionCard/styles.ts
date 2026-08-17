@@ -82,6 +82,18 @@ export const s = {
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
   evidenceRef: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" } satisfies CSSProperties,
+  // Same truncation as `evidenceRef`, plus the hover affordance. Inline styles
+  // can't express `:hover`, so the card tracks it in state (as `MonoLink` does).
+  evidenceLink: (hovered: boolean): CSSProperties => ({
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: hovered ? "var(--accent-text)" : "var(--text-secondary)",
+    textDecoration: hovered ? "underline" : "none",
+    textUnderlineOffset: 2,
+  }),
   snippet: {
     margin: 0,
     padding: "10px 12px",

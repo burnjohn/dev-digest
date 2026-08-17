@@ -4,7 +4,13 @@
 
 const HOST = "https://github.com";
 
-/** Encode a repo-relative path for a URL while keeping "/" separators. */
+/* Encode a repo-relative path for a URL while keeping "/" separators.
+
+   Percent-encoding IS the right form for the `[repoId]` / `[number]` segments this
+   repo's App Router paths are full of: github.com's own file-tree anchors link to
+   `…/repos/%5BrepoId%5D/pulls/%5Bnumber%5D`, which is exactly what
+   `encodeURIComponent` emits. (The `html_url` from the contents API reports bare
+   brackets instead — the two disagree, and the UI's form is the one to match.) */
 function encPath(file: string): string {
   return file
     .split("/")

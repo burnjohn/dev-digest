@@ -6,6 +6,33 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-17 — `%5BrepoId%5D` is correct; GitHub's `html_url` disagrees with its own UI
+For bracketed App Router paths, github.com's file-tree anchors link to
+`…/repos/%5BrepoId%5D/pulls/%5Bnumber%5D` — what `encodeURIComponent` emits — while
+`GET /repos/:o/:r/contents/:path`'s `html_url` reports bare brackets. Trust the UI form;
+`encPath` in `lib/github-urls.ts` stays plain `encodeURIComponent`.
+(Supersedes an earlier entry today that read `html_url` as authoritative and "fixed" `encPath`.)
+
+### 2026-08-17 — You cannot test a github.com `/blob/` URL from this sandbox
+Every `/blob/` request returns 404 or 503 here — including hrefs GitHub itself rendered, and
+plain `README.md` — while `/tree/` URLs and the repo root load normally. A 404 on a blob URL
+from Claude's browser, curl, or WebFetch is an environment artifact and proves nothing about
+the URL; verify link *shape* against `/tree/` pages or the API instead.
+
+### 2026-08-17 — `MonoLink` doesn't fit a file link that has to truncate
+`vendor/ui/primitives/MonoLink` takes no `style` prop, so it can't carry the
+`flex:1 / minWidth:0 / textOverflow:ellipsis` a constrained row needs, and its no-`href` branch
+renders a dead `<button>` with no `onClick`. `FindingCard` gets away with it; `ConventionCard`
+hand-rolls the `<a>` plus a local hover `useState` (inline styles can't express `:hover`) instead.
+
+### 2026-08-17 — Conventions store no commit SHA, so their GitHub links pin to the default branch
+`convention_scans` holds counts/model/cost only and `repos` has no head-sha column, so
+`ConventionCard`'s blob link uses `activeRepo.default_branch` — the `#L` anchor drifts once main
+moves past the scan. For an exact permalink, stamp `git.currentHead()` onto `convention_scans` in
+`conventions/service.ts` (mirrors `repo_map_cache.commit_sha`) or reuse `repo_index_state.last_indexed_sha`.
+Note `ConventionsView`'s `fullName` const falls back to `repoId` (a uuid) for the heading — never
+build a URL from it; read `activeRepo?.full_name` directly.
+
 ### 2026-08-17 — `AppFrame`'s `<main>` has NO padding — every page supplies its own container
 `vendor/ui/shell/AppFrame` renders `<main style={{ flex:1, minHeight:0, overflow:"auto" }}>`, so a
 page that returns straight into `AppShell` sits flush against the sidebar and stretches edge to

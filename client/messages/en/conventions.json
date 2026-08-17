@@ -52,6 +52,7 @@
     "snippetLabel": "Evidence snippet",
     "copyEvidence": "Copy evidence reference",
     "copied": "Copied",
+    "openOnGitHub": "Open this file on GitHub at these lines",
     "support": "{count, plural, =0 {No other file follows this} one {# file follows this} other {# files follow this}}",
     "conformance": "{pct}% of {sites, plural, one {# site} other {# sites}}",
     "unmeasured": "Not measured",
