@@ -10,6 +10,9 @@ import {
   TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 import { SEED_SKILLS } from './seed-skills.js';
+import { SEED_CONVENTIONS } from './seed-conventions.js';
+import { COUNTING_STRATEGY } from '../modules/conventions/constants.js';
+import { scoreConfidence } from '../modules/conventions/helpers.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -26,11 +29,11 @@ const TEST_QUALITY_AGENT_NAME = 'Test Quality Reviewer';
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
  * with a few findings, the four built-in agents (General + Security +
  * Performance + Test Quality), all on the default openrouter/deepseek-v4-flash
- * provider+model, and the four test-quality skills linked to the Test Quality
- * Reviewer.
+ * provider+model, the four test-quality skills linked to the Test Quality
+ * Reviewer, and four pending convention candidates for the demo repo (L02).
  *
- * Course lessons populate the remaining tables (conventions, memory, eval, …)
- * once their features are built — they start empty here.
+ * Course lessons populate the remaining tables (memory, eval, …) once their
+ * features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -334,6 +337,64 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (links.length > 0) {
       await db.insert(t.agentSkills).values(links).onConflictDoNothing();
     }
+  }
+
+  // ---- convention candidates for the demo repo (L02) ----
+  // Idempotency comes from the select-then-insert loop keyed on (repo, rule) —
+  // there is no unique index. Only `pending` rows are seeded, and a row the user
+  // has already accepted or rejected is left alone: re-running the seed must not
+  // resurrect a rule they rejected, which is the same invariant `replacePending`
+  // protects during a re-scan.
+  for (const c of SEED_CONVENTIONS) {
+    const [existing] = await db
+      .select({ id: t.conventions.id })
+      .from(t.conventions)
+      .where(and(eq(t.conventions.repoId, repoId), eq(t.conventions.rule, c.rule)));
+    if (existing) continue;
+    // Score seeded rows with the SAME function the service uses. A hardcoded
+    // number here would silently drift the moment the scorer's weights move, and
+    // the demo page would show meters no evidence on it earns.
+    const strategy = COUNTING_STRATEGY[c.category];
+    const breakdown = scoreConfidence({
+      followCount: c.followCount,
+      violateCount: c.violationCount,
+      supportFiles: c.supportFiles,
+      strategy,
+      corpusSize: c.followCount + c.violationCount,
+      configDeclared: false,
+      modelConfidence: c.modelConfidence,
+    });
+    await db.insert(t.conventions).values({
+      workspaceId,
+      repoId,
+      category: c.category,
+      rule: c.rule,
+      rationale: c.rationale,
+      evidencePath: c.evidencePath,
+      evidenceSnippet: c.evidenceSnippet,
+      evidenceStartLine: c.evidenceStartLine,
+      evidenceEndLine: c.evidenceEndLine,
+      supportCount: c.supportFiles.length,
+      supportFiles: c.supportFiles,
+      followCount: c.followCount,
+      violationCount: c.violationCount,
+      conformance: breakdown.conformance,
+      probeStrategy: strategy,
+      configDeclared: false,
+      signals: {
+        strategy,
+        support: breakdown.support,
+        spread: breakdown.spread,
+        model: breakdown.model,
+        dirs: breakdown.dirs,
+        examined: c.followCount + c.violationCount,
+        corpus_size: c.followCount + c.violationCount,
+        config_declared: false,
+        capped: breakdown.capped,
+      },
+      confidence: breakdown.confidence,
+      status: 'pending',
+    });
   }
 
   return { workspaceId, userId };

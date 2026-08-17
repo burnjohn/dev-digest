@@ -6,7 +6,8 @@ import { useTranslations } from "next-intl";
 import { Button, Modal, FormField, TextInput, SelectInput } from "@devdigest/ui";
 import type { SkillType } from "@devdigest/shared";
 import { useCreateSkill } from "../../../../../../lib/hooks/skills";
-import { NEW_SKILL_BODY, SKILL_TYPES } from "../../constants";
+import { NEW_SKILL_BODY } from "../../constants";
+import { SKILL_TYPES } from "../../../../../../lib/skill-types";
 import { s } from "./styles";
 
 const MODAL_WIDTH = 520;

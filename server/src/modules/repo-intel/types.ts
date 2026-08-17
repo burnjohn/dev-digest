@@ -121,6 +121,14 @@ export interface FileRankRow {
   percentile: number;
 }
 
+/** A declaration, reduced to what a naming-conformance count needs. */
+export interface SymbolNameRow {
+  path: string;
+  name: string;
+  kind: string;
+  exported: boolean;
+}
+
 export interface RepoMapResult {
   text: string;
   tokens: number;
@@ -161,6 +169,13 @@ export interface RepoIntel {
   getUnresolvedReferences(repoId: string, files: string[]): Promise<RefRow[]>;
   /** Top-N file paths by rank, filtered of tests/configs. */
   getConventionSamples(repoId: string, n: number): Promise<string[]>;
+  /**
+   * Every indexed declaration in the repo, capped. This is the DENOMINATOR a
+   * naming convention is measured against — "hooks are named `use*`" is only
+   * checkable if you can enumerate every hook, not just the ones in a sample.
+   * `[]` when degraded, per the array-returns-empty contract above.
+   */
+  getAllSymbolNames(repoId: string, limit?: number): Promise<SymbolNameRow[]>;
 
   // --- T3: onboarding reading-path + critical paths (graph required) ------
   getTopFilesByRank(

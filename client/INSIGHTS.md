@@ -6,6 +6,25 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-17 — `AppFrame`'s `<main>` has NO padding — every page supplies its own container
+`vendor/ui/shell/AppFrame` renders `<main style={{ flex:1, minHeight:0, overflow:"auto" }}>`, so a
+page that returns straight into `AppShell` sits flush against the sidebar and stretches edge to
+edge — `ConventionsView` did exactly that and was the only list page that looked different. Copy
+`page: { padding: "24px 32px 44px", maxWidth: 1100, margin: "0 auto" }` from `AgentsListView/styles.ts`
+(Skills is identical). `components/page-shell`'s `PageContainer` exists but forces a
+title/subtitle/actions shape and is used only by `FeaturePlaceholder`.
+
+### 2026-08-17 — Fixed-order category sections silently outrank the sort you asked for
+Grouping a ranked list into fixed-order sections means the ordering only holds *within* a section:
+a 30%-confidence `naming` rule rendered above a 90% `typing` one. If the server already orders by
+score (`desc(confidence), asc(createdAt)`), render one flat list and demote the grouping key to a
+chip on the card.
+
+### 2026-08-17 — `FormField required` folds the `*` into the label's accessible name
+`FormField` renders `{label}<span>*</span>` inside one `<label>`, so a required field's
+accessible name is `Name*` and `getByLabelText("Name")` throws "Unable to find a label".
+Match a prefix (`/^Name/`) in tests, or the query breaks the moment a field becomes required.
+
 ### 2026-08-16 — Row order that outlives a checkbox must be client-held, not re-derived
 `agent_skills` stores an order for LINKED skills only, so re-deriving "linked first, rest
 alphabetical" (`orderForDisplay`) on every toggle made an unchecked row jump out of place.

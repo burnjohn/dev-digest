@@ -8,6 +8,93 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-17 — CORRECTS the `{}`-parses entry below: `.default()` breaks the REAL call
+That entry's advice — give a new structured schema all-`.default()` fields so the mock's `{}`
+fallback parses — is wrong, and cost a whole feature. Calls go out with `strict: true`, where
+OpenAI rejects any field that is optional without also being nullable; `.default()` is exactly
+that, so `ConventionDedup` was rejected on every real scan while all 275 tests passed. Fields
+stay REQUIRED (`.nullish()` is fine — nullable AND optional); give the MOCK an explicit fixture
+instead. `test/structured-schemas.test.ts` now guards the rule on the Zod side — note the
+converted JSON schema looks legal, `zodResponseFormat` only emits a console warning.
+
+### 2026-08-17 — a silent fail-open hides a feature that never ran
+The same bug survived seven real scans because `consolidate` caught the error and returned the
+un-deduped list, which is visually identical to "found no duplicates". Fail-open is right for a
+tidying pass; fail-open *silently* is not. `modules/` has no logger on any `Deps`, so this one
+uses `console.warn` deliberately — an unobservable pass is worse than an off-convention log.
+
+### 2026-08-17 — `created_at` cannot break a sort tie between rows written by the same transaction
+`ORDER BY confidence DESC, created_at ASC` in `ConventionsRepository.listByRepo` was not a TOTAL
+order: `replacePending` inserts a whole scan in one transaction and `now()` is the transaction
+timestamp, so every row shares a `created_at`. Postgres then returns tied rows in heap order, and
+any `UPDATE` (accepting a rule) rewrites that tuple to the end of the heap — so the card the user
+just clicked jumped position on the next refetch. Any user-visible list needs a unique immutable
+last key (`asc(id)`); a `defaultNow()` column is not one.
+
+### 2026-08-17 — a NEW `completeStructured` call breaks every existing test unless `{}` parses
+`MockLLMProvider.completeStructured` resolves fixtures as `structuredBySchema[req.schemaName] ??
+structured ?? {}`, so adding a call to an existing pipeline hands `{}` to the new schema in every
+test written before it — `MockLLMProvider fixture failed schema` across the whole file. Give the
+new schema all-`.default()` fields so `{}` parses to a harmless no-op, which for a pass that
+*deletes* data is also the right fail-open shape.
+
+### 2026-08-17 — `.` does not match `\r`, so `split('\n')` silently breaks every CRLF file
+`CodeIndex.grep` parsed rg output with `buf.split('\n')` + `/^(.*?):(\d+):(.*)$/`. On a
+CRLF checkout every line keeps a trailing `\r`, and `\r` is a JS regex *line terminator* —
+`.` refuses it — so the match failed for ALL lines and grep returned `[]` with no error.
+It only looked fine because LF-authored files matched. Split on `/\r?\n/` (or strip a
+trailing `\r`) anywhere you parse subprocess or file output line-wise on Windows.
+
+### 2026-08-17 — SUPERSEDES the grep entry below: the flag-injection half is fixed
+`grepWithRg` now passes `-e <pattern>` and `--` before the root (`buildRgArgs`, unit-tested
+in `test/pattern-safety.test.ts`), so a `-`-leading pattern can no longer be parsed as an
+option. The *other* reason still stands — it roots at `git.clonePathFor`, which does not
+exist in the `.it` lane, so grep-backed logic is still untestable there.
+
+### 2026-08-17 — A substring probe cannot measure a naming rule — that was the 30% ceiling
+`countSupport` matched `normalizeSnippet(file.text).includes(probe)`, so for any naming/typing
+rule the probe only ever matched the file it was copied from → `support_count` 1 → every card
+scored ~0.30. Conformance needs a *denominator*: count sites that FOLLOW vs VIOLATE
+(`countSymbolConformance` over the repo-wide `symbols` table for naming, `countPathConformance`
+over `file_rank` for structure), and treat an undeclared scope as unmeasurable (`null`), never
+as "the whole repo" — that inversion scores a universally-followed rule at ~2%.
+
+### 2026-08-17 — A saturating support term plus a multiplicative penalty charges twice
+The old `blendConfidence` computed `support = min(1, count/target)` (already ~0.17 at count 1)
+and *then* multiplied by `LOW_SUPPORT_PENALTY` for the same low count. Both are deleted; if you
+add a "weak evidence" knob again, check the normalisation isn't already expressing it.
+
+### 2026-08-17 — `CodeIndex.grep` cannot back a model-authored pattern, for two separate reasons
+`grepWithRg` passes the pattern POSITIONALLY (`spawn(rg, [...flags, pattern, root])`) with no
+`-e` and no `--`, so a pattern starting with `-` is parsed as a flag — and rg supports
+`--pre=<COMMAND>`. Independently, it roots at `git.clonePathFor`, which does not exist in the
+`.it` lane, so anything built on it silently returns 0 in every DB-backed test. Count in-process
+behind a pattern validator instead.
+
+### 2026-08-17 — REFINES the rename-prompt entry below: only adds+drops in ONE generate trigger it
+`drizzle-kit generate` asks "created or renamed from another column?" only when the same diff
+contains an added AND a deleted column. A purely additive migration (9 `ADD COLUMN`s across two
+tables, `0015`) generates non-interactively on Windows in one shot — so prefer adding a column
+alongside an old one over renaming, and split any cleanup drop into its own later generate.
+
+### 2026-08-17 — `git.readFile` THROWS for a missing file; only the mock returns `''`
+`SimpleGitClient.readFile` is `fs.readFile` over the clone path, so an absent file rejects
+with ENOENT — `MockGitClient.readFile` returning `''` is mock-only behaviour. Any optional
+read (config allowlists, best-effort samples) must be `try/catch`ed, or it passes every
+hermetic test and blows up on the first real clone.
+
+### 2026-08-17 — drizzle-kit's rename prompt can't be answered non-interactively on Windows
+Adding columns while dropping one makes `drizzle-kit generate` ask "created or renamed from
+another column?", and it reads the TTY — piping newlines leaves it hanging and NOTHING is
+written. Split the change into two generates instead: first add the new columns (no deleted
+column → no ambiguity), then remove the old one (no added column → no ambiguity).
+
+### 2026-08-17 — `freshRepo()` per test does NOT isolate a `.it` test — skills are workspace-scoped
+`LocalNoAuthProvider` resolves the same default workspace for every request, so a skill one
+test creates is visible to the rest of the file — in `conventions.it.test.ts` it silently
+deduped away the candidates later tests asserted on. A test that writes workspace-scoped
+state (skills, settings, agents) must delete it before closing, not just scope its own repo.
+
 ### 2026-08-16 — SUPERSEDES 2026-08-15: `pnpm typecheck` is GREEN on `main` again
 The two `DATABASE_URL` errors below were fixed in `9421f37` — both entrypoints now sit behind
 an `if (!url) { … process.exit(1) }` guard that narrows `string | undefined` to `string`.

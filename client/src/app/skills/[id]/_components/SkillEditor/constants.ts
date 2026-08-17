@@ -22,6 +22,3 @@ export const TABS: SkillEditorTab[] = [
 ];
 
 export const VALID_TABS = TABS.map((t) => t.key);
-
-/** Mirrors MAX_SKILL_BODY_CHARS in the server's skills module. */
-export const MAX_SKILL_BODY_CHARS = 8_000;

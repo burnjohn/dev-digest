@@ -15,12 +15,73 @@
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files",
+    "detectedFrom": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}",
+    "neverScanned": "Not scanned yet",
+    "ago": "{rel} ago",
+    "justNow": "just now",
+    "droppedUngrounded": "{count} dropped as ungrounded",
+    "droppedUnsupported": "{count} dropped as unsupported",
+    "droppedDuplicate": "{count} already on the list",
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "createSkill": "Create skill",
+    "createSkillDisabledTitle": "Accept at least one convention first"
+  },
+  "category": {
+    "naming": "Naming",
+    "structure": "Structure",
+    "error_handling": "Error handling",
+    "async": "Async",
+    "imports": "Imports",
+    "typing": "Typing",
+    "uncategorized": "Other"
   },
   "card": {
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "accept": "Accept",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "edit": "Edit this rule",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ruleLabel": "Rule",
+    "snippetLabel": "Evidence snippet",
+    "copyEvidence": "Copy evidence reference",
+    "copied": "Copied",
+    "support": "{count, plural, =0 {No other file follows this} one {# file follows this} other {# files follow this}}",
+    "conformance": "{pct}% of {sites, plural, one {# site} other {# sites}}",
+    "unmeasured": "Not measured",
+    "unmeasuredTitle": "Nothing established how often this rule is broken, so the score is a ceiling rather than a measurement.",
+    "configDeclared": "In config",
+    "configDeclaredTitle": "A project config file declares this rule",
+    "shippedIn": "Shipped in a skill",
+    "acceptAria": "Accept — {rule}",
+    "rejectAria": "Reject — {rule}"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "mergedFrom": "Merged from {count, plural, one {# accepted convention} other {# accepted conventions}} in {repo}. Everything below is editable before you save.",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "typeLabel": "Type",
+    "enabledLabel": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "enabledAria": "Enable this skill",
+    "bodyLabel": "Skill body",
+    "skillType": {
+      "rubric": "Rubric",
+      "convention": "Convention",
+      "security": "Security",
+      "custom": "Custom"
+    },
+    "savedAs": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "submit": "Create skill",
+    "submitting": "Creating…",
+    "loading": "Composing the merged body…"
   }
 }

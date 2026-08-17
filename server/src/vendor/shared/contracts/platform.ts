@@ -73,8 +73,13 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'conventions',
     label: 'Conventions',
     description: 'Extracts coding conventions from the repo.',
+    // Deliberately cheap: extraction is ~7 calls per scan (one file-selection
+    // pass + one per category), and every candidate is re-grounded against the
+    // real file afterwards, so a flagship model buys little. `gpt-4o-mini` is
+    // this repo's own definition of cheap for OpenAI (platform/model-router.ts,
+    // `CHEAP.openai`). Settings → Feature Models overrides it per workspace.
     defaultProvider: 'openai',
-    defaultModel: 'gpt-5.4',
+    defaultModel: 'gpt-4o-mini',
   },
 ];
 

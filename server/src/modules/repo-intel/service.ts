@@ -40,6 +40,7 @@ import type {
   RepoIntel,
   RepoMapResult,
   SignatureRow,
+  SymbolNameRow,
   SymbolRow,
 } from './types.js';
 import {
@@ -422,6 +423,17 @@ export class RepoIntelService implements RepoIntel {
   }
 
   /** Persistent symbol read-model (T2 columns) for the given files. */
+  /**
+   * Every indexed declaration in the repo, capped — the denominator a naming
+   * convention is scored against. One indexed query, no file reads, which is why
+   * conformance can be measured over the whole repo rather than a 40-file sample.
+   */
+  async getAllSymbolNames(repoId: string, limit = 20_000): Promise<SymbolNameRow[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    if (limit <= 0) return [];
+    return this.repo.getAllSymbolNames(repoId, limit);
+  }
+
   async getSymbolsInFiles(repoId: string, paths: string[]): Promise<SymbolRow[]> {
     if (!this.container.config.repoIntelEnabled) return [];
     if (paths.length === 0) return [];

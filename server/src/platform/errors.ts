@@ -42,6 +42,18 @@ export class ValidationError extends AppError {
   }
 }
 
+/**
+ * The request is well-formed but the resource is not in a state that allows it —
+ * e.g. extracting conventions from a repo that has not been indexed yet. Distinct
+ * from 422 (the input is wrong) and 404 (the resource is absent): the caller's fix
+ * is to do something else first, not to change the payload.
+ */
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict', details?: unknown) {
+    super('conflict', message, 409, details);
+  }
+}
+
 export class ExternalServiceError extends AppError {
   constructor(message: string, details?: unknown) {
     super('external_service_error', message, 502, details);

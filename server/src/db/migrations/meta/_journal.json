@@ -85,6 +85,34 @@
       "when": 1786794143065,
       "tag": "0011_quiet_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786958450414,
+      "tag": "0012_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786958471713,
+      "tag": "0013_drop_convention_accepted",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786959047101,
+      "tag": "0014_convention_scan_drop_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786963540190,
+      "tag": "0015_brief_lila_cheney",
+      "breakpoints": true
     }
   ]
 }

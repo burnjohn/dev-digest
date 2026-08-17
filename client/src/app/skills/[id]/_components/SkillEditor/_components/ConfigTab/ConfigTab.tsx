@@ -15,9 +15,11 @@ import {
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useDeleteSkill, useUpdateSkill } from "../../../../../../../lib/hooks/skills";
 import { useToast } from "../../../../../../../lib/toast";
-import { SKILL_TYPES } from "../../../../../_components/SkillsListView/constants";
-import { MAX_SKILL_BODY_CHARS } from "../../constants";
-import { MarkdownEditor } from "../MarkdownEditor";
+import { SKILL_TYPES } from "../../../../../../../lib/skill-types";
+import {
+  MarkdownEditor,
+  MAX_SKILL_BODY_CHARS,
+} from "../../../../../../../components/markdown-editor";
 import { s } from "./styles";
 
 /**

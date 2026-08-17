@@ -2,13 +2,19 @@
    chip, and a token estimate. No syntax highlighting: that needs a highlighter
    dependency plus a transparent-textarea overlay, and the overlay is what breaks
    IME input and mobile selection. Line numbers + monospace is the honest
-   version of the mockup. */
+   version of the mockup.
+
+   Shared: the skill editor's Config tab and the create-skill-from-conventions
+   modal both edit a skill body, so this was promoted out of the skills route on
+   its second consumer. It still reads the `skills` i18n namespace for its two
+   chrome labels (`editor.unsaved`, `editor.tokens`) — moving those keys would
+   churn the skills tests for no user-visible gain. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { estimateTokens, lineNumbers, skillFileName } from "../../helpers";
-import { MAX_SKILL_BODY_CHARS } from "../../constants";
+import { estimateTokens, lineNumbers, skillFileName } from "./helpers";
+import { MAX_SKILL_BODY_CHARS } from "./constants";
 import { s } from "./styles";
 
 export function MarkdownEditor({

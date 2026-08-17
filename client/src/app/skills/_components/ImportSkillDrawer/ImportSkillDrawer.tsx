@@ -20,7 +20,7 @@ import {
 import type { SkillType } from "@devdigest/shared";
 import { useCreateSkill } from "../../../../lib/hooks/skills";
 import { useToast } from "../../../../lib/toast";
-import { SKILL_TYPES } from "../SkillsListView/constants";
+import { SKILL_TYPES } from "../../../../lib/skill-types";
 import {
   MAX_ARCHIVE_BYTES,
   MAX_ARCHIVE_ENTRIES,

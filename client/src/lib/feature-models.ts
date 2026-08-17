@@ -44,6 +44,6 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     label: "Conventions",
     description: "Extracts coding conventions from the repo.",
     defaultProvider: "openai",
-    defaultModel: "gpt-5.4",
+    defaultModel: "gpt-4o-mini",
   },
 ];
