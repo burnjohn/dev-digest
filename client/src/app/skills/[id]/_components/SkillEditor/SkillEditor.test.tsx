@@ -1,15 +1,29 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, within, fireEvent } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { render, screen, cleanup, within, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Skill } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/skills.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
 const updateMutate = vi.fn();
+const updateMutateAsync = vi.fn();
+const restoreMutateAsync = vi.fn();
 const versions = vi.fn(() => ({
   data: [
-    { skill_id: "sk1", version: 2, body: "second body", created_at: "2026-08-16T10:00:00.000Z" },
-    { skill_id: "sk1", version: 1, body: "first body", created_at: "2026-08-15T10:00:00.000Z" },
+    {
+      skill_id: "sk1",
+      version: 2,
+      body: "second body",
+      message: "Restored from v1",
+      created_at: "2026-08-16T10:00:00.000Z",
+    },
+    {
+      skill_id: "sk1",
+      version: 1,
+      body: "first body",
+      message: null,
+      created_at: "2026-08-15T10:00:00.000Z",
+    },
   ],
   isLoading: false,
   isError: false,
@@ -25,9 +39,10 @@ vi.mock("next/navigation", () => ({
 // Mock at the hook boundary, as AgentEditor.test.tsx does — no query client,
 // no network.
 vi.mock("../../../../../lib/hooks/skills", () => ({
-  useUpdateSkill: () => ({ mutate: updateMutate, mutateAsync: vi.fn(), isPending: false }),
+  useUpdateSkill: () => ({ mutate: updateMutate, mutateAsync: updateMutateAsync, isPending: false }),
   useDeleteSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSkillVersions: () => versions(),
+  useRestoreSkillVersion: () => ({ mutateAsync: restoreMutateAsync, isPending: false }),
 }));
 
 import { SkillEditor } from "./SkillEditor";
@@ -35,6 +50,14 @@ import { SkillEditor } from "./SkillEditor";
 afterEach(() => {
   cleanup();
   updateMutate.mockClear();
+  updateMutateAsync.mockClear();
+  restoreMutateAsync.mockReset();
+});
+
+beforeEach(() => {
+  // The tab reads `version` off the resolved skill to decide between the
+  // "restored as vN" and the "already current" toast.
+  restoreMutateAsync.mockResolvedValue({ ...SKILL, version: 3, body: "first body" });
 });
 
 const SKILL: Skill = {
@@ -159,5 +182,85 @@ describe("SkillEditor — Versions tab", () => {
 
     fireEvent.click(screen.getByRole("button", { expanded: true }));
     expect(screen.queryByText("second body")).not.toBeInTheDocument();
+  });
+
+  it("hides Restore on the current version — only older ones are restorable", () => {
+    renderEditor("versions");
+    const items = screen.getAllByRole("listitem");
+    expect(within(items[0]!).queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+    expect(within(items[1]!).getByRole("button", { name: "Restore" })).toBeInTheDocument();
+  });
+
+  it("renders a stored note verbatim", () => {
+    // The note is server-authored audit text, not UI copy — it must survive to
+    // the screen exactly as stored, with no i18n key in between.
+    renderEditor("versions");
+    expect(screen.getByText("Restored from v1")).toBeInTheDocument();
+  });
+
+  it("asks for confirmation before restoring, and writes nothing on cancel", () => {
+    renderEditor("versions");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Restore v1?")).toBeInTheDocument();
+    expect(restoreMutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(restoreMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("restores by VERSION NUMBER — never a body, never a translated note", async () => {
+    renderEditor("versions");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(restoreMutateAsync).toHaveBeenCalledTimes(1));
+    // The whole point of POST /skills/:id/restore: the client identifies the
+    // snapshot and the SERVER reads it. Sending a cached body is the lost update
+    // this replaces; sending a note is how history ends up in a UI locale.
+    expect(restoreMutateAsync).toHaveBeenCalledWith({ id: "sk1", version: 1 });
+    const [payload] = restoreMutateAsync.mock.calls[0]!;
+    expect(payload).not.toHaveProperty("body");
+    expect(payload).not.toHaveProperty("version_message");
+    expect(payload).not.toHaveProperty("patch");
+  });
+
+  it("never routes a restore through useUpdateSkill", async () => {
+    // The direct anti-regression: a client-side restore was a PUT carrying the
+    // body plus a translated message. If this tab ever reaches for the save
+    // mutation again, this fails.
+    renderEditor("versions");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(restoreMutateAsync).toHaveBeenCalled());
+    expect(updateMutate).not.toHaveBeenCalled();
+    expect(updateMutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("SkillEditor — Config tab remounts on a version change", () => {
+  it("shows the RESTORED body after a restore, not the pre-restore one", () => {
+    // ConfigTab seeds `body` into useState at mount, so the remount key decides
+    // what the user sees here. Keyed on `skill.id` alone, a restore performed on
+    // the Versions tab would leave this tab holding the OLD body, marked dirty —
+    // one Save click from silently undoing the restore.
+    const { rerender } = renderEditor("config");
+    expect(screen.getByLabelText("Skill body")).toHaveValue(SKILL.body);
+
+    const restored: Skill = { ...SKILL, version: 3, body: "# Restored\n\nOld text, back again." };
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <ToastProvider>
+          <SkillEditor skill={restored} usedBy={1} tab="config" onTab={() => {}} />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByLabelText("Skill body")).toHaveValue(restored.body);
+    // …and the freshly-loaded body is not dirty, so Save stays disabled.
+    expect(screen.getByRole("button", { name: "Save skill" })).toBeDisabled();
   });
 });

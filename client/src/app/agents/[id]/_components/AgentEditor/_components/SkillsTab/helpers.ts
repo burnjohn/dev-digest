@@ -60,36 +60,13 @@ export function reconcileOrder(remembered: string[], current: string[]): string[
 }
 
 /**
- * Reorder the LINKED rows only, leaving unlinked rows anchored at the index
- * they already occupy.
+ * Element-wise id comparison.
  *
- * Linked rows are not a contiguous block any more (unchecking leaves a row in
- * place), so a plain `move` over the display list would shove the unchecked
- * rows around as a side effect of a drag that has nothing to do with them.
- * Instead: pull the linked ids out of their slots, `move` within that
- * subsequence, and write them back into the same slots.
- *
- * Returns the input array unchanged when the move is a no-op, so callers can
- * skip the write with a `!==` check.
+ * A drag that only steps a row past an *unlinked* one changes the rows the user
+ * sees but not the sequence the prompt is assembled from; comparing the two
+ * derived prompt orders is how the caller tells that case apart and skips a
+ * write the server would take as a no-op anyway.
  */
-export function reorderLinked(
-  display: string[],
-  linked: ReadonlySet<string>,
-  fromId: string,
-  toId: string,
-): string[] {
-  const slots = display.reduce<number[]>((acc, id, i) => {
-    if (linked.has(id)) acc.push(i);
-    return acc;
-  }, []);
-  const seq = slots.map((i) => display[i]!);
-  const from = seq.indexOf(fromId);
-  const to = seq.indexOf(toId);
-  if (from === -1 || to === -1 || from === to) return display;
-  const next = move(seq, from, to);
-  const out = [...display];
-  slots.forEach((slot, i) => {
-    out[slot] = next[i]!;
-  });
-  return out;
+export function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }

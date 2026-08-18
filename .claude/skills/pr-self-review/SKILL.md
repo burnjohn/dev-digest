@@ -136,9 +136,21 @@ over working tree + index only. Say that out loud — never report "0 files" —
 create a branch**, because the user's literal workflow ("before every PR") is impossible
 from `main`.
 
-**Limits.** Over **60 files** or **6000 changed lines**, do not silently truncate. Report the
-limit, review the riskiest subset in group-priority order, and set `coverage: "partial"`.
-A partial review never produces a green gate.
+**Limits.** There is **no file-count or line-count ceiling.** A large diff is *batched*, never
+truncated: split each group's files into chunks of ~25 and spawn one subagent per chunk (still
+max 5 concurrent, still in group-priority order). The first push of a long-lived branch is
+legitimately 80+ files, and a cap that turns "big" into "unpushable" only teaches `--override`.
+
+The cap this replaced existed to stop a huge diff from being pushed out of a subagent's context
+by the 4–6k lines of skill bodies loaded ahead of it (§4). Batching addresses that directly —
+each agent sees ~25 files — so size alone no longer implies under-review.
+
+`coverage: "partial"` means **files were actually not reviewed**: the time budget ran out, a
+subagent died, or the user cancelled mid-run. It is never inferred from size. Only a genuine gap
+blocks a green gate; a large diff where every file was routed and reviewed is `coverage: "full"`.
+
+Print the batch count in the cost plan before phase 3 (§2) so an expensive run can still be
+cancelled — consent replaces the cap.
 
 ---
 
@@ -176,8 +188,9 @@ the reader cannot tell "clean" from "not checked".
 
 ### Execution model
 
-Phase 3 spawns **one subagent per matched group**, max **5 concurrent**. Priority — also the
-truncation order under the file limit:
+Phase 3 spawns **one subagent per matched group** — or per ~25-file chunk of a group (§3) —
+max **5 concurrent**. Priority, which is the dispatch order (and, if a run is cancelled or the
+budget expires, decides what got covered first):
 
 ```
 SEC → CORRECT → BE → DATA → CONTRACT → FE → TEST → DOCS
@@ -516,9 +529,10 @@ body and the local gate can never disagree about what needed to run.
    **CRITICAL only** and **must** re-run the whole gate — `workingTreeDigest` just changed, so
    by construction the gate is STALE. Never auto-fix WARNING or SUGGESTION; that turns review
    into uninvited refactoring.
-5. **Cost limits declared up front.** Max 5 subagents / 60 files / 6000 lines / 5-minute
-   pre-gate, with `--fast` to skip the Docker lanes. Print the plan before spending, so an
-   expensive review can be cancelled.
+5. **Cost limits declared up front.** Max 5 *concurrent* subagents, ~25 files per subagent,
+   5-minute pre-gate, with `--fast` to skip the Docker lanes. There is no cap on total files or
+   lines (§3) — a big diff costs more batches, not less coverage. Print the plan before
+   spending, so an expensive review can be cancelled.
 6. **Skill-catalog drift detection in phase 0.** The catalog is demonstrably stale
    (`skills-lock.json` lists `architecture-patterns` and `github-workflow-automation` with no
    folders), and a router that trusts a stale catalog routes files to skills that no longer

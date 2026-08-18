@@ -488,6 +488,28 @@ export class RepoIntelRepository {
       .limit(limit);
   }
 
+  /**
+   * Every declaration in the repo, capped. Covered by `symbols_repo_path_idx`.
+   * Ordered by path so a truncated read is a stable prefix rather than an
+   * arbitrary slice — the conformance denominator has to be reproducible.
+   */
+  async getAllSymbolNames(
+    repoId: string,
+    limit: number,
+  ): Promise<Array<{ path: string; name: string; kind: string; exported: boolean }>> {
+    return this.db
+      .select({
+        path: t.symbols.path,
+        name: t.symbols.name,
+        kind: t.symbols.kind,
+        exported: t.symbols.exported,
+      })
+      .from(t.symbols)
+      .where(eq(t.symbols.repoId, repoId))
+      .orderBy(asc(t.symbols.path), asc(t.symbols.name))
+      .limit(limit);
+  }
+
   /** Repo-map candidates: symbols with a signature, joined to rank, ordered. */
   async getRepoMapCandidates(repoId: string): Promise<RepoMapCandidateRow[]> {
     return this.db

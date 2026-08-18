@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { compileSafeRegex } from '../platform/pattern-safety.js';
 import type {
   LLMProvider,
   ModelInfo,
@@ -297,7 +298,14 @@ export class MockGitClient implements GitClient {
 
 // ---------- Mock CodeIndex ----------
 export class MockCodeIndex implements CodeIndex {
+  /**
+   * Mirrors the real adapter's contract, including the refusal: an unusable
+   * pattern yields `[]` rather than a match. A mock that accepted everything
+   * would let a caller pass a pattern that silently returns nothing in
+   * production while every test showed a hit.
+   */
   async grep(_repo: RepoRef, pattern: string): Promise<CodeMatch[]> {
+    if (!compileSafeRegex(pattern)) return [];
     return [{ path: 'src/config.ts', line: 12, text: `match for ${pattern}` }];
   }
   async symbols(): Promise<CodeSymbol[]> {

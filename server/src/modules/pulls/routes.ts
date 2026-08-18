@@ -1,12 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sum } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type {
+  PrMeta,
+  PrDetail,
+  PrDiffSourceReason,
+  GitHubClient,
+  PrReviewComment,
+} from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
+import { classifyFailure } from '../../platform/resilience.js';
 import { deriveReviewStatus, rollupSeverities, type SeverityCounts } from './status.js';
 
 /**
@@ -229,6 +236,55 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(eq(t.repos.id, pr.repoId));
     if (!repo) throw new NotFoundError('Repo not found');
 
+    /**
+     * Serve the locally cached copy of the PR. Re-reads the `pull_requests` row so
+     * it also reflects any stats the caller just refreshed. `diff_source` tells the
+     * UI which empty state it is looking at: `cache` (we have an older diff to show)
+     * vs `unavailable` (we have nothing, and an empty `files` means nothing).
+     */
+    const servePersisted = async (reason: PrDiffSourceReason): Promise<PrDetail> => {
+      const [row] = await container.db
+        .select()
+        .from(t.pullRequests)
+        .where(eq(t.pullRequests.id, pr.id));
+      const current = row ?? pr;
+      const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
+      const commits = await container.db
+        .select()
+        .from(t.prCommits)
+        .where(eq(t.prCommits.prId, pr.id));
+      return {
+        id: current.id,
+        number: current.number,
+        title: current.title,
+        author: current.author,
+        branch: current.branch,
+        base: current.base,
+        head_sha: current.headSha,
+        additions: current.additions,
+        deletions: current.deletions,
+        files_count: current.filesCount,
+        status: current.status as PrDetail['status'],
+        opened_at: current.openedAt?.toISOString() ?? null,
+        updated_at: current.updatedAt?.toISOString() ?? null,
+        body: current.body ?? null,
+        files: files.map((f) => ({
+          path: f.path,
+          additions: f.additions,
+          deletions: f.deletions,
+          patch: f.patch ?? null,
+        })),
+        commits: commits.map((c) => ({
+          sha: c.sha,
+          message: c.message,
+          author: c.author,
+          committed_at: c.committedAt?.toISOString() ?? null,
+        })),
+        diff_source: files.length > 0 ? 'cache' : 'unavailable',
+        diff_source_reason: reason,
+      };
+    };
+
     // Local-first: refresh detail from GitHub when a token is configured;
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
@@ -236,26 +292,46 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const gh = await container.github();
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
-      // One transaction for the whole cache swap. These same rows are what the
-      // offline fallback below reads, so a failure between the delete and the
-      // insert would permanently drop the PR's cached files/commits — turning a
-      // transient GitHub hiccup into missing data. The network call above stays
-      // outside: never hold a transaction open across a remote request.
+      // GitHub can contradict itself: `changed_files` comes from the PR object,
+      // while `files`/`commits` are separate sub-resources that fail independently.
+      // During the 2026-08-17 incident `pulls.get` answered 200 while `pulls/:n/files`
+      // 404'd — and at times answered `200 []`. Treat a self-contradicting payload as
+      // a failure of that sub-resource, never as "this PR has no files".
+      const filesDegraded = detail.files_count > 0 && detail.files.length === 0;
+      // Every PR has at least one commit, so an empty list is only ever a failed fetch.
+      const commitsDegraded = detail.commits.length === 0;
+      if (filesDegraded || commitsDegraded) {
+        req.log.warn(
+          { prId: pr.id, number: pr.number, filesDegraded, commitsDegraded },
+          'GitHub PR detail came back incomplete; keeping the cached copy of the missing part',
+        );
+      }
+
+      // One transaction for the whole cache swap. The network call stays outside:
+      // never hold a transaction open across a remote request.
       await container.db.transaction(async (tx) => {
-        await tx.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
-        if (detail.files.length > 0) {
-          await tx.insert(t.prFiles).values(
-            detail.files.map((f) => ({
-              prId: pr.id,
-              path: f.path,
-              additions: f.additions,
-              deletions: f.deletions,
-              patch: f.patch ?? null,
-            })),
-          );
+        // The delete and the insert share ONE condition, deliberately. Deleting
+        // unconditionally and re-inserting only when the payload is non-empty is
+        // exactly what turns a single bad upstream response into permanent local
+        // data loss — a transaction cannot protect against a *successful* empty
+        // reply. When the payload is trustworthy the delete still runs on its own,
+        // so a PR that genuinely dropped to zero files does get cleared.
+        if (!filesDegraded) {
+          await tx.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
+          if (detail.files.length > 0) {
+            await tx.insert(t.prFiles).values(
+              detail.files.map((f) => ({
+                prId: pr.id,
+                path: f.path,
+                additions: f.additions,
+                deletions: f.deletions,
+                patch: f.patch ?? null,
+              })),
+            );
+          }
         }
-        await tx.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
-        if (detail.commits.length > 0) {
+        if (!commitsDegraded) {
+          await tx.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
           await tx.insert(t.prCommits).values(
             detail.commits.map((c) => ({
               prId: pr.id,
@@ -272,6 +348,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
             body: detail.body ?? null,
             // Diff stats aren't on GitHub's PR-list payload — backfill them from
             // the detail fetch so the Pull Requests list shows real size/files.
+            // Safe even when the sub-resources are degraded: all three come from
+            // `pulls.get`, which is the call that succeeded.
             additions: detail.additions,
             deletions: detail.deletions,
             filesCount: detail.files_count,
@@ -279,39 +357,17 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           .where(eq(t.pullRequests.id, pr.id));
       });
 
-      return { ...detail, id: pr.id };
+      if (filesDegraded || commitsDegraded) return await servePersisted('unavailable');
+      return { ...detail, id: pr.id, diff_source: 'github', diff_source_reason: null };
     } catch (err) {
-      req.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
-      const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
-      const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
-      return {
-        id: pr.id,
-        number: pr.number,
-        title: pr.title,
-        author: pr.author,
-        branch: pr.branch,
-        base: pr.base,
-        head_sha: pr.headSha,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        files_count: pr.filesCount,
-        status: pr.status as PrDetail['status'],
-        opened_at: pr.openedAt?.toISOString() ?? null,
-        updated_at: pr.updatedAt?.toISOString() ?? null,
-        body: pr.body ?? null,
-        files: files.map((f) => ({
-          path: f.path,
-          additions: f.additions,
-          deletions: f.deletions,
-          patch: f.patch ?? null,
-        })),
-        commits: commits.map((c) => ({
-          sha: c.sha,
-          message: c.message,
-          author: c.author,
-          committed_at: c.committedAt?.toISOString() ?? null,
-        })),
-      };
+      // 401/403 means the user's token is wrong or under-scoped — a fixable
+      // problem, and one they'd never find if it read as "GitHub is down".
+      const reason = classifyFailure(err);
+      req.log.warn(
+        { err, reason },
+        'GitHub PR detail refresh failed (no token / auth / offline); serving persisted detail',
+      );
+      return await servePersisted(reason);
     }
   });
 

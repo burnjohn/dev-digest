@@ -8,7 +8,7 @@ import type { SecretsProvider } from '@devdigest/shared';
 import {
   resolveFeatureModel,
   getFeatureModelOverride,
-} from '../src/modules/settings/feature-models.js';
+} from '../src/modules/_shared/feature-models.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;

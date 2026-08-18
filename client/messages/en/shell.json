@@ -40,6 +40,10 @@
     "reply": "Reply",
     "viewOnGitHub": "View on GitHub",
     "postedToGitHub": "Posts to GitHub immediately",
-    "outdatedTitle": "{count} comment(s) on older revisions"
+    "outdatedTitle": "{count} comment(s) on older revisions",
+    "staleCache": "Showing the last cached diff — GitHub is unreachable right now.",
+    "staleAuth": "GitHub rejected the request. Check your token in Settings.",
+    "staleUnavailable": "Couldn't reach GitHub, and there's no cached diff for this PR yet.",
+    "retry": "Retry"
   }
 }

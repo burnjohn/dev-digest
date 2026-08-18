@@ -28,6 +28,29 @@ export const SkillVersion = z.object({
   skill_id: z.string(),
   version: z.number().int(),
   body: z.string(),
+  /**
+   * Optional audit note: an author's save message, or the server-authored
+   * `Restored from vN` line. `.nullable()` and NOT `.nullish()` on purpose —
+   * the route declares `response: { 200: z.array(SkillVersion) }` as its DTO
+   * gate, so a required-but-nullable field is always on the wire and the client
+   * never has to tell `undefined` from `null` for one meaning.
+   */
+  message: z.string().nullable(),
   created_at: z.string(),
 });
 export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/**
+ * Body of `POST /skills/:id/restore` — write an OLD version's text forward as a
+ * new one.
+ *
+ * The client sends a version NUMBER, never a body. `skill_versions` rows are
+ * append-only (nothing in the repository ever UPDATEs one), so a version number
+ * is a permanently stable handle on immutable text: a stale version cache can
+ * never cause a wrong write, only a failure to list a newer version. That is
+ * what lets this endpoint carry no `If-Match` and no precondition.
+ */
+export const SkillRestoreRequest = z.object({
+  version: z.number().int().positive(),
+});
+export type SkillRestoreRequest = z.infer<typeof SkillRestoreRequest>;

@@ -6,6 +6,81 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-18 — A hidden Browser pane freezes EVERY React Query query, and it looks like a dead API
+When the in-app Browser pane is not displayed, `document.visibilityState` is `"hidden"` and no
+query ever resolves: every page renders permanent `Skeleton`s and issues zero requests to :3001,
+while a manual `fetch()` from the same page returns 200. It is uniform across pages (agents,
+skills, repos), so treat "all skeletons + empty `read_network_requests`" as this, not a data-layer
+bug — check `document.visibilityState` first. Redefining it from the page does NOT revive
+already-mounted observers; verify UI through the RTL lane instead.
+
+### 2026-08-18 — Never run `pnpm build` in `client/` while `pnpm dev` is running
+The production build overwrites `.next/`, and the running dev server keeps requiring chunk paths
+the build deleted — every route then 500s with `Cannot find module './vendor-chunks/<pkg>.js'`
+and a reload cannot fix it. Recovery is: stop the dev server, `rm -rf .next`, restart. Run the
+build only against a stopped dev server.
+
+### 2026-08-17 — A `dragover` handler that returns before `preventDefault()` eats the drop silently
+`SkillsTab` guarded `onDragOver` with `if (!dragRef.current || !isLinked) return`, so unchecked
+rows never called `preventDefault()` and the browser refused every drop onto them — the row just
+snapped back, no error. In a list where valid targets are interleaved with invalid ones, most
+drags land on a dead row. Always `preventDefault()` on every potential target, then decide what
+the drop *means* in `onDrop`. jsdom cannot catch this: `fireEvent.dragOver` has no default action
+to prevent, so the tests passed the whole time.
+
+### 2026-08-17 — HTML5 drag sources: `setData` is mandatory, and a `<button>` handle is not a source
+Firefox aborts a drag whose `dragstart` wrote nothing, so always
+`e.dataTransfer.setData("text/plain", id)` (guard the block — jsdom's `fireEvent` supplies no
+`dataTransfer`). And a mousedown on a form control does not start an *ancestor's* drag: a grip
+`<button>` inside a `draggable` row needs its own `draggable` + `dragstart`, plus
+`setDragImage(row)` so the ghost stays the row rather than the icon.
+
+### 2026-08-17 — `%5BrepoId%5D` is correct; GitHub's `html_url` disagrees with its own UI
+For bracketed App Router paths, github.com's file-tree anchors link to
+`…/repos/%5BrepoId%5D/pulls/%5Bnumber%5D` — what `encodeURIComponent` emits — while
+`GET /repos/:o/:r/contents/:path`'s `html_url` reports bare brackets. Trust the UI form;
+`encPath` in `lib/github-urls.ts` stays plain `encodeURIComponent`.
+(Supersedes an earlier entry today that read `html_url` as authoritative and "fixed" `encPath`.)
+
+### 2026-08-17 — You cannot test a github.com `/blob/` URL from this sandbox
+Every `/blob/` request returns 404 or 503 here — including hrefs GitHub itself rendered, and
+plain `README.md` — while `/tree/` URLs and the repo root load normally. A 404 on a blob URL
+from Claude's browser, curl, or WebFetch is an environment artifact and proves nothing about
+the URL; verify link *shape* against `/tree/` pages or the API instead.
+
+### 2026-08-17 — `MonoLink` doesn't fit a file link that has to truncate
+`vendor/ui/primitives/MonoLink` takes no `style` prop, so it can't carry the
+`flex:1 / minWidth:0 / textOverflow:ellipsis` a constrained row needs, and its no-`href` branch
+renders a dead `<button>` with no `onClick`. `FindingCard` gets away with it; `ConventionCard`
+hand-rolls the `<a>` plus a local hover `useState` (inline styles can't express `:hover`) instead.
+
+### 2026-08-17 — Conventions store no commit SHA, so their GitHub links pin to the default branch
+`convention_scans` holds counts/model/cost only and `repos` has no head-sha column, so
+`ConventionCard`'s blob link uses `activeRepo.default_branch` — the `#L` anchor drifts once main
+moves past the scan. For an exact permalink, stamp `git.currentHead()` onto `convention_scans` in
+`conventions/service.ts` (mirrors `repo_map_cache.commit_sha`) or reuse `repo_index_state.last_indexed_sha`.
+Note `ConventionsView`'s `fullName` const falls back to `repoId` (a uuid) for the heading — never
+build a URL from it; read `activeRepo?.full_name` directly.
+
+### 2026-08-17 — `AppFrame`'s `<main>` has NO padding — every page supplies its own container
+`vendor/ui/shell/AppFrame` renders `<main style={{ flex:1, minHeight:0, overflow:"auto" }}>`, so a
+page that returns straight into `AppShell` sits flush against the sidebar and stretches edge to
+edge — `ConventionsView` did exactly that and was the only list page that looked different. Copy
+`page: { padding: "24px 32px 44px", maxWidth: 1100, margin: "0 auto" }` from `AgentsListView/styles.ts`
+(Skills is identical). `components/page-shell`'s `PageContainer` exists but forces a
+title/subtitle/actions shape and is used only by `FeaturePlaceholder`.
+
+### 2026-08-17 — Fixed-order category sections silently outrank the sort you asked for
+Grouping a ranked list into fixed-order sections means the ordering only holds *within* a section:
+a 30%-confidence `naming` rule rendered above a 90% `typing` one. If the server already orders by
+score (`desc(confidence), asc(createdAt)`), render one flat list and demote the grouping key to a
+chip on the card.
+
+### 2026-08-17 — `FormField required` folds the `*` into the label's accessible name
+`FormField` renders `{label}<span>*</span>` inside one `<label>`, so a required field's
+accessible name is `Name*` and `getByLabelText("Name")` throws "Unable to find a label".
+Match a prefix (`/^Name/`) in tests, or the query breaks the moment a field becomes required.
+
 ### 2026-08-16 — Row order that outlives a checkbox must be client-held, not re-derived
 `agent_skills` stores an order for LINKED skills only, so re-deriving "linked first, rest
 alphabetical" (`orderForDisplay`) on every toggle made an unchecked row jump out of place.

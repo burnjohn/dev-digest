@@ -23,5 +23,10 @@ export const TABS: SkillEditorTab[] = [
 
 export const VALID_TABS = TABS.map((t) => t.key);
 
-/** Mirrors MAX_SKILL_BODY_CHARS in the server's skills module. */
-export const MAX_SKILL_BODY_CHARS = 8_000;
+/**
+ * Mirrors MAX_VERSION_MESSAGE_CHARS in the server's skills module, which is the
+ * enforcing side (the route schema 422s past it). Used here only to stop the
+ * input before a request can be rejected — same arrangement as
+ * MAX_SKILL_BODY_CHARS in components/markdown-editor.
+ */
+export const MAX_VERSION_MESSAGE_CHARS = 200;

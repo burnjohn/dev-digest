@@ -150,13 +150,110 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+/**
+ * What the extractor looks for, one focused LLM pass per category. Mirrored by
+ * the Drizzle column enum in db/schema/knowledge.ts — widen both, but no
+ * migration (plain `text`, no CHECK).
+ *
+ * `testing` is deliberately absent: the sample files come from
+ * repo-intel's `getConventionSamples`, which routes through `isJunkPath` and
+ * drops `.test.` / `.spec.` / `__tests__/`. A testing category would have no
+ * files left to cite evidence from.
+ */
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'error_handling',
+  'async',
+  'imports',
+  'typing',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/**
+ * Triage state. Replaces the original `accepted: boolean` — a two-state flag
+ * cannot express *rejected*, and the rejected set is what a re-scan dedups
+ * against so the user is not re-shown a rule they already turned down.
+ */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/**
+ * Which corpus a rule's conformance was counted over. The strategy is chosen by
+ * the SERVER from the rule's category, never by the model — `naming` is counted
+ * over declarations, `structure` over paths, everything else over source text.
+ *
+ * Mirrored by the Drizzle column enum in db/schema/knowledge.ts — widen both, but
+ * no migration (plain `text`, no CHECK).
+ */
+export const ProbeStrategy = z.enum(['text', 'symbols', 'paths']);
+export type ProbeStrategy = z.infer<typeof ProbeStrategy>;
+
+/**
+ * The per-signal breakdown behind `confidence` — the "why this score" payload.
+ *
+ * `capped` is the honest part: it marks a rule whose denominator could not be
+ * measured, so its score was bounded rather than allowed to read as certainty.
+ */
+export const ConventionSignals = z.object({
+  strategy: ProbeStrategy,
+  support: z.number().min(0).max(1),
+  spread: z.number().min(0).max(1),
+  model: z.number().min(0).max(1),
+  dirs: z.number().int(),
+  /** Sites examined vs corpus size — surfaces a budget-truncated count. */
+  examined: z.number().int(),
+  corpus_size: z.number().int(),
+  config_declared: z.boolean(),
+  /** `INCOMPLETE_SIGNAL_CAP` bound the score: no denominator was measurable. */
+  capped: z.boolean(),
+});
+export type ConventionSignals = z.infer<typeof ConventionSignals>;
+
+/**
+ * One proposed house rule, grounded in a real line of the repo.
+ *
+ * `evidence_start_line` / `evidence_end_line` are the lines the snippet was
+ * actually FOUND at, not the ones the model claimed — a candidate whose snippet
+ * cannot be located in the file it cites is dropped rather than shown.
+ * `confidence` is likewise re-derived from measured conformance, not the model's
+ * self-report.
+ *
+ * Two counts, deliberately not one:
+ *  - `support_count` is and stays `support_files.length` — distinct FILES that
+ *    follow the rule. It is what the UI meter reads and what seeded rows carry.
+ *  - `follow_count` counts conforming SITES in the strategy's own unit, so for a
+ *    `symbols` rule it may exceed `support_count` (30 declarations across 14 files).
+ *
+ * `violation_count` / `conformance` are nullable ON PURPOSE: `null` means "we could
+ * not measure a denominator", which is a different claim from `0` ("we measured, and
+ * found no violations"). Collapsing the two would turn an unverifiable rule into a
+ * perfect one.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  category: ConventionCategory.nullish(),
   rule: z.string(),
+  rationale: z.string().nullish(),
   evidence_path: z.string(),
   evidence_snippet: z.string(),
+  evidence_start_line: z.number().int().nullish(),
+  evidence_end_line: z.number().int().nullish(),
+  support_count: z.number().int(),
+  support_files: z.array(z.string()).nullish(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  skill_id: z.string().nullish(),
+  /** Conforming sites, in the strategy's unit. May exceed `support_count`. */
+  follow_count: z.number().int().nullish(),
+  /** Violating sites. `null` = unmeasurable, NOT zero. */
+  violation_count: z.number().int().nullish(),
+  /** `follow / (follow + violate)`, or null when unmeasurable. */
+  conformance: z.number().min(0).max(1).nullish(),
+  probe_strategy: ProbeStrategy.nullish(),
+  /** A config file we actually read declares this rule, and we verified the quote. */
+  config_declared: z.boolean().nullish(),
+  signals: ConventionSignals.nullish(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 

@@ -15,9 +15,12 @@ import {
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useDeleteSkill, useUpdateSkill } from "../../../../../../../lib/hooks/skills";
 import { useToast } from "../../../../../../../lib/toast";
-import { SKILL_TYPES } from "../../../../../_components/SkillsListView/constants";
-import { MAX_SKILL_BODY_CHARS } from "../../constants";
-import { MarkdownEditor } from "../MarkdownEditor";
+import { SKILL_TYPES } from "../../../../../../../lib/skill-types";
+import {
+  MarkdownEditor,
+  MAX_SKILL_BODY_CHARS,
+} from "../../../../../../../components/markdown-editor";
+import { MAX_VERSION_MESSAGE_CHARS } from "../../constants";
 import { s } from "./styles";
 
 /**
@@ -38,6 +41,7 @@ export function ConfigTab({ skill, usedBy }: { skill: Skill; usedBy: number }) {
   const [description, setDescription] = React.useState(skill.description);
   const [type, setType] = React.useState<SkillType>(skill.type);
   const [body, setBody] = React.useState(skill.body);
+  const [versionMessage, setVersionMessage] = React.useState("");
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   // Stable id prefix so each FormField <label> can point at its control.
   const fieldId = React.useId();
@@ -53,7 +57,17 @@ export function ConfigTab({ skill, usedBy }: { skill: Skill; usedBy: number }) {
     if (!canSave) return;
     const saved = await update.mutateAsync({
       id: skill.id,
-      patch: { name: name.trim(), description, type, body },
+      patch: {
+        name: name.trim(),
+        description,
+        type,
+        body,
+        // Only sent alongside a real body change — a save that writes no version
+        // has no snapshot to hang a note on, and the server drops it silently.
+        // Sent raw: blank and whitespace-only collapse to NULL server-side, and
+        // duplicating that rule here would give it two definitions.
+        ...(bodyDirty ? { version_message: versionMessage } : {}),
+      },
     });
     toast.success(t("editor.saved", { name: saved.name }));
   };
@@ -121,6 +135,25 @@ export function ConfigTab({ skill, usedBy }: { skill: Skill; usedBy: number }) {
           dirty={bodyDirty}
         />
       </FormField>
+
+      {/* Rendered only once the body is dirty. That is what makes the server's
+          "a note on a version-less save is silently ignored" rule safe: the user
+          is never offered a field whose value would be dropped. */}
+      {bodyDirty && (
+        <FormField
+          label={t("editor.config.versionMessageLabel")}
+          hint={t("editor.config.versionMessageHint")}
+          htmlFor={`${fieldId}-version-message`}
+        >
+          <TextInput
+            id={`${fieldId}-version-message`}
+            value={versionMessage}
+            onChange={setVersionMessage}
+            placeholder={t("editor.config.versionMessagePlaceholder")}
+            maxLength={MAX_VERSION_MESSAGE_CHARS}
+          />
+        </FormField>
+      )}
 
       {tooLong && (
         <p style={s.error} role="alert">

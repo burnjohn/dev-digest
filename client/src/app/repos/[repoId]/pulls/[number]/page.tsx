@@ -167,6 +167,11 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            diffSource={pr.diff_source}
+            diffReason={pr.diff_source_reason}
+            // usePullDetail has no refetchInterval, so a stale diff would sit there
+            // until a hard reload — give the user the retry themselves.
+            onRetry={() => refetch()}
           />
         )}
       </div>

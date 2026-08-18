@@ -1,0 +1,2 @@
+ALTER TABLE "convention_scans" ADD COLUMN "dropped_ungrounded" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "convention_scans" ADD COLUMN "dropped_duplicate" integer DEFAULT 0 NOT NULL;

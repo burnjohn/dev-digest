@@ -3,7 +3,9 @@ import type { Db } from '../../db/client.js';
 import { SkillsRepository, type UpdateSkill } from './repository.js';
 import {
   isBodyChange,
+  normalizeVersionMessage,
   resolveSkillName,
+  restoreVersionMessage,
   toSkillDto,
   toSkillListItemDto,
   toSkillVersionDto,
@@ -46,6 +48,14 @@ export interface UpdateSkillInput {
   body?: string;
   enabled?: boolean;
   evidence_files?: string[];
+  /**
+   * Author's note for the snapshot this save writes. Ignored — deliberately, not
+   * as an error — when the save writes no version, because there is no snapshot
+   * row to hang it on. Erroring would force the client to predict the server's
+   * bump rule; the UI discharges it instead by only offering the field once the
+   * body is dirty.
+   */
+  version_message?: string;
 }
 
 export class SkillsService {
@@ -109,8 +119,37 @@ export class SkillsService {
 
     const row = await this.repo.update(workspaceId, id, patch, {
       bumpVersion: isBodyChange(existing, patch),
+      versionMessage: normalizeVersionMessage(input.version_message),
     });
     return row ? toSkillDto(row) : undefined;
+  }
+
+  /**
+   * Restore an old body as a new version.
+   *
+   * The audit note is composed HERE, from a server constant — never taken from
+   * the request. A caller may not label its own restore, and the label cannot
+   * change language when a reader's locale does.
+   *
+   * Returns a discriminated result rather than `undefined` so the route can tell
+   * a missing skill from a missing version. That leaks nothing across tenants:
+   * a foreign skill id fails at the locked SELECT, before any version is read,
+   * so it always answers `skill_not_found`.
+   */
+  async restoreVersion(
+    workspaceId: string,
+    id: string,
+    version: number,
+  ): Promise<
+    { ok: true; skill: Skill } | { ok: false; reason: 'skill_not_found' | 'version_not_found' }
+  > {
+    const result = await this.repo.restoreVersion(
+      workspaceId,
+      id,
+      version,
+      restoreVersionMessage(version),
+    );
+    return result.ok ? { ok: true, skill: toSkillDto(result.row) } : result;
   }
 
   async delete(workspaceId: string, id: string): Promise<boolean> {

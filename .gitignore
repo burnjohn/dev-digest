@@ -28,6 +28,5 @@ test-results/
 .claude/launch.json
 
 # local lesson planning notes
-l2-skills-editor.md
 /client/pnpm-workspace.yaml
 /server/pnpm-workspace.yaml
