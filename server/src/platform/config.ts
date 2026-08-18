@@ -26,6 +26,11 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Per-section prompt-assembly breakdown (name/source/chars/est_tokens) in the
+  // structured run log. Default OFF, and hard-disabled outside development
+  // regardless of this flag — see `promptAssemblyVerboseLog` below. Never
+  // carries section content, only sizes.
+  PROMPT_ASSEMBLY_VERBOSE_LOG: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -59,6 +64,14 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /**
+   * Emit a per-section prompt-assembly breakdown (section name, source,
+   * chars, est_tokens, model, run correlation id) to the structured run log.
+   * Default OFF. Hard-disabled outside `development` even if the env var is
+   * set — this is a local debugging aid, not an ops-facing signal, so it
+   * never turns on in a deployed environment by accident.
+   */
+  promptAssemblyVerboseLog: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    promptAssemblyVerboseLog:
+      parsed.PROMPT_ASSEMBLY_VERBOSE_LOG === 'true' && parsed.NODE_ENV === 'development',
   };
 }

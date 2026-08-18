@@ -1,5 +1,14 @@
 import type { Container } from '../../platform/container.js';
-import type { Intent, IntentClassificationStats, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type {
+  Intent,
+  IntentClassificationStats,
+  PromptSection,
+  PromptSectionSize,
+  Provider,
+  Review,
+  RunTrace,
+  UnifiedDiff,
+} from '@devdigest/shared';
 import { reviewPullRequest, countBlockers, severityCounts } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -24,6 +33,23 @@ export type Logger = {
   warn: (obj: unknown, msg?: string) => void;
   error: (obj: unknown, msg?: string) => void;
   debug: (obj: unknown, msg?: string) => void;
+};
+
+/**
+ * Human-readable origin per prompt section, for the structured assembly log
+ * below. Static metadata only — never derived from section content, so
+ * logging it can never leak a spec, a diff line, or a secret.
+ */
+const PROMPT_SECTION_SOURCE: Record<PromptSection, string> = {
+  system: 'agent system prompt',
+  skills: 'linked skills (user-enabled)',
+  memory: 'curated memory',
+  specs: 'project context (repo-intel)',
+  callers: 'callers digest (repo-intel)',
+  repo_map: 'repo skeleton (repo-intel)',
+  pr_description: 'PR body (GitHub, author-supplied)',
+  intent: 'Intent Layer classifier (cached or fresh)',
+  diff: 'PR diff (GitHub)',
 };
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
@@ -266,6 +292,8 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
+      this.logPromptAssembly(runLog, runId, outcome.assembly.section_sizes ?? [], agent);
+
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
@@ -433,6 +461,49 @@ export class ReviewRunExecutor {
       // runs, just without an intent digest / scope-check gate this time.
       runLog.info(`Intent classification skipped — ${(err as Error).message}`);
       return { intent: undefined, intentStats: null };
+    }
+  }
+
+  /**
+   * Structured, content-free log of how this run's prompt was assembled.
+   *
+   * Always emits ONE compact summary line (section count / total size /
+   * model) — safe at any log level. Per-section rows (name, source, chars,
+   * est_tokens) are additionally emitted only when
+   * `config.promptAssemblyVerboseLog` is on, which is hard-restricted to
+   * local development (see `platform/config.ts`).
+   *
+   * Every line only ever carries `PromptSectionSize` (name + chars +
+   * est_tokens, computed purely in reviewer-core) and static labels from
+   * `PROMPT_SECTION_SOURCE` — never the section's actual text, so a spec, a
+   * diff line, or a secret can never end up in this log by construction.
+   * `runLog.event()` already merges `runIds`/`ctx` into every line, so the
+   * run id (correlation id) is present without repeating it here.
+   */
+  private logPromptAssembly(
+    runLog: RunLogger,
+    runId: string,
+    sections: PromptSectionSize[],
+    agent: AgentRow,
+  ): void {
+    const totalChars = sections.reduce((sum, s) => sum + s.chars, 0);
+    const totalEstTokens = sections.reduce((sum, s) => sum + s.est_tokens, 0);
+    runLog.info(
+      `Prompt assembled: ${sections.length} section(s), ~${totalEstTokens} est. tokens (${agent.provider}/${agent.model})`,
+      { runId, sectionCount: sections.length, totalChars, totalEstTokens, provider: agent.provider, model: agent.model },
+    );
+
+    if (!this.container.config.promptAssemblyVerboseLog) return;
+    for (const { section, chars, est_tokens } of sections) {
+      runLog.info(`prompt section "${section}": ${chars} chars (~${est_tokens} tok)`, {
+        runId,
+        section,
+        source: PROMPT_SECTION_SOURCE[section],
+        chars,
+        est_tokens,
+        provider: agent.provider,
+        model: agent.model,
+      });
     }
   }
 
