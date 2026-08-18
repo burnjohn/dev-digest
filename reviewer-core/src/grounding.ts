@@ -88,3 +88,69 @@ export function groundingSummary(result: GroundingResult): string {
   const total = result.kept.length + result.dropped.length;
   return `${result.kept.length}/${total} passed`;
 }
+
+// ---------------------------------------------------------------------------
+// Intent Layer — post-grounding scope check.
+//
+// A GROUNDED finding (real citation, already passed groundFindings) whose file
+// matches one of the PR's declared `out_of_scope` areas is handled by
+// severity, not dropped uniformly:
+//   - non-CRITICAL: dropped, same as any other out-of-scope noise.
+//   - CRITICAL: never silently dropped — pulled out of the findings list and
+//     folded into a single consolidated `risk_areas` string per affected file,
+//     so a real defect outside the PR's stated scope still surfaces, but as a
+//     signal rather than a full blocking finding (it should not gate THIS
+//     PR's merge the way an in-scope CRITICAL finding does).
+// ---------------------------------------------------------------------------
+
+export interface ScopeDemotionResult {
+  kept: Finding[];
+  /** Short, chip-friendly strings — one per file with a demoted CRITICAL finding. */
+  riskAreas: string[];
+}
+
+/**
+ * Mechanical match between a finding's file and a declared out-of-scope area:
+ * case-insensitive substring, either direction. `out_of_scope` entries are
+ * free-text (a path, a directory, or a short area description from the
+ * classifier) — this is deliberately the same "no model re-judgment at the
+ * gate" philosophy as `groundFindings`'s citation check, not a semantic match.
+ */
+function isOutOfDeclaredScope(file: string, outOfScope: string[]): boolean {
+  const f = file.toLowerCase();
+  return outOfScope.some((area) => {
+    const a = area.toLowerCase().trim();
+    return a.length > 0 && (f.includes(a) || a.includes(f));
+  });
+}
+
+/**
+ * Apply the scope-demotion rule to findings that already passed
+ * `groundFindings`. `outOfScope` is the PR Intent Layer's declared
+ * `out_of_scope` list (see `@devdigest/shared`'s `Intent`); pass `undefined`
+ * (no cached intent) or `[]` for a no-op passthrough.
+ */
+export function applyScopeDemotion(findings: Finding[], outOfScope: string[] | undefined): ScopeDemotionResult {
+  if (!outOfScope || outOfScope.length === 0) return { kept: findings, riskAreas: [] };
+
+  const kept: Finding[] = [];
+  const demotedByFile = new Map<string, Finding[]>();
+
+  for (const finding of findings) {
+    if (!isOutOfDeclaredScope(finding.file, outOfScope)) {
+      kept.push(finding);
+      continue;
+    }
+    if (finding.severity !== 'CRITICAL') continue; // out-of-scope, non-critical: dropped
+    const list = demotedByFile.get(finding.file) ?? [];
+    list.push(finding);
+    demotedByFile.set(finding.file, list);
+  }
+
+  const riskAreas = [...demotedByFile.entries()].map(([file, demoted]) => {
+    const titles = demoted.map((f) => f.title).join('; ');
+    return `${file}: ${demoted.length} CRITICAL finding${demoted.length > 1 ? 's' : ''} outside declared scope (${titles})`;
+  });
+
+  return { kept, riskAreas };
+}

@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Intent, IntentClassificationStats, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers, severityCounts } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { IntentClassifier } from './intent-classifier.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -41,11 +42,15 @@ export type RunOutcome = {
  * review. Per-agent failures are isolated.
  */
 export class ReviewRunExecutor {
+  private intentClassifier: IntentClassifier;
+
   constructor(
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
-  ) {}
+  ) {
+    this.intentClassifier = new IntentClassifier(container);
+  }
 
   /**
    * Background execution of the queued agent runs (NOT awaited by the route).
@@ -104,6 +109,12 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // PR Intent Layer — classify ONCE per PR, then cache. A cached intent is
+    // reused even if headSha has moved since (that's the manual-refresh
+    // route's job, not this path's); best-effort — a classification failure
+    // never fails the review, it just runs without an intent digest.
+    const { intent, intentStats } = await this.loadOrClassifyIntent(workspaceId, pull, repo, diff, runLog);
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +122,17 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          intent,
+          intentStats,
+        );
         logger?.info(
           {
             runId,
@@ -143,6 +164,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intent: Intent | undefined,
+    intentStats: IntentClassificationStats | null,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -230,6 +253,12 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // PR Intent Layer — rendered digest for the prompt, plus the
+        // structured out_of_scope list for the post-grounding scope-check
+        // gate. Omitted when no intent is cached/classified for this PR.
+        ...(intent
+          ? { intent: this.renderIntentDigest(intent), intentOutOfScope: intent.out_of_scope }
+          : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -259,6 +288,18 @@ export class ReviewRunExecutor {
       // Mark the commit this review ran against so the PR list can tell
       // reviewed / needs-review (head moved) / stale apart.
       await this.repo.markReviewed(pull.id, pull.headSha);
+
+      // Fold this run's demoted-CRITICAL "risk area" signals back onto the
+      // cached intent (deterministic, computed in reviewer-core — never
+      // self-reported by the review model). Overwrites risk_areas with THIS
+      // run's set (incl. clearing it to [] when nothing was demoted) so it
+      // always reflects the latest review, not a stale earlier one.
+      if (intent) {
+        await this.repo.upsertIntent(pull.id, { ...intent, risk_areas: outcome.riskAreas });
+        if (outcome.riskAreas.length > 0) {
+          runLog.info(`Risk areas outside declared scope: ${outcome.riskAreas.join(' | ')}`);
+        }
+      }
 
       const durationMs = Date.now() - start;
 
@@ -301,6 +342,10 @@ export class ReviewRunExecutor {
           findings: findingRows.length,
           grounding,
         },
+        // Present only on the run(s) that shared THIS batch's fresh
+        // classification; null when the intent was already cached (no new
+        // LLM call was made) or none was available at all.
+        intent_stats: intentStats,
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
@@ -344,6 +389,60 @@ export class ReviewRunExecutor {
       this.container.runBus.complete(runId);
       throw err;
     }
+  }
+
+  /**
+   * PR Intent Layer — load the cached intent, or classify once and cache it
+   * (first review on a PR). A cached intent is reused EVEN IF `headSha` has
+   * moved since it was computed; only the manual `POST /pulls/:id/intent/
+   * refresh` route re-classifies. Best-effort: a classification failure logs
+   * and continues without an intent digest — it must never fail the review.
+   */
+  private async loadOrClassifyIntent(
+    workspaceId: string,
+    pull: PullRow,
+    repo: typeof schema.repos.$inferSelect,
+    diff: UnifiedDiff,
+    runLog: RunLogger,
+  ): Promise<{ intent: Intent | undefined; intentStats: IntentClassificationStats | null }> {
+    try {
+      const cached = await this.intentClassifier.getCached(pull.id);
+      if (cached) {
+        runLog.info(`Intent: using cached classification (confidence=${cached.confidence})`);
+        return { intent: cached, intentStats: null };
+      }
+      const result = await runLog.step(
+        'Classifying PR intent',
+        () => this.intentClassifier.classify(workspaceId, pull, repo, diff),
+        { kind: 'tool' },
+      );
+      runLog.info(
+        `Intent classified (confidence=${result.intent.confidence}, model=${result.stats.provider}/${result.stats.model}, ` +
+          `~${result.stats.tokensIn + result.stats.tokensOut} tok) — signals: ${result.signalsUsed.join(', ')}`,
+      );
+      const intentStats: IntentClassificationStats = {
+        provider: result.stats.provider,
+        model: result.stats.model,
+        tokens_in: result.stats.tokensIn,
+        tokens_out: result.stats.tokensOut,
+        cost_usd: result.stats.costUsd,
+      };
+      return { intent: result.intent, intentStats };
+    } catch (err) {
+      // Never let intent classification break the run — the review still
+      // runs, just without an intent digest / scope-check gate this time.
+      runLog.info(`Intent classification skipped — ${(err as Error).message}`);
+      return { intent: undefined, intentStats: null };
+    }
+  }
+
+  /** Render a cached/classified Intent into the untrusted prompt digest. */
+  private renderIntentDigest(intent: Intent): string {
+    const lines = [`Intent: ${intent.intent}`];
+    if (intent.in_scope.length > 0) lines.push(`In scope: ${intent.in_scope.join(', ')}`);
+    if (intent.out_of_scope.length > 0) lines.push(`Out of scope: ${intent.out_of_scope.join(', ')}`);
+    lines.push(`Confidence: ${intent.confidence}`);
+    return lines.join('\n');
   }
 
   /**

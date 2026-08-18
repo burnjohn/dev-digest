@@ -22,6 +22,10 @@ export {
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
 
+// Intent Layer — post-grounding scope check (CRITICAL findings outside the PR's
+// declared out_of_scope are demoted to a risk_areas signal, not dropped).
+export { applyScopeDemotion, type ScopeDemotionResult } from './grounding.js';
+
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {
   toJsonSchema,

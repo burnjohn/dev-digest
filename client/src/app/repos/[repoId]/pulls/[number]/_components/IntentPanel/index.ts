@@ -1,0 +1,1 @@
+export { IntentPanel } from "./IntentPanel";

@@ -1,0 +1,19 @@
+{
+  "title": "Intent",
+  "loading": "Classifying intent…",
+  "notClassifiedTitle": "Not classified yet",
+  "notClassifiedBody": "Detect this PR's intent and declared scope before reviewing it.",
+  "detect": "Detect intent",
+  "redetect": "Re-detect intent",
+  "inScope": "In scope",
+  "outOfScope": "Out of scope",
+  "riskAreas": "Risk areas",
+  "riskAreasHint": "Critical findings outside the declared scope — surfaced here instead of blocking the merge.",
+  "confidence": {
+    "high": "High confidence",
+    "medium": "Medium confidence",
+    "low": "Best-effort, verify"
+  },
+  "stale": "New commits landed since this was classified",
+  "signalsUsed": "Signals used: {signals}"
+}

@@ -7,6 +7,7 @@ import type {
   GitHubClient,
   PrReviewComment,
   PrListFinding,
+  Intent,
 } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -14,6 +15,8 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { IntentClassifier } from '../reviews/intent-classifier.js';
+import { loadDiff } from '../reviews/diff-loader.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -42,6 +45,7 @@ type FindingsBucket = {
 export default async function pullsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
+  const intentClassifier = new IntentClassifier(container);
 
   app.get('/repos/:id/pulls', { schema: { params: IdParams } }, async (req): Promise<PrMeta[]> => {
     const { workspaceId } = await getContext(container, req);
@@ -444,6 +448,32 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         const msg = err instanceof Error ? err.message : 'Failed to post the comment to GitHub.';
         throw new AppError('github_comment_failed', msg, 400, { cause: String(err) });
       }
+    },
+  );
+
+  // ---- PR Intent Layer -----------------------------------------------------
+  // GET returns the cached intent (or `null` — never classified yet); it never
+  // triggers a classification itself (that happens on first review request,
+  // or via the refresh route below).
+  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req): Promise<Intent | null> => {
+    const { workspaceId } = await getContext(container, req);
+    const { pr } = await resolvePrAndRepo(req.params.id, workspaceId);
+    const cached = await intentClassifier.getCached(pr.id);
+    return cached ?? null;
+  });
+
+  // Forces a FRESH classification, ignoring any cache — the only path that
+  // re-classifies once a PR has already been imported/classified. Rate
+  // limited like /pulls/:id/review — each call is an LLM round trip.
+  app.post(
+    '/pulls/:id/intent/refresh',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req): Promise<Intent> => {
+      const { workspaceId } = await getContext(container, req);
+      const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
+      const diff = await loadDiff(container, container.reviewRepo, workspaceId, pr, repo);
+      const { intent } = await intentClassifier.classify(workspaceId, pr, repo, diff);
+      return intent;
     },
   );
 }

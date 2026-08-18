@@ -8,7 +8,7 @@ import type {
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
-import { groundFindings, groundingSummary } from '../grounding.js';
+import { groundFindings, groundingSummary, applyScopeDemotion } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
@@ -71,6 +71,15 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /** PR Intent Layer's rendered digest (untrusted; delimiter-wrapped in the
+      prompt, right after prDescription). Empty/undefined → section omitted. */
+  intent?: string;
+  /**
+   * The PR Intent Layer's declared `out_of_scope` list (structured — NOT the
+   * rendered `intent` string above). Used by the post-grounding scope-check
+   * gate, not the prompt. Empty/undefined → no findings are demoted.
+   */
+  intentOutOfScope?: string[];
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -99,6 +108,13 @@ export interface ReviewOutcome {
   grounding: string;
   /** Findings dropped by grounding, with reasons (for logs / "never go silent"). */
   dropped: { finding: Finding; reason: string }[];
+  /**
+   * Consolidated "risk area" signals — CRITICAL findings that were grounded
+   * but landed outside the PR's declared `out_of_scope`, demoted from a full
+   * blocking finding into a short summary string. Empty when no intent
+   * out-of-scope was supplied, or nothing was demoted.
+   */
+  riskAreas: string[];
   /** Which path ran. */
   mode: ReviewMode;
   /** Prompt assembly (for the run trace). Single-pass: the one call; map-reduce: the whole-diff assembly. */
@@ -135,6 +151,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -201,13 +218,22 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Intent Layer — post-grounding scope check. A no-op when no out-of-scope
+  // list was supplied (no cached intent).
+  const scoped = applyScopeDemotion(ground.kept, input.intentOutOfScope);
+  if (scoped.riskAreas.length > 0) {
+    emit('info', `scope check: demoted ${scoped.riskAreas.length} risk area(s) outside declared scope`);
+  }
+
+  // Score is derived from the findings that SURVIVED grounding + the scope
+  // check (not the model's self-reported number, and not the pre-grounding
+  // set) so the score, the findings list, and the deterministic event always
+  // agree.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, findings: scoped.kept, score: scoreFromFindings(scoped.kept) },
     grounding,
     dropped: ground.dropped,
+    riskAreas: scoped.riskAreas,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),

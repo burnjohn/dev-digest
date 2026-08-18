@@ -45,6 +45,7 @@ export const PromptSection = z.enum([
   'callers',
   'repo_map',
   'pr_description',
+  'intent',
   'diff',
 ]);
 export type PromptSection = z.infer<typeof PromptSection>;
@@ -74,6 +75,9 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** The PR Intent Layer's rendered digest (intent/in-scope/out-of-scope);
+   * null when no intent was classified/cached for this PR. */
+  intent: z.string().nullish(),
   user: z.string(),
   /**
    * Per-section size breakdown, present only for sections that were rendered.
@@ -105,6 +109,23 @@ export const RunStats = z.object({
 });
 export type RunStats = z.infer<typeof RunStats>;
 
+/**
+ * Token/cost sub-stats for the PR Intent Layer's classification call — a
+ * separate, cheaper LLM call than the review itself, made at most once per PR
+ * (cached; see `pr_intent`). Deliberately a nullish field on `RunTrace`
+ * instead of a second persisted run row: the classification is a PR-level
+ * pre-step shared by every agent in the batch, not an agent's own run.
+ */
+export const IntentClassificationStats = z.object({
+  provider: z.string(),
+  model: z.string(),
+  tokens_in: z.number().int(),
+  tokens_out: z.number().int(),
+  /** USD billed for the classification call; null when unpriced. */
+  cost_usd: z.number().nullable(),
+});
+export type IntentClassificationStats = z.infer<typeof IntentClassificationStats>;
+
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
   config: z.object({
@@ -116,6 +137,10 @@ export const RunTrace = z.object({
     source: z.enum(['local', 'ci']).default('local'),
   }),
   stats: RunStats,
+  /** Present only when this run triggered a fresh classification (first
+   * review on a PR); null on runs that reused an already-cached intent, and
+   * on traces recorded before the Intent Layer existed. */
+  intent_stats: IntentClassificationStats.nullish(),
   prompt_assembly: PromptAssembly,
   tool_calls: z.array(ToolCall),
   raw_output: z.string(),

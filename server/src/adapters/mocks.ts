@@ -33,6 +33,7 @@ import type {
   SecretKey,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import type { TicketFetcher } from './tickets/types.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -328,5 +329,15 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock TicketFetcher (Intent Layer) ----------
+/** Deterministic fixture keyed by ref (URL) — `undefined`/unmatched → null, same as a real miss. */
+export class MockTicketFetcher implements TicketFetcher {
+  constructor(private byRef: Record<string, string> = {}) {}
+  async resolve(ref: string): Promise<{ content: string } | null> {
+    const content = this.byRef[ref];
+    return content !== undefined ? { content } : null;
   }
 }

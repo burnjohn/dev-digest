@@ -30,6 +30,22 @@ a contract change reaches every package.
 
 ## Decisions
 
+### 2026-08-18 — `pr_intent` carries `head_sha`, not just confidence/signals/risk_areas
+
+**What:** the Intent Layer's `pr_intent` table got a fourth new column,
+`head_sha` (the PR's head SHA at classification time), beyond the three the
+feature plan's DB step named (`confidence`, `signals_used`, `risk_areas`).
+**Why:** the same plan's client requirement — a staleness indicator "when the
+PR's headSha has changed since the cached intent was computed" — has no way to
+be computed without a snapshot of the SHA the classification ran against;
+`pull_requests.head_sha` alone only gives the CURRENT head, not what the cached
+intent was classified against.
+**Rejected:** leaving staleness unimplemented as an out-of-scope UI nicety —
+the plan listed it as a required panel element, not optional, so dropping it
+would be reading the plan more narrowly than it reads itself.
+`server/src/db/schema/reviews.ts` (`prIntent.headSha`),
+`server/src/vendor/shared/contracts/brief.ts` (`Intent.head_sha`)
+
 ### 2026-07-31 — Schema-first validation at the route boundary
 
 **What:** every route declares Zod `params`/`body`/response schemas from

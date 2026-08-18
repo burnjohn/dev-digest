@@ -8,6 +8,7 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  Intent,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -213,4 +214,24 @@ export function useRunEvents(runIds: string[]) {
   }, [key]);
 
   return { events, running };
+}
+
+// ---- PR Intent Layer -------------------------------------------------------
+/** The cached intent for a PR (`null` when never classified). Never triggers
+ *  a classification itself — that happens on first review, or via refresh. */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.get<Intent | null>(`/pulls/${prId}/intent`),
+    enabled: !!prId,
+  });
+}
+
+/** Force a fresh classification (ignores any cache) via the manual refresh route. */
+export function useRefreshIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<Intent>(`/pulls/${prId}/intent/refresh`),
+    onSuccess: (intent) => qc.setQueryData(["pr-intent", prId], intent),
+  });
 }

@@ -131,6 +131,20 @@ _None yet._
   actively wrong for what the feature needs, not just incomplete; check
   registry *defaults*, not only presence, when inventorying. `specs/03-conventions.md`,
   `server/src/modules/conventions/`
+  **Recurred 2026-08-18 (Intent Layer):** same shape again, and the scaffolding
+  this time gave away the wiring point, not just the schema.
+  `pr_intent`/`upsertIntent`/`getIntent`, the `Intent` contract, and
+  `FEATURE_MODELS`'s `review_intent` entry all pre-existed (with the same
+  "actively wrong default" wrinkle — `openai/gpt-4.1`, not a flash-tier model).
+  But `server/src/platform/run-logger.ts`'s class docstring already listed
+  "load diff, derive intent, embed + retrieve memory, load skills/specs, each
+  model call, grounding, persistence" as the run's steps — before any intent
+  classifier existed — which is a direct pointer to WHERE the new pre-work
+  belongs (fanned out over every queued run's `RunLogger`, before the
+  per-agent loop, exactly like the existing diff load) that would otherwise
+  have to be reverse-engineered from the run-executor's control flow.
+  `server/src/platform/run-logger.ts:14`, `server/src/modules/reviews/
+  run-executor.ts` (`loadOrClassifyIntent`)
 
 - **2026-08-04** — `server/src/vendor/shared/contracts/*.ts` and
   `client/src/vendor/shared/contracts/*.ts` are two independent files with no

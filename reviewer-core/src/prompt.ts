@@ -86,6 +86,15 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * The PR Intent Layer's rendered digest — a cheap-model classification of
+   * intent/in-scope/out-of-scope, computed and cached upstream (server-side;
+   * this package has no DB access). Untrusted — delimiter-wrapped like
+   * `prDescription`, and rendered immediately after it so the model reads
+   * "what the PR says it does" then "what it was classified as intending to
+   * do" back to back. Empty/undefined → section omitted.
+   */
+  intent?: string;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -126,6 +135,9 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (prDescription) {
     userSections.push(`## PR description\n${wrapUntrusted('pr-description', prDescription)}`);
   }
+  if (parts.intent && parts.intent.trim().length > 0) {
+    userSections.push(`## PR intent\n${wrapUntrusted('intent', parts.intent)}`);
+  }
   if (skillsBlock) userSections.push(`## Skills / rules\n${skillsBlock}`);
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
   if (parts.repoMap && parts.repoMap.trim().length > 0) {
@@ -154,6 +166,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: parts.intent ?? null,
     user,
     section_sizes: sectionSizes({
       system,
@@ -163,6 +176,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
       repo_map: parts.repoMap,
       callers: parts.callers,
       pr_description: prDescription,
+      intent: parts.intent,
       diff: parts.diff,
     }),
   };
