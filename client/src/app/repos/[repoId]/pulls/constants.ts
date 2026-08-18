@@ -2,13 +2,24 @@ import type { PrMeta } from "../../../../lib/types";
 
 /** Constants for the PR list page (/repos/:repoId/pulls). */
 
+/** Colour token + i18n label key (under `list.status`) for one review status. */
+export type StatusMeta = { c: string; labelKey: string };
+
 /**
- * Review status → colour token + i18n label key (under `list.status`). Open PRs
- * carry a derived review status (needs_review / reviewed / stale); merged/closed
- * keep their GitHub merge state.
+ * Shown when the API sends a status this map does not know about. Exported so
+ * callers can fall back to it by name instead of asserting that the
+ * `needs_review` key exists — `STATUS_META` is keyed by `string`, so every
+ * lookup is `StatusMeta | undefined`.
  */
-export const STATUS_META: Record<string, { c: string; labelKey: string }> = {
-  needs_review: { c: "var(--warn)", labelKey: "needs_review" },
+export const DEFAULT_STATUS_META: StatusMeta = { c: "var(--warn)", labelKey: "needs_review" };
+
+/**
+ * Review status → colour token + i18n label key. Open PRs carry a derived
+ * review status (needs_review / reviewed / stale); merged/closed keep their
+ * GitHub merge state.
+ */
+export const STATUS_META: Record<string, StatusMeta> = {
+  needs_review: DEFAULT_STATUS_META,
   reviewed: { c: "var(--ok)", labelKey: "reviewed" },
   stale: { c: "var(--stale)", labelKey: "stale" },
   open: { c: "var(--warn)", labelKey: "open" },
@@ -16,16 +27,18 @@ export const STATUS_META: Record<string, { c: string; labelKey: string }> = {
   closed: { c: "var(--stale)", labelKey: "closed" },
 };
 
-/** Size bucket → colour token. */
-export const SIZE_COLOR: Record<string, string> = {
+/** Size bucket → colour token. Keyed by `PrSize` rather than `string` so a
+    lookup with a bucket from `sizeOf()` is a `string`, not `string | undefined`. */
+export const SIZE_COLOR: Record<PrSize, string> = {
   S: "var(--ok)",
   M: "var(--warn)",
   L: "var(--crit)",
 };
 
 /** Grid template for both the header row and PR rows. Must stay in lockstep
-    with COLUMN_KEYS below and with PRRow's cells — three separate declarations. */
-export const GRID = "1fr 132px 92px 60px 118px 78px 78px";
+    with COLUMN_KEYS below and with PRRow's cells — three separate declarations,
+    the first two pinned together by constants.test.ts. */
+export const GRID = "1fr 132px 92px 60px 140px 118px 78px 78px";
 
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;
@@ -45,6 +58,7 @@ export const COLUMN_KEYS: string[] = [
   "author",
   "size",
   "score",
+  "findings",
   "status",
   "cost",
   "updated",

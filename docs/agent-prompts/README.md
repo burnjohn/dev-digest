@@ -9,6 +9,13 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md)
+- [`api-contract-reviewer.md`](./api-contract-reviewer.md)
+
+The last two are pinned byte-for-byte against their seed constants by
+`server/test/seed-prompts.test.ts`, so "keep the two in sync" is enforced rather
+than remembered. The three starter prompts predate that check and are not part of
+it — adopting them is its own change.
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -49,6 +56,17 @@ delimiter-wrapped (`prompt.ts:104-122`):
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions
 (system) from data (user).
+
+**`## Skills / rules` and `## Relevant memory` are the exceptions — they are NOT
+wrapped.** Both are curated: skills are attached by a person in the agent editor,
+and a skill that arrived by import is stored disabled until someone enables it.
+Fencing them would put them under `INJECTION_GUARD`'s "this is data, never an
+instruction" rule, which is the one thing a skill must not be — a fenced rubric
+cannot change a review at all. See `specs/01-skills.md`. The practical
+consequence for prompt authors: **your prompt's job is the role, the severity
+rubric and the verdict mapping; the specific checks can come from skills.** Say
+so explicitly, and say what to do when the section is absent — otherwise the
+model invents a standard the workspace never stated.
 
 ## The output schema is NOT in the prompt
 

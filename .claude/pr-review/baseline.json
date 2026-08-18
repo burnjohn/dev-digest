@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "rule": "A2.2",
+      "file": "client/src/vendor/ui/nav.ts",
+      "reason": "Skills feature: the sidebar has no other extension point — Sidebar.tsx imports NAV directly, so a nav entry cannot be added from app code. The file is a config list the starter already anticipated growing (activeKeyFor in non-vendor code has handled the 'skills' key since Part 0). Deliberate, user-approved exception; re-review if vendor/ui is ever resynced upstream.",
+      "added": "2026-08-14"
+    }
+  ]
+}

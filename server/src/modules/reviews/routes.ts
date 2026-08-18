@@ -76,7 +76,8 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
               resolve = null;
               continue;
             }
-            const e = queue.shift()!;
+            const e = queue.shift();
+            if (!e) break;
             yield {
               id: String(e.seq),
               event: e.kind,

@@ -11,12 +11,20 @@ export const s = {
     overflow: "hidden",
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
+  /** The header is a real <button> (it expands/collapses the card), so it also
+      has to unset the UA button chrome to keep looking like a plain row. */
   fileHeader: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     padding: "10px 12px",
     cursor: "pointer",
+    width: "100%",
+    background: "none",
+    border: 0,
+    font: "inherit",
+    color: "inherit",
+    textAlign: "left",
   } satisfies CSSProperties,
   fileIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
   filePath: {

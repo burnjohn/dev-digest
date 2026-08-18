@@ -47,7 +47,12 @@ export function buildThreads(comments: PrReviewComment[]): CommentThread[] {
   const threads: CommentThread[] = [];
   for (const [rootId, list] of byRoot) {
     const sorted = [...list].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    const root = sorted.find((c) => c.id === rootId) ?? sorted[0]!;
+    // Every bucket was created by pushing a comment into it, so `sorted` is
+    // never empty and the guard never fires — it is what tells the compiler.
+    // The root can still be missing from the page (a reply whose parent was
+    // filtered out), which is why the oldest comment is the fallback.
+    const root = sorted.find((c) => c.id === rootId) ?? sorted[0];
+    if (!root) continue;
     threads.push({
       rootId,
       comments: sorted,

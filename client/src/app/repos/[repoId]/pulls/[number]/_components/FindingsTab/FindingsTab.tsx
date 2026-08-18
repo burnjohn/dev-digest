@@ -7,7 +7,9 @@ import { RunHistory } from "../RunHistory/RunHistory";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
-import type { UseMutationResult } from "@tanstack/react-query";
+// Type-only: derives the mutation's real generics from the hook the page
+// actually passes in, so the payload shape stays declared in exactly one place.
+import type { useCancelRun } from "@/lib/hooks/reviews";
 
 interface FindingsTabProps {
   prId: string | null;
@@ -17,7 +19,8 @@ interface FindingsTabProps {
   runs: ReviewRecord[];
   prRuns: RunSummary[] | undefined;
   prCommits: PrCommit[];
-  cancelMutation: UseMutationResult<any, any, string, any>;
+  /** `useCancelRun()` from the page — `mutate(runId)` cancels one live run. */
+  cancelMutation: ReturnType<typeof useCancelRun>;
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;

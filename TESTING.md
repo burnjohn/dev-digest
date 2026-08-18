@@ -36,7 +36,10 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 
 **client** — components render and react to interaction (React Testing Library
 + jsdom). `fetch` is mocked; no API, DB, or browser. Covers the PR-review
-surface (list, diff, findings, run controls) and the agent editor.
+surface (list, diff, findings, run controls), the agent editor, and the skills
+surface. For the Skills tab the ordering logic is tested as pure functions
+(`SkillsTab/helpers.ts`) rather than through the drag, which jsdom cannot
+meaningfully drive — the drag wiring is a thin, untested shell over them.
 
 **server-unit** — the DB-free majority: adapters, prompt assembly, grounding,
 repo-intel ranking & indexing, pricing, route smoke. The `typecheck` job also
@@ -46,15 +49,27 @@ fails there if the win32 prebuilt is missing).
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
-repo-intel symbol clamping, pulls comments, settings models. They self-skip when
-Docker is unavailable.
+skills CRUD + versioning + reuse across agents, skills reaching the assembled
+prompt, repo-intel symbol clamping, pulls comments, settings models. They
+self-skip when Docker is unavailable.
+
+> A run's status goes terminal BEFORE its trace document is written — they are
+> two statements in `run-executor.ts`. A test that asserts on a trace must poll
+> `run_traces`, not just `waitForPrRuns`; waiting on the status alone passes on
+> an idle machine and fails when the suite runs in parallel.
 
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,
 and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 
 **e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
-main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
-No `chat`, no model key.
+main journeys (boot → PR list → PR detail; agents; skills) against a real seeded
+stack. No `chat`, no model key.
+
+**Not a suite: `cd server && pnpm experiment:skills`.** Runs each skills-enabled
+agent over a fixed diff with and without its skills against a REAL model, and
+prints both reviews. It costs money, is stochastic, and is not in CI — it answers
+"does this skill change the review", which is a question no assertion can settle.
+Default 5 runs per condition, because a single pair of samples is noise.
 
 ## Running locally
 

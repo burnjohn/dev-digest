@@ -9,10 +9,12 @@ on:
     branches: [main]
     paths:
       - 'client/**'
+      - 'scripts/check-contracts.sh'
       - '.github/workflows/client.yml'
   pull_request:
     paths:
       - 'client/**'
+      - 'scripts/check-contracts.sh'
       - '.github/workflows/client.yml'
 
 permissions:
@@ -23,6 +25,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # @devdigest/shared is vendored once per package with no build step between
+  # the copies, and each package typechecks only its own — so a contract edited
+  # on one side and forgotten on the other is green here and broken in the
+  # browser. This job is what catches it. Server is canonical.
+  contracts:
+    name: contract sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-contracts.sh
+
   test:
     name: tests
     runs-on: ubuntu-latest
@@ -45,5 +58,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm typecheck
+
+      - run: pnpm lint
 
       - run: pnpm test

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { NotFoundError } from '../../platform/errors.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import { AgentsService } from './service.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
@@ -154,11 +154,16 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, body: SetSkillsBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const body = req.body;
-      const links =
-        body.skill_ids !== undefined
-          ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+      const { skill_ids: skillIds, skill_id: skillId, order } = req.body;
+      let links;
+      if (skillIds !== undefined) {
+        links = await service.setSkills(workspaceId, req.params.id, skillIds);
+      } else if (skillId !== undefined) {
+        links = await service.linkSkill(workspaceId, req.params.id, skillId, order);
+      } else {
+        // Unreachable: SetSkillsBody's refine already rejects this at validation.
+        throw new ValidationError('Provide skill_ids (set/reorder) or skill_id (link one)');
+      }
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },

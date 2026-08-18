@@ -1,7 +1,8 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, primaryKey } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
+import { skills } from './skills';
 
 // ============================================================ Observability
 
@@ -40,6 +41,30 @@ export const agentRuns = pgTable('agent_runs', {
   warningCount: integer('warning_count'),
   suggestionCount: integer('suggestion_count'),
 });
+
+/**
+ * Which skills were rendered into a run's prompt, and at what version.
+ *
+ * The only queryable record of "which skills were used in which run" — the
+ * trace stores the concatenated skill BODIES as text inside `run_traces.trace`
+ * jsonb, with no ids. Written in `run-executor.ts` right after skills are
+ * resolved for the prompt, BEFORE the model is called, so a failed run still
+ * records what it would have used. See specs/02-skill-detail-tabs.md.
+ */
+export const runSkillLinks = pgTable(
+  'run_skill_links',
+  {
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    /** The skill's `version` at the time of the run — not re-derived later. */
+    version: integer('version').notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.runId, t.skillId] }) }),
+);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

@@ -62,6 +62,29 @@ export const Finding = z.object({
 });
 export type Finding = z.infer<typeof Finding>;
 
+/**
+ * PrListFinding — the trimmed Finding the PR *list* embeds for the FINDINGS
+ * column's hover popup. Exactly the fields that popup renders, and nothing
+ * else: the list ships one of these per finding per PR, so every unrendered
+ * field is paid for on every row.
+ *
+ * `rationale` is TRUNCATED (see `PrMeta.findings`) — never treat it as the full
+ * text, and never feed one of these to `FindingCard`. That lossiness is the
+ * reason this is a distinct type rather than a reused `Finding`/`FindingRecord`.
+ */
+export const PrListFinding = Finding.pick({
+  id: true,
+  severity: true,
+  category: true,
+  title: true,
+  file: true,
+  start_line: true,
+  end_line: true,
+  rationale: true,
+  confidence: true,
+});
+export type PrListFinding = z.infer<typeof PrListFinding>;
+
 /** Review — the consolidated structured output of a single agent run. */
 export const Review = z.object({
   verdict: Verdict,

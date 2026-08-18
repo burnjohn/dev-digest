@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { PrListFinding } from './findings.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -73,8 +74,8 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'conventions',
     label: 'Conventions',
     description: 'Extracts coding conventions from the repo.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-5.4',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
 ];
 
@@ -173,6 +174,23 @@ export const PrMeta = z.object({
   // USD cost of the LATEST COMPLETED run (list endpoint only). Deliberately not
   // a sum across runs. Null until a run completes, or when the model is unpriced.
   cost_usd: z.number().nullish(),
+  // Per-severity tally of the LATEST review's NON-DISMISSED findings (list
+  // endpoint only), for the FINDINGS column's badges. Computed live from
+  // `findings` — deliberately NOT the `agent_runs.*_count` snapshot, which is
+  // frozen at run completion and still counts findings since dismissed.
+  // Null when the PR has never been reviewed (renders "—"); 0 means reviewed
+  // and clean. That distinction is load-bearing: collapsing it would make an
+  // unreviewed PR look verified.
+  critical_count: z.number().int().nullish(),
+  warning_count: z.number().int().nullish(),
+  suggestion_count: z.number().int().nullish(),
+  // The same findings, embedded so the column's hover popup opens with zero
+  // loading state. Worst-severity-first, then most-confident, CAPPED at 10 —
+  // the *_count fields above stay the uncapped truth, so the client renders
+  // "+N more" from (critical + warning + suggestion) − findings.length.
+  // `rationale` is truncated (the popup clamps it to two lines anyway).
+  // Null when never reviewed; [] when reviewed with no live findings.
+  findings: z.array(PrListFinding).nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

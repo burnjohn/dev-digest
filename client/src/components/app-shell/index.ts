@@ -1,1 +1,1 @@
-export * from "./AppShell";
+export { AppShell } from "./AppShell";

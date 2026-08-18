@@ -23,3 +23,9 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+
+# pr-self-review verdicts, cache and PR drafts — machine-local and sha-bound.
+# baseline.json and false-positives.md are team knowledge and ARE committed.
+.claude/pr-review/*
+!.claude/pr-review/baseline.json
+!.claude/pr-review/false-positives.md

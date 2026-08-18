@@ -1,0 +1,1 @@
+export { FindingsCell } from "./FindingsCell";

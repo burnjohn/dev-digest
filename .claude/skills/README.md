@@ -7,13 +7,19 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | Skill | Scope | Description |
 |-------|-------|-------------|
 | [engineering-insights](engineering-insights/SKILL.md) | Project | Read `<module>/INSIGHTS.md` before a task, record what was learned after |
+| [pr-self-review](pr-self-review/SKILL.md) | Project | Pre-PR gate — routes the diff to the skills below, blocks on a verified critical |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Onion/hexagonal layering for server/ modules and reviewer-core/ |
+| [frontend-ui-architecture](frontend-ui-architecture/SKILL.md) | Frontend | Where UI code lives — placement, splitting, module boundaries |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
+| [response-schema](response-schema/SKILL.md) | Full-stack | Changing an existing response field's type or requiredness — the contract/DB/client ripple |
+| [semver-discipline](semver-discipline/SKILL.md) | Full-stack | Is this change MAJOR, MINOR, or PATCH? — exported functions, contracts, routes, CLI flags |
+| [deprecation-policy](deprecation-policy/SKILL.md) | Full-stack | Mark a surface deprecated (with a replacement and removal trigger) instead of silently deleting it |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |

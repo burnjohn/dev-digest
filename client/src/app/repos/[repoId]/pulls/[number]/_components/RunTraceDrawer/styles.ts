@@ -10,12 +10,20 @@ export const s = {
     marginBottom: 14,
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
+  // Rendered as a <button> (it is the section's expand/collapse control), so it
+  // carries the UA-stylesheet resets rather than fighting them.
   sectionHead: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     padding: "12px 16px",
     cursor: "pointer",
+    width: "100%",
+    background: "none",
+    border: 0,
+    font: "inherit",
+    color: "inherit",
+    textAlign: "left",
   } satisfies CSSProperties,
   sectionIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
   sectionTitle: { fontSize: 14, fontWeight: 600, flex: 1 } satisfies CSSProperties,
@@ -33,6 +41,7 @@ export const s = {
     marginBottom: 8,
     overflow: "hidden",
   } satisfies CSSProperties,
+  // Also a <button> — same reset set, but it keeps its own background.
   toolHead: {
     display: "flex",
     alignItems: "center",
@@ -40,6 +49,11 @@ export const s = {
     padding: "10px 12px",
     cursor: "pointer",
     background: "var(--bg-surface)",
+    width: "100%",
+    border: 0,
+    font: "inherit",
+    color: "inherit",
+    textAlign: "left",
   } satisfies CSSProperties,
   toolIcon: { color: "var(--warn)" } satisfies CSSProperties,
   toolName: { fontSize: 13 } satisfies CSSProperties,

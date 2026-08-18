@@ -1,0 +1,13 @@
+# Vendored — root CLAUDE.md "Do not touch".
+**/src/vendor/**
+
+# Cloned user repos, including a full copy of dev-digest itself.
+server/clones/**
+
+# Generated.
+server/drizzle/**
+**/node_modules/**
+**/.next/**
+**/dist/**
+*-lock.yaml
+package-lock.json

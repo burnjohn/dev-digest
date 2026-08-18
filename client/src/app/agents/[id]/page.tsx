@@ -12,7 +12,7 @@ import { AgentEditor } from "./_components/AgentEditor";
 import { useAgents, useAgent, useUpdateAgent } from "../../../lib/hooks/agents";
 import { ApiError } from "../../../lib/api";
 
-const VALID_TABS = ["config"];
+const VALID_TABS = ["config", "skills"];
 
 export default function AgentEditorPage() {
   const params = useParams<{ id: string }>();
@@ -24,7 +24,10 @@ export default function AgentEditorPage() {
   const { data: agent, isLoading, isError, error, refetch } = useAgent(id);
   const update = useUpdateAgent();
 
-  const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
+  // Read the param once so the validity check and the value are the same string
+  // — `search.get()` returns `string | null` on every call.
+  const tabParam = search.get("tab") ?? "";
+  const tab = VALID_TABS.includes(tabParam) ? tabParam : "config";
   const setTab = (t: string) => {
     const sp = new URLSearchParams(search.toString());
     sp.set("tab", t);

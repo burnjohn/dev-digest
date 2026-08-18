@@ -52,7 +52,10 @@ export class RepoRepository {
         createdBy: values.createdBy,
       })
       .returning();
-    return row!;
+    // A single-row INSERT ... RETURNING always yields exactly one row; the
+    // array type is just noUncheckedIndexedAccess widening it.
+    if (!row) throw new Error('insert into repos returned no row');
+    return row;
   }
 
   /**

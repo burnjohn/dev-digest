@@ -109,7 +109,7 @@ export async function runIncremental(
   let changedAll: string[];
   try {
     changedAll = await container.git.diffNameOnly(ref, state.lastIndexedSha, currentSha);
-  } catch (err) {
+  } catch {
     // diff failure (shallow clone, missing base, etc.) — fall back to full.
     // The full path is heavier but correct; degrading silently to "no-op" would
     // leave the index drifted from HEAD.

@@ -12,14 +12,14 @@ export class TimeoutError extends Error {
 
 export async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   if (!ms || ms <= 0) return p;
-  let handle: ReturnType<typeof setTimeout>;
+  let handle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     handle = setTimeout(() => reject(new TimeoutError(ms)), ms);
   });
   try {
     return await Promise.race([p, timeout]);
   } finally {
-    clearTimeout(handle!);
+    if (handle !== undefined) clearTimeout(handle);
   }
 }
 

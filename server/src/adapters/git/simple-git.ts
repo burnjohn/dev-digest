@@ -142,8 +142,10 @@ function parseBlamePorcelain(raw: string): BlameLine[] {
   for (const line of lines) {
     const header = line.match(/^([0-9a-f]{40})\s+\d+\s+(\d+)/);
     if (header) {
-      sha = header[1]!;
-      lineNo = Number(header[2]);
+      const [, headerSha, headerLineNo] = header;
+      if (headerSha === undefined || headerLineNo === undefined) continue;
+      sha = headerSha;
+      lineNo = Number(headerLineNo);
     } else if (line.startsWith('author ')) author = line.slice(7);
     else if (line.startsWith('author-time '))
       date = new Date(Number(line.slice(12)) * 1000).toISOString();

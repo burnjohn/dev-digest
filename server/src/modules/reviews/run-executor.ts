@@ -181,6 +181,29 @@ export class ReviewRunExecutor {
       const repoMap = repoIntelOn ? await this.buildRepoMapDigest(pull.repoId, runLog) : undefined;
       const rankNote = repoIntelOn ? await this.buildRankNote(pull.repoId, diff, runLog) : '';
 
+      // Skills — the agent's linked, enabled skill bodies, in configured order.
+      // Unlike the repo-intel enrichments above this is NOT best-effort: a
+      // review that silently ran without the rules the user attached is a wrong
+      // review, not a degraded one, so a failure here fails the run.
+      const skills = await runLog.step(
+        'Resolving linked skills',
+        () => this.agents.enabledSkillsForPrompt(workspaceId, agent.id),
+        { kind: 'tool' },
+      );
+      if (skills.length > 0) {
+        runLog.info(`Skills in prompt (${skills.length}): ${skills.map((s) => s.name).join(', ')}`);
+      } else {
+        runLog.info('No enabled skills linked to this agent — prompt has no skills block');
+      }
+      // Recorded BEFORE the model call, deliberately: this is the only queryable
+      // record of "which skills were in which run" (the trace only holds
+      // concatenated skill bodies, no ids), and a run that fails downstream
+      // still used exactly this prompt — the record should say so too.
+      await this.repo.recordSkillsUsed(
+        runId,
+        skills.map((sk) => ({ id: sk.id, version: sk.version })),
+      );
+
       const task = taskLine(pull) + rankNote;
 
       // ---- Engine: assemble → single-pass → grounding -----------------------
@@ -195,6 +218,10 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Resolved skill bodies (not slugs). Omitted when empty so an agent with
+        // no skills produces a prompt byte-identical to the pre-skills one —
+        // which is exactly what makes the with/without comparison meaningful.
+        ...(skills.length > 0 ? { skills: skills.map((s) => s.body) } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),

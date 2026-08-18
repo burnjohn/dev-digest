@@ -42,7 +42,11 @@ export function InlineComposer({
     }
   };
   return (
+    /* `presentation`: the wrapper is not a control, it only delegates the two
+       shortcuts (Esc / ⌘+Enter) for whichever child — textarea or button —
+       holds focus. Those children carry the keyboard affordance themselves. */
     <div
+      role="presentation"
       style={cs.thread}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();

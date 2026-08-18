@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, timestamp, doublePrecision, boolean, vector, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, doublePrecision, boolean, integer, vector, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { repos } from './repos';
@@ -34,9 +34,27 @@ export const conventions = pgTable('conventions', {
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   repoId: uuid('repo_id').references(() => repos.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(),
   rule: text('rule').notNull(),
   evidencePath: text('evidence_path'),
+  evidenceStartLine: integer('evidence_start_line'),
+  evidenceEndLine: integer('evidence_end_line'),
   evidenceSnippet: text('evidence_snippet'),
   confidence: doublePrecision('confidence'),
   accepted: boolean('accepted').notNull().default(false),
+  createdAt: now(),
+});
+
+/**
+ * 1:1 per-repo scan bookkeeping for the Conventions page ("Detected from N
+ * sample files · last scan …"). Mirrors `repoIndexState`'s shape/reasoning in
+ * `./repo-intel.ts` — read-time state without recomputing it from `conventions`
+ * rows on every page load.
+ */
+export const conventionsScanState = pgTable('conventions_scan_state', {
+  repoId: uuid('repo_id')
+    .primaryKey()
+    .references(() => repos.id, { onDelete: 'cascade' }),
+  sampledFiles: integer('sampled_files').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

@@ -190,4 +190,9 @@ export class ReviewRepository {
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
   }
+
+  /** Record which skills were rendered into this run's prompt. */
+  recordSkillsUsed(runId: string, skills: { id: string; version: number }[]): Promise<void> {
+    return runRepo.recordSkillsUsed(this.db, runId, skills);
+  }
 }

@@ -69,8 +69,11 @@ export default function PRDetailPage() {
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
+  // Memoised off `reviews`, not the `runs` alias: while the query is empty
+  // `runs` is a fresh `[]` on every render, so naming it as the dep would
+  // defeat the memo without changing the result. Same value, stable identity.
   const allFindings: FindingRecord[] = React.useMemo(
-    () => runs.flatMap((r) => r.findings),
+    () => (reviews ?? []).flatMap((r) => r.findings),
     [reviews],
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");

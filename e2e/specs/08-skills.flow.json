@@ -1,0 +1,13 @@
+{
+  "name": "Skills list renders the seeded skills and previews one",
+  "description": "Loads /skills, confirms a seeded skill card (uncovered-branch-gate) renders, and clicks it to reveal the side preview with its body. Exercises the skills list route, its API fetch, and the card→preview selection. Read-only against seeded data (no model call, no write). Assumes a freshly-seeded DB — the built-in skills are inserted by server/src/db/seed.ts.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the skills page" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "uncovered-branch-gate"], "label": "seeded skill card is visible" },
+    { "cmd": ["wait", "--text", "Select a skill"], "label": "preview pane prompts for a selection" },
+    { "cmd": ["find", "text", "uncovered-branch-gate", "click"], "label": "select the skill" },
+    { "cmd": ["wait", "--text", "Uncovered branches"], "label": "the skill body renders in the preview" }
+  ]
+}

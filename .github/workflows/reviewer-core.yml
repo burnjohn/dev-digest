@@ -46,4 +46,9 @@ jobs:
 
       - run: npm run typecheck
 
+      # eslint.config.js encodes the purity contract from AGENTS.md — no fs,
+      # net, http, db or concrete LLM SDK outside src/llm/. Audited clean on
+      # 2026-08-14; this is what keeps it that way.
+      - run: npm run lint
+
       - run: npm test

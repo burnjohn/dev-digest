@@ -36,18 +36,51 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCall>;
 
+/** The closed set of assembled prompt sections — the fields of PromptAssembly. */
+export const PromptSection = z.enum([
+  'system',
+  'skills',
+  'memory',
+  'specs',
+  'callers',
+  'repo_map',
+  'pr_description',
+  'diff',
+]);
+export type PromptSection = z.infer<typeof PromptSection>;
+
+/**
+ * Size of one assembled prompt section. `est_tokens` is a CHARACTER-BASED
+ * ESTIMATE (chars / 4), not a tokenizer result — it exists to explain a delta
+ * ("linking these skills added ~310 tokens"), and the run's real `tokens_in`
+ * sits beside it in the same trace. Never present it as a billed figure.
+ */
+export const PromptSectionSize = z.object({
+  section: PromptSection,
+  chars: z.number().int(),
+  est_tokens: z.number().int(),
+});
+export type PromptSectionSize = z.infer<typeof PromptSectionSize>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
-  /** Callers-of-changed-symbols digest (repo-intel); null when absent. */
+  /** Callers-of-changed-symbols digest (T1.3); null when absent. */
   callers: z.string().nullish(),
-  /** Repo skeleton / map (repo-intel); null when absent. */
+  /** Repo skeleton / map (T3); null when absent. Enables per-slot token
+      attribution in the run trace. */
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
   user: z.string(),
+  /**
+   * Per-section size breakdown, present only for sections that were rendered.
+   * Nullish because traces recorded before this field existed are re-read
+   * through this schema — a missing breakdown is an old run, not a broken one.
+   */
+  section_sizes: z.array(PromptSectionSize).nullish(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
 

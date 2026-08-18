@@ -37,8 +37,12 @@ export function FindingsPanel({
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
-      else if (KEY_TO_ACTION[e.key] && shown[focusIdx]) {
-        action.mutate({ findingId: shown[focusIdx]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+      else {
+        // Bind both lookups before testing them — the guard and the use were
+        // two separate index reads, which is what the `!`s papered over.
+        const act = KEY_TO_ACTION[e.key];
+        const focused = shown[focusIdx];
+        if (act && focused) action.mutate({ findingId: focused.id, action: act, prId });
       }
     };
     window.addEventListener("keydown", handler);

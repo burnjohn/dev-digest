@@ -49,7 +49,8 @@ export function ReviewRunAccordion({
       setOpen(true);
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `targetNonce` is listed deliberately and is not read in the body: it is
+    // what re-runs the scroll when the same run is targeted twice in a row.
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
   const findings = review.findings;

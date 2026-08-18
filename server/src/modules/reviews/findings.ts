@@ -21,12 +21,16 @@ export async function actOnFinding(
 
   switch (action) {
     case 'accept': {
+      // The row can disappear between the findingContext lookup above and this
+      // update; that is a 404, not a 500.
       const row = await repo.setFindingAccepted(findingId, new Date());
-      return { finding: findingRowToDto(row!) };
+      if (!row) throw new NotFoundError('Finding not found');
+      return { finding: findingRowToDto(row) };
     }
     case 'dismiss': {
       const row = await repo.setFindingDismissed(findingId, new Date());
-      return { finding: findingRowToDto(row!) };
+      if (!row) throw new NotFoundError('Finding not found');
+      return { finding: findingRowToDto(row) };
     }
     default:
       throw new AppError('invalid_action', `Action '${action}' is not available in the starter`, 400);

@@ -8,6 +8,7 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
+import { ValidationError } from '../../platform/errors.js';
 import { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
@@ -56,13 +57,19 @@ export class AgentsService {
   }
 
   async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.repo.list(workspaceId);
-    return rows.map(toAgentDto);
+    const [rows, counts] = await Promise.all([
+      this.repo.list(workspaceId),
+      this.repo.skillCounts(workspaceId),
+    ]);
+    return rows.map((row) => toAgentDto(row, counts.get(row.id) ?? 0));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
     const row = await this.repo.getById(workspaceId, id);
-    return row ? toAgentDto(row) : undefined;
+    if (!row) return undefined;
+    // Counted in SQL, not by loading the links: `linkedSkills` selects whole
+    // skill rows, and a skill body can be up to 200k chars.
+    return toAgentDto(row, await this.repo.skillCount(id));
   }
 
   /** Delete an agent (and its versions/skill-links, via cascade). */
@@ -152,6 +159,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, skillIds);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -165,10 +173,27 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, [skillId]);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
+  }
+
+  /**
+   * Reject any skill id that is not this workspace's.
+   *
+   * `agent_skills` carries no workspace column, so an id from another workspace
+   * links without complaint and only shows up later — inside an assembled
+   * prompt. Checking on the way in means the prompt-side scoping is a second
+   * line rather than the only one.
+   */
+  private async assertSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<void> {
+    const known = await this.repo.existingSkillIds(workspaceId, skillIds);
+    const unknown = skillIds.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      throw new ValidationError(`Unknown skill(s) for this workspace: ${unknown.join(', ')}`);
+    }
   }
 
   /**

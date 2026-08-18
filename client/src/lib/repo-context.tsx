@@ -17,8 +17,11 @@ const RepoCtx = React.createContext<{
 
 function repoIdFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
-  const m = pathname.match(/^\/repos\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]!) : null;
+  // Optional-chain the capture group instead of asserting it: the group is
+  // `[^/]+`, so a match always has a non-empty group 1 — but only the regex
+  // says so, not the type, which is `(string | undefined)[]`.
+  const id = pathname.match(/^\/repos\/([^/]+)/)?.[1];
+  return id ? decodeURIComponent(id) : null;
 }
 
 export function RepoProvider({ children }: { children: React.ReactNode }) {

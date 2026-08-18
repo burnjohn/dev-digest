@@ -8,9 +8,16 @@ import type { AgentRow, AgentVersionRow } from './repository.js';
  * implementations.
  */
 
-/** Map a persisted agent row to the public `Agent` DTO. */
-export function toAgentDto(row: AgentRow): Agent {
+/**
+ * Map a persisted agent row to the public `Agent` DTO.
+ *
+ * `skillCount` is passed in rather than read here: counting is one grouped
+ * query for a whole list, and doing it per row would turn the agents list into
+ * an N+1. Omitted → the field is null and the card renders no badge.
+ */
+export function toAgentDto(row: AgentRow, skillCount?: number): Agent {
   return {
+    ...(skillCount !== undefined ? { skill_count: skillCount } : {}),
     id: row.id,
     name: row.name,
     description: row.description,

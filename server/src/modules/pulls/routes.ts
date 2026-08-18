@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import type {
+  PrMeta,
+  PrDetail,
+  GitHubClient,
+  PrReviewComment,
+  PrListFinding,
+} from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -19,6 +25,20 @@ import { deriveReviewStatus } from './status.js';
  * Import is idempotent (unique repo_id+number). Review trigger is MANUAL
  * and owned by A2 — this module only imports/reads.
  */
+
+/** Worst-first ordering for the list's embedded findings. */
+const SEV_RANK: Record<string, number> = { CRITICAL: 3, WARNING: 2, SUGGESTION: 1 };
+/** Max findings embedded per PR on the list. Counts stay uncapped. */
+const LIST_FINDINGS_CAP = 10;
+/** The hover popup clamps rationale to two lines (~110 chars visible). */
+const LIST_RATIONALE_MAX = 200;
+
+type FindingsBucket = {
+  critical: number;
+  warning: number;
+  suggestion: number;
+  list: PrListFinding[];
+};
 export default async function pullsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
@@ -111,21 +131,100 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review SCORE + FINDINGS per PR, for the list's score ring and its
+    // FINDINGS column. Computed on read from reviews (no FK denorm); the list is
+    // small, so one IN-query + JS grouping is cheap. The review id is carried
+    // through a reverse map so the findings query below can scope itself to
+    // exactly these reviews.
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
+    const prByReviewId = new Map<string, string>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (latestReviewByPr.has(rv.prId)) continue;
+        latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
+        prByReviewId.set(rv.id, rv.prId);
+      }
+    }
+
+    // FINDINGS of that SAME latest review, for the list's FINDINGS column
+    // (severity badges + a hover popup that must open with no loading state).
+    // One IN-query over the latest review ids — never one query per PR.
+    //
+    // Live rows, not the `agent_runs.critical_count/...` snapshot: that snapshot
+    // is frozen at run completion (see server/INSIGHTS.md) and still counts
+    // findings the user has since dismissed, and `agent_runs` has no FK to
+    // `reviews` so it cannot be scoped to the latest review at all. The popup
+    // shows real finding rows, so the badge must count exactly those rows or the
+    // two visibly disagree. Dismissed findings are excluded from BOTH; accepted
+    // ones still count. This route's counts will therefore legitimately diverge
+    // from the run timeline's after a dismissal — different questions.
+    const findingsByPr = new Map<string, FindingsBucket>();
+    const latestReviewIds = [...prByReviewId.keys()];
+    if (latestReviewIds.length > 0) {
+      const findingRows = await container.db
+        .select({
+          id: t.findings.id,
+          reviewId: t.findings.reviewId,
+          severity: t.findings.severity,
+          category: t.findings.category,
+          title: t.findings.title,
+          file: t.findings.file,
+          startLine: t.findings.startLine,
+          endLine: t.findings.endLine,
+          rationale: t.findings.rationale,
+          confidence: t.findings.confidence,
+        })
+        .from(t.findings)
+        .where(
+          and(inArray(t.findings.reviewId, latestReviewIds), isNull(t.findings.dismissedAt)),
+        );
+
+      for (const f of findingRows) {
+        const prId = prByReviewId.get(f.reviewId);
+        // `severity` is a bare text column with no CHECK constraint. An
+        // unrecognised value can be neither badged nor counted, so drop it from
+        // both — otherwise the client's "+N more" arithmetic goes wrong.
+        if (!prId || SEV_RANK[f.severity] === undefined) continue;
+        let bucket = findingsByPr.get(prId);
+        if (!bucket) {
+          bucket = { critical: 0, warning: 0, suggestion: 0, list: [] };
+          findingsByPr.set(prId, bucket);
+        }
+        if (f.severity === 'CRITICAL') bucket.critical++;
+        else if (f.severity === 'WARNING') bucket.warning++;
+        else bucket.suggestion++;
+        bucket.list.push({
+          id: f.id,
+          severity: f.severity as PrListFinding['severity'],
+          category: f.category as PrListFinding['category'],
+          title: f.title,
+          file: f.file,
+          start_line: f.startLine,
+          end_line: f.endLine,
+          rationale:
+            f.rationale.length > LIST_RATIONALE_MAX
+              ? `${f.rationale.slice(0, LIST_RATIONALE_MAX)}…`
+              : f.rationale,
+          confidence: f.confidence,
+        });
+      }
+      // Worst-first, then most-confident — the same predicate the hover card
+      // uses, so the list popup and the timeline popup order identically. Cap
+      // AFTER counting so the badges stay the full truth and the client can
+      // derive "+N more" from counts − list.length.
+      for (const bucket of findingsByPr.values()) {
+        bucket.list.sort(
+          (a, b) =>
+            (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0) || b.confidence - a.confidence,
+        );
+        if (bucket.list.length > LIST_FINDINGS_CAP) bucket.list.length = LIST_FINDINGS_CAP;
       }
     }
 
@@ -150,6 +249,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const found = findingsByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -172,6 +272,12 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: latestCostByPr.get(r.id) ?? null,
+        // `review ? … : null` is what separates "never reviewed" (null → the
+        // column renders "—") from "reviewed and clean" (0 / []).
+        critical_count: review ? (found?.critical ?? 0) : null,
+        warning_count: review ? (found?.warning ?? 0) : null,
+        suggestion_count: review ? (found?.suggestion ?? 0) : null,
+        findings: review ? (found?.list ?? []) : null,
       };
     });
   });
