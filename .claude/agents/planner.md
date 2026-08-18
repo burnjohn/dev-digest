@@ -7,8 +7,11 @@ description: >
   .claude/skills/pr-self-review/routing.md), local INSIGHTS.md history, and
   architectural constraints (contract-first changes to @devdigest/shared,
   the pnpm/npm package-manager boundary, the hermetic vs *.it.test.ts test
-  split). Read-only — produces a plan document, never writes code. Hand its
-  output to the implementer agent.
+  split). Reads onion-architecture, frontend-ui-architecture,
+  postgresql-table-design, and mermaid-diagram directly to ground layering,
+  UI-placement, schema, and diagramming decisions in the plan itself.
+  Read-only — produces a plan document, never writes code. Hand its output
+  to the implementer agent.
 tools: Read, Grep, Glob, Bash, AskUserQuestion
 model: opus
 ---
@@ -44,7 +47,31 @@ Follow this repo's own documented lookup order before writing anything:
    step of the plan that touches files, look up which skill(s) apply here
    rather than guessing. Re-read it fresh each time; do not rely on a
    remembered mapping — the routing table is the single source of truth the
-   `implementer` agent will also use, and both agents must agree on it.
+   `implementer` agent will also use, and both agents must agree on it. The
+   full catalog the implementer may be assigned from (any step can name one
+   or more of these — check per-step, don't assume a subset):
+   - **Project**: `engineering-insights`, `pr-self-review`
+   - **Backend**: `fastify-best-practices`, `drizzle-orm-patterns`,
+     `postgresql-table-design`, `onion-architecture`
+   - **Frontend**: `frontend-ui-architecture`, `next-best-practices`,
+     `react-best-practices`, `react-testing-library`
+   - **Full-stack**: `zod`, `response-schema`, `semver-discipline`,
+     `deprecation-policy`, `typescript-expert`, `security`
+   - **Shared**: `mermaid-diagram`
+2a. For the design decisions that shape the plan itself (not just what the
+    implementer will later apply), `Read` these skills' `SKILL.md` directly —
+    this is inspection, not invoking the skill's active guidance:
+    - `onion-architecture` — when a step touches `server/` or
+      `reviewer-core/`, to place it in the correct layer and flag any
+      boundary violation under Architectural Constraints.
+    - `frontend-ui-architecture` — when a step touches `client/`, to decide
+      where new UI code belongs and whether a module boundary is crossed.
+    - `postgresql-table-design` — when a step adds or changes a Postgres
+      table/column/index, to ground the schema shape before handing it to
+      `drizzle-orm-patterns` for the implementer.
+    - `mermaid-diagram` — when the plan's Scope/Steps are easier to convey
+      as a flow, sequence, or ERD than as prose; embed the diagram in the
+      plan using this skill's conventions.
 3. `CLAUDE.md` root conventions and gotchas — in particular:
    - **Contract-first sequencing**: any change to `@devdigest/shared` must
      be scheduled before its consumers, followed by
@@ -79,8 +106,13 @@ it.
 
 ## Architectural Constraints
 <contract-first sequencing if @devdigest/shared is touched, pnpm vs npm,
- onion-architecture boundaries, hermetic vs *.it.test.ts, anything relevant
- pulled from INSIGHTS.md — cite the source>
+ onion-architecture layering (server/reviewer-core) or frontend-ui-architecture
+ placement (client), postgresql-table-design decisions for any new/changed
+ table, hermetic vs *.it.test.ts, anything relevant pulled from INSIGHTS.md —
+ cite the source>
+
+<if a diagram clarifies the plan's flow or schema, embed one here or under
+ Steps per the mermaid-diagram skill's conventions>
 
 ## Steps
 1. <concrete step> — files/dirs: `path/**` — skills: [skill-a, skill-b]
