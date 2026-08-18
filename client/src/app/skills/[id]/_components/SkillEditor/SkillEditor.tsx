@@ -34,8 +34,15 @@ export function SkillEditor({
       <div style={s.body}>
         {/* `key` remounts on skill change, which is what resets the Config form.
             Without it every field would need an effect to re-sync — the same
-            reset, written by hand and easy to get wrong. */}
-        {tab === "config" && <ConfigTab key={skill.id} skill={skill} usedBy={usedBy} />}
+            reset, written by hand and easy to get wrong.
+
+            The VERSION is part of the key, not just the id: ConfigTab seeds
+            `body` into `useState` at mount, so a restore performed on the
+            Versions tab would leave the Config tab showing the PRE-restore body,
+            marked dirty — one click from silently un-restoring it. */}
+        {tab === "config" && (
+          <ConfigTab key={`${skill.id}:${skill.version}`} skill={skill} usedBy={usedBy} />
+        )}
         {tab === "preview" && <PreviewTab skill={skill} />}
         {tab === "versions" && <VersionsTab key={skill.id} skill={skill} />}
       </div>

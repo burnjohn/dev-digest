@@ -24,3 +24,23 @@ export const FALLBACK_SKILL_NAME = 'untitled-skill';
 
 /** Longest derived name we will slugify down to, so a runaway H1 can't fill the column. */
 export const MAX_DERIVED_NAME_CHARS = 60;
+
+/**
+ * Hard cap on a version note, enforced by the route schema.
+ *
+ * Applied PRE-trim: the route schema is declarative (`.max(...)`, no `.trim()`
+ * transform), so 200 spaces is a 200-char note that the service then normalizes
+ * to NULL. Trimming first would make the cap depend on the handler running.
+ */
+export const MAX_VERSION_MESSAGE_CHARS = 200;
+
+/**
+ * The note stamped on a version written by `POST /skills/:id/restore`.
+ *
+ * This is deliberately NOT UI copy, which is the whole point of the endpoint. A
+ * restore note is an audit fact — stored once, at the moment of the write, and
+ * rendered verbatim forever after, like a commit message. Composing it on the
+ * client from a translated string would mean the persisted history changes
+ * language when the reader's locale does. Never route this through i18n.
+ */
+export const RESTORE_MESSAGE_PREFIX = 'Restored from v';

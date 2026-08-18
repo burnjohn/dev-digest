@@ -6,6 +6,20 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-18 — A hidden Browser pane freezes EVERY React Query query, and it looks like a dead API
+When the in-app Browser pane is not displayed, `document.visibilityState` is `"hidden"` and no
+query ever resolves: every page renders permanent `Skeleton`s and issues zero requests to :3001,
+while a manual `fetch()` from the same page returns 200. It is uniform across pages (agents,
+skills, repos), so treat "all skeletons + empty `read_network_requests`" as this, not a data-layer
+bug — check `document.visibilityState` first. Redefining it from the page does NOT revive
+already-mounted observers; verify UI through the RTL lane instead.
+
+### 2026-08-18 — Never run `pnpm build` in `client/` while `pnpm dev` is running
+The production build overwrites `.next/`, and the running dev server keeps requiring chunk paths
+the build deleted — every route then 500s with `Cannot find module './vendor-chunks/<pkg>.js'`
+and a reload cannot fix it. Recovery is: stop the dev server, `rm -rf .next`, restart. Run the
+build only against a stopped dev server.
+
 ### 2026-08-17 — A `dragover` handler that returns before `preventDefault()` eats the drop silently
 `SkillsTab` guarded `onDragOver` with `if (!dragRef.current || !isLinked) return`, so unchecked
 rows never called `preventDefault()` and the browser refused every drop onto them — the row just

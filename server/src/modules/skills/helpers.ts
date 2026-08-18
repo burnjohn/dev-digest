@@ -1,6 +1,10 @@
 import type { Skill, SkillListItem, SkillSource, SkillType, SkillVersion } from '@devdigest/shared';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
-import { FALLBACK_SKILL_NAME, MAX_DERIVED_NAME_CHARS } from './constants.js';
+import {
+  FALLBACK_SKILL_NAME,
+  MAX_DERIVED_NAME_CHARS,
+  RESTORE_MESSAGE_PREFIX,
+} from './constants.js';
 
 /**
  * Pure helpers for the skills module — row ⇄ DTO mapping, the version-bump
@@ -31,14 +35,42 @@ export function toSkillListItemDto(row: SkillRow, usedBy: number): SkillListItem
   return { ...toSkillDto(row), used_by: usedBy };
 }
 
-/** Map a `skill_versions` row to the public DTO. `created_at` is ISO-8601. */
+/**
+ * Map a `skill_versions` row to the public DTO. `created_at` is ISO-8601.
+ *
+ * `?? null` is not decoration: `message` was added in 0016, so every snapshot
+ * written before it reads back NULL, and the contract declares the field
+ * `.nullable()` rather than optional so the key is always on the wire.
+ */
 export function toSkillVersionDto(row: SkillVersionRow): SkillVersion {
   return {
     skill_id: row.skillId,
     version: row.version,
     body: row.body,
+    message: row.message ?? null,
     created_at: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * The note to persist for a version, given whatever the caller sent.
+ *
+ * Absent, empty and whitespace-only all collapse to NULL — one choke point, so
+ * nothing downstream ever has to depend on `''` being falsy or distinguish "no
+ * note" from "an empty note".
+ */
+export function normalizeVersionMessage(raw: string | undefined): string | null {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * The server-authored note for a restore. Locale-independent by construction —
+ * see `RESTORE_MESSAGE_PREFIX`. The exact string is persisted data, so it is
+ * pinned by a test.
+ */
+export function restoreVersionMessage(from: number): string {
+  return `${RESTORE_MESSAGE_PREFIX}${from}`;
 }
 
 /**

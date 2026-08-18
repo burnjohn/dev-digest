@@ -74,7 +74,10 @@
       "descriptionHint": "Shown on the card. Not sent to the model.",
       "typeLabel": "Type",
       "bodyLabel": "Skill body",
-      "bodyHint": "Saving a changed body creates a new immutable version."
+      "bodyHint": "Saving a changed body creates a new immutable version.",
+      "versionMessageLabel": "Version note",
+      "versionMessageHint": "Optional — shown against this version in the history.",
+      "versionMessagePlaceholder": "Why this changed…"
     },
     "preview": {
       "heading": "Preview",
@@ -86,7 +89,16 @@
       "subtitle": "Every body change is snapshotted. Older versions are read-only.",
       "current": "current",
       "loadError": "Could not load version history.",
-      "empty": "No versions recorded yet."
+      "empty": "No versions recorded yet.",
+      "restore": {
+        "action": "Restore",
+        "title": "Restore v{version}?",
+        "body": "This writes that body forward as a new version. Nothing in the history is overwritten.",
+        "confirm": "Restore",
+        "cancel": "Cancel",
+        "success": "Restored v{from} as v{version}.",
+        "noop": "That body is already current — nothing to restore."
+      }
     },
     "delete": {
       "action": "Delete skill",

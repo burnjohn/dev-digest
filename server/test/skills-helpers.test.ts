@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveSkillName,
   isBodyChange,
+  normalizeVersionMessage,
   resolveSkillName,
+  restoreVersionMessage,
   slugifySkillName,
   toSkillDto,
   toSkillListItemDto,
@@ -54,19 +56,66 @@ describe('toSkillDto', () => {
 });
 
 describe('toSkillVersionDto', () => {
+  const versionRow = (over: Partial<SkillVersionRow> = {}): SkillVersionRow => ({
+    skillId: 'sk1',
+    version: 2,
+    body: 'b',
+    message: null,
+    createdAt: new Date('2026-08-16T10:00:00.000Z'),
+    ...over,
+  });
+
   it('serializes created_at as ISO-8601', () => {
-    const v: SkillVersionRow = {
-      skillId: 'sk1',
-      version: 2,
-      body: 'b',
-      createdAt: new Date('2026-08-16T10:00:00.000Z'),
-    };
-    expect(toSkillVersionDto(v)).toEqual({
+    expect(toSkillVersionDto(versionRow())).toEqual({
       skill_id: 'sk1',
       version: 2,
       body: 'b',
+      message: null,
       created_at: '2026-08-16T10:00:00.000Z',
     });
+  });
+
+  it('maps a NULL message column to null, never undefined', () => {
+    // The contract declares `message` `.nullable()`, not `.optional()`, so the
+    // key must be present on the wire for every pre-0016 snapshot too. An
+    // `undefined` here would be dropped by JSON.stringify and the client would
+    // have two shapes meaning "no note".
+    const dto = toSkillVersionDto(versionRow({ message: null }));
+    expect(dto.message).toBeNull();
+    expect(Object.keys(dto)).toContain('message');
+  });
+
+  it('passes a stored note through verbatim', () => {
+    expect(toSkillVersionDto(versionRow({ message: 'Restored from v1' })).message).toBe(
+      'Restored from v1',
+    );
+  });
+});
+
+describe('normalizeVersionMessage — one choke point for "no note"', () => {
+  it('collapses an absent note to null', () => {
+    expect(normalizeVersionMessage(undefined)).toBeNull();
+  });
+
+  it('collapses an empty string to null', () => {
+    expect(normalizeVersionMessage('')).toBeNull();
+  });
+
+  it('collapses a whitespace-only note to null', () => {
+    expect(normalizeVersionMessage('   \t\n ')).toBeNull();
+  });
+
+  it('trims a real note', () => {
+    expect(normalizeVersionMessage('  tightened the rule  ')).toBe('tightened the rule');
+  });
+});
+
+describe('restoreVersionMessage — server-authored, locale-independent', () => {
+  it('pins the exact persisted string', () => {
+    // This is stored audit data, not UI copy: it is written once and rendered
+    // verbatim forever. Changing it silently rewrites what old history MEANS,
+    // so the literal is asserted rather than rebuilt from the constant.
+    expect(restoreVersionMessage(7)).toBe('Restored from v7');
   });
 });
 

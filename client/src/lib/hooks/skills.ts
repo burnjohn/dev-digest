@@ -59,7 +59,12 @@ export function useCreateSkill() {
 
 export interface UpdateSkillInput {
   id: string;
-  patch: Partial<Pick<Skill, "name" | "description" | "type" | "body" | "enabled">>;
+  // `version_message` is a request-only field — it labels the snapshot the save
+  // writes, and is not part of `Skill`. Intersected locally rather than added to
+  // the shared contract, consistent with this type already being local.
+  patch: Partial<Pick<Skill, "name" | "description" | "type" | "body" | "enabled">> & {
+    version_message?: string;
+  };
 }
 
 export function useUpdateSkill() {
@@ -70,6 +75,31 @@ export function useUpdateSkill() {
       qc.invalidateQueries({ queryKey: ["skills"] });
       qc.setQueryData(["skill", data.id], data);
       // A body edit writes a new snapshot, so the history is stale either way.
+      qc.invalidateQueries({ queryKey: ["skill-versions", data.id] });
+    },
+  });
+}
+
+/**
+ * Restore an old body as a new version.
+ *
+ * Posts a version NUMBER, never a body: the server reads the snapshot itself,
+ * under the same row lock a save takes. Sending `{ body }` from this cache is
+ * exactly the lost update this endpoint exists to prevent — and it is also why
+ * no `staleTime` guard is needed here, since a stale version list can only fail
+ * to offer a newer version, never write a wrong one.
+ *
+ * A restore IS a save, so it invalidates precisely what `useUpdateSkill` does.
+ * NOT `["agent-skills"]`: no links change.
+ */
+export function useRestoreSkillVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      api.post<Skill>(`/skills/${id}/restore`, { version }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["skills"] });
+      qc.setQueryData(["skill", data.id], data);
       qc.invalidateQueries({ queryKey: ["skill-versions", data.id] });
     },
   });

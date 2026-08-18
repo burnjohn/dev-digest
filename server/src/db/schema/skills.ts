@@ -34,6 +34,16 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     body: text('body').notNull(),
+    // Optional audit note for this snapshot: an author's save message, or the
+    // server-authored `Restored from vN` line. Nullable with no default and no
+    // CHECK (0000_init.sql declares none; the length cap lives on the route
+    // schema, like `body`'s). NULL means "no note" — the service normalizes
+    // '' and whitespace-only to NULL, so every downstream read is one `!= null`.
+    //
+    // Named `message` on the row (this object already IS a version) but
+    // `version_message` on the PUT body, where a bare `message` would read as a
+    // field of the skill.
+    message: text('message'),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),
