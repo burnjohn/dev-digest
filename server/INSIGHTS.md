@@ -8,6 +8,12 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-18 — a prompt in `docs/agent-prompts/` does NOT mean the agent is seeded
+`api-contract-reviewer.md` shipped and was listed in that folder's README while nothing exported it
+from `seed-prompts.ts` or added it to `seedAgents`, so `pnpm db:seed` quietly produced four reviewers
+against docs describing five. Adding a reviewer is three separate edits (doc → export → `seedAgents`)
+— pin the result with a `.it` assertion, because no existing test counts agents or skills.
+
 ### 2026-08-17 — a delete-then-guarded-insert cache swap loses data on an upstream `200 []`
 `pulls/routes.ts` `GET /pulls/:id` deleted `pr_files` unconditionally and re-inserted only
 `if (detail.files.length > 0)`, so one empty-but-successful GitHub reply permanently wiped a PR's

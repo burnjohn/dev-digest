@@ -17,11 +17,21 @@ import type { SkillType } from '@devdigest/shared';
  *    is re-sent on every file call, so length is a per-call cost.
  */
 
+/**
+ * The agents the seed attaches skills to. Named here rather than in `seed.ts`
+ * because a skill declares its own binding below, and the seed looks the agent
+ * up by name to resolve it.
+ */
+export const TEST_QUALITY_AGENT_NAME = 'Test Quality Reviewer';
+export const API_CONTRACT_AGENT_NAME = 'API Contract Reviewer';
+
 export interface SeedSkill {
   name: string;
   description: string;
   type: SkillType;
   body: string;
+  /** Agent names this skill is linked to. Array order within an agent is prompt order. */
+  agents: string[];
 }
 
 const UNCOVERED_BRANCH_GATE = `# Uncovered branch gate
@@ -103,30 +113,123 @@ Report a finding for any of these in a test file in the diff:
 Each of these fails intermittently, which costs more than a test that never
 existed: a suite people learn to re-run is a suite people stop trusting.`;
 
-/** The four skills seeded alongside the Test Quality Reviewer agent. */
+const CONTRACT_BREAKING_CHANGE = `# Contract breaking change
+
+Every published route, field, status code and exported symbol already has a caller you
+cannot see and cannot update. Report a finding when this diff would break one of them.
+
+- **Removed or renamed in place** — a response field, route, query or path parameter, enum
+  member, or exported symbol. A rename is a removal plus an addition, not a rename.
+- **Moved** — the URL path, HTTP method, or content type of an existing endpoint changed.
+- **Newly required** — an optional request field made required, or a required field added
+  with no default.
+- **Narrowed** — a tighter pattern, a lower maximum, a smaller enum, or a stricter type on
+  input that already validated.
+- **Re-signalled** — 200 becoming 204, an empty list becoming a 404, an error body losing
+  the \`code\` clients branch on.
+
+Published means reachable today: a served route, a released export, a documented field.
+Something added and then changed inside this same unreleased PR was never published. A
+symbol no package entry point exports and no route reaches is internal — renaming it freely
+is correct, and reporting it is a false positive.
+
+Name the mechanism, not the category: which request stops working and how it fails — a 422
+on a payload that worked yesterday, an \`undefined\` where a value was read. Cite the line
+where the contract changes, once — not once per consumer or per generated artifact.`;
+
+const RESPONSE_SHAPE_GUARD = `# Response shape guard
+
+A response a client already parses may grow, and nothing else. Report a finding when a field
+in a response this diff touches changes in any way other than being added as optional:
+
+- A field's type changed, or a scalar was promoted to an object or array.
+- A field that was always present became optional or nullable.
+- An enum member disappeared from a response, or the value set widened where clients switch
+  exhaustively over it.
+- A default changed, or the unit or format changed while the type stayed the same — cents to
+  dollars, seconds to milliseconds, ISO date to epoch. No compiler catches this one.
+- The handler and its declared schema disagree: a field returned but not declared, or
+  declared and no longer returned.
+
+Assume a rolling deploy: for the length of the rollout an old client reads a new response.
+A change that only works once both sides ship is a break even when both sides are in this PR.
+
+The compatible shape is additive-optional, so say so — name the new field beside the old one
+as the fix, rather than reporting that the shape changed.`;
+
+const SEMVER_DISCIPLINE = `# Semver discipline
+
+Breaking a contract is allowed. Shipping the break silently is not. This rule only fires once
+you have already found a break — on a purely additive diff it produces nothing.
+
+Check whether the diff carries a signal, in whatever form this repo already uses: a
+\`package.json\` version bump matching the class of change (removal, narrowing, or a new
+required input is major), a CHANGELOG entry naming the break and its migration, or a route
+version segment where routes are versioned.
+
+Report a finding when:
+- A breaking change is smuggled into a patch or minor release.
+- Something is deleted in the same PR that introduces its replacement, with no window between.
+- A \`@deprecated\` marker names no replacement and no removal version.
+- A deprecation lives only in a comment or CHANGELOG while the runtime says nothing.
+
+Do not demand a bump, a \`Deprecation\` header, or an OpenAPI update this repo's own
+conventions do not use — follow the pattern visible in the diff and the surrounding code.`;
+
+/**
+ * Seven skills across two agents: four judge the tests, three judge the public
+ * contract. Each entry declares its own agent binding; `seed.ts` resolves the
+ * name and keeps a per-agent order counter, so this array's order is the order
+ * the model reads within each agent.
+ */
 export const SEED_SKILLS: SeedSkill[] = [
   {
     name: 'uncovered-branch-gate',
     description: 'Flags a new branch that no added or changed test exercises.',
     type: 'rubric',
     body: UNCOVERED_BRANCH_GATE,
+    agents: [TEST_QUALITY_AGENT_NAME],
   },
   {
     name: 'corner-case-checklist',
     description: 'Walks empty/null/boundary/unicode/timezone/concurrency/error paths.',
     type: 'rubric',
     body: CORNER_CASE_CHECKLIST,
+    agents: [TEST_QUALITY_AGENT_NAME],
   },
   {
     name: 'no-over-mocking',
     description: 'Catches tests that mock the unit under test or assert on mocks.',
     type: 'convention',
     body: NO_OVER_MOCKING,
+    agents: [TEST_QUALITY_AGENT_NAME],
   },
   {
     name: 'flaky-test-patterns',
     description: 'Sleeps, real clocks, order dependence, shared state, real I/O.',
     type: 'custom',
     body: FLAKY_TEST_PATTERNS,
+    agents: [TEST_QUALITY_AGENT_NAME],
+  },
+  {
+    name: 'contract-breaking-change',
+    description: 'Removed, renamed, moved, newly required or narrowed published surface.',
+    type: 'rubric',
+    body: CONTRACT_BREAKING_CHANGE,
+    agents: [API_CONTRACT_AGENT_NAME],
+  },
+  {
+    name: 'response-shape-guard',
+    description: 'Type drift, present→nullable, dropped enum member, silent unit changes.',
+    type: 'convention',
+    body: RESPONSE_SHAPE_GUARD,
+    agents: [API_CONTRACT_AGENT_NAME],
+  },
+  {
+    name: 'semver-discipline',
+    description: 'A break shipped with no version bump, changelog, or deprecation window.',
+    type: 'rubric',
+    body: SEMVER_DISCIPLINE,
+    agents: [API_CONTRACT_AGENT_NAME],
   },
 ];
