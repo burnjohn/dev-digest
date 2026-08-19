@@ -30,11 +30,37 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  open: controlledOpen,
+  onOpenChange,
+  highlightLine,
+  onHighlightMount,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  /** Controlled open state — SmartDiffViewer drives this so it can
+   *  force-expand a file when a finding is clicked. Omitted (uncontrolled):
+   *  falls back to the size-based auto-expand default below, unchanged from
+   *  every other FileCard caller. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** New-file line number to highlight/scroll to (SmartDiffViewer's "jump to
+   *  finding"). */
+  highlightLine?: number | null;
+  /** Fires with the highlighted line's DOM node once it mounts. */
+  onHighlightMount?: (el: HTMLDivElement | null) => void;
+}) {
   const t = useTranslations("shell");
-  const [open, setOpen] = React.useState(
+  const [internalOpen, setInternalOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
 
   // Group this file's comments into threads, then split into ones we can anchor
@@ -56,7 +82,7 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     <div style={s.fileCard}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
         style={s.fileHeader}
       >
@@ -83,15 +109,21 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
           {lines.length === 0 ? (
             <div style={s.noDiff}>{t("diffViewer.noDiffText")}</div>
           ) : (
-            lines.map((ln, i) => (
-              <CodeLine
-                key={i}
-                ln={ln}
-                path={file.path}
-                threads={threadsForLine(ln, matched)}
-                commenting={commenting}
-              />
-            ))
+            lines.map((ln, i) => {
+              const isHighlighted =
+                highlightLine != null && (ln.newNo === highlightLine || ln.oldNo === highlightLine);
+              return (
+                <CodeLine
+                  key={i}
+                  ln={ln}
+                  path={file.path}
+                  threads={threadsForLine(ln, matched)}
+                  commenting={commenting}
+                  highlighted={isHighlighted}
+                  rowRef={isHighlighted ? onHighlightMount : undefined}
+                />
+              );
+            })
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
         </div>

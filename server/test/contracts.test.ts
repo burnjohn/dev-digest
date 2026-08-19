@@ -110,7 +110,17 @@ describe('AI contracts parse fixtures', () => {
       groups: [
         {
           role: 'core',
-          files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
+          files: [
+            {
+              path: 'a.ts',
+              additions: 84,
+              deletions: 0,
+              findings: [
+                { line: 28, severity: 'WARNING' },
+                { line: 52, severity: 'CRITICAL' },
+              ],
+            },
+          ],
         },
       ],
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },

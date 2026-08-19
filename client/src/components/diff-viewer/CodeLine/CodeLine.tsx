@@ -14,11 +14,18 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  highlighted,
+  rowRef,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** SmartDiffViewer's "jump to finding" — outlines this row. */
+  highlighted?: boolean;
+  /** Called with the row's DOM node (only meaningful when `highlighted`), so
+   *  the caller can `scrollIntoView` it. */
+  rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
@@ -46,7 +53,7 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind)}>
+      <div style={lineRowFor(ln.kind, highlighted)} ref={highlighted ? rowRef : undefined}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button

@@ -1,0 +1,26 @@
+{
+  "toggle": {
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order"
+  },
+  "groups": {
+    "core": {
+      "title": "Core logic",
+      "subtitle": "The substance of the change"
+    },
+    "wiring": {
+      "title": "Wiring",
+      "subtitle": "Config and plumbing that connects the pieces"
+    },
+    "boilerplate": {
+      "title": "Boilerplate",
+      "subtitle": "Generated, vendored, or derived files"
+    }
+  },
+  "fileCount": "{count} files",
+  "findingsCount": "{count} findings",
+  "jumpToFinding": "Jump to line {line}",
+  "loading": "Loading Smart Diff…",
+  "error": "Couldn't load Smart Diff.",
+  "empty": "No changed files."
+}

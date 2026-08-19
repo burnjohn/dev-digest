@@ -1,5 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type {
+  FindingActionKind,
+  RunEventKind,
+  RunTrace,
+  SmartDiff,
+  SmartDiffFinding,
+} from '@devdigest/shared';
+import { Severity } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -7,6 +14,12 @@ import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
+import { buildSmartDiff, type SmartDiffInputFile } from './smart-diff/classifier.js';
+
+/** Recognised severities, for dropping a garbage `findings.severity` value —
+ *  the column has no DB CHECK constraint (see pulls/routes.ts SEV_RANK for
+ *  the same guard on the PR list). */
+const KNOWN_SEVERITIES = new Set<string>(Severity.options);
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -175,5 +188,46 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  /**
+   * Smart Diff for a PR: `pr_files` grouped by role (core/wiring/boilerplate,
+   * deterministic — see `./smart-diff/classifier.ts`), each file annotated
+   * with the LATEST review's non-dismissed findings. "Latest review" uses the
+   * exact same semantics as the PR list's score/findings columns (newest
+   * `kind='review'` review, dismissed findings excluded, unrecognised
+   * severities dropped) so the two badges never disagree — see
+   * `./repository/review.repo.ts#latestReview`.
+   */
+  async smartDiffForPull(workspaceId: string, prId: string): Promise<SmartDiff> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const [files, review] = await Promise.all([
+      this.repo.getPrFiles(prId),
+      this.repo.latestReview(prId),
+    ]);
+
+    const findingsByFile = new Map<string, SmartDiffFinding[]>();
+    if (review) {
+      const findings = await this.repo.findingsForReview(review.id);
+      for (const f of findings) {
+        if (!KNOWN_SEVERITIES.has(f.severity)) continue;
+        const entry: SmartDiffFinding = {
+          line: f.startLine,
+          severity: f.severity as SmartDiffFinding['severity'],
+        };
+        const bucket = findingsByFile.get(f.file);
+        if (bucket) bucket.push(entry);
+        else findingsByFile.set(f.file, [entry]);
+      }
+    }
+
+    const inputFiles: SmartDiffInputFile[] = files.map((f) => ({
+      path: f.path,
+      additions: f.additions,
+      deletions: f.deletions,
+    }));
+    return buildSmartDiff(inputFiles, findingsByFile);
   }
 }

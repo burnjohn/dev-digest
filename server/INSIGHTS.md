@@ -84,6 +84,26 @@ _None yet._
 
 ## Codebase Patterns
 
+- **2026-08-19** — a classifier driven by a hand-written glob-pattern list
+  (`WIRING_PATTERNS`/`BOILERPLATE_PATTERNS` in
+  `server/src/modules/reviews/smart-diff/constants.ts`) reads as complete —
+  every pattern is documented and its own unit tests pass — while still
+  missing a whole naming *convention*, not just one path. `*.config.*` covers
+  `vite.config.ts`-style names but not the equally common bare `config.ts`
+  (e.g. `src/config.ts`), so that file classified as `core` instead of
+  `wiring` until caught by rendering the feature against seeded PR #482 and
+  diffing the result against the feature's design-reference screenshot.
+  Hermetic tests didn't catch it because the missing case was never written
+  as a test — the classifier's own test suite can only be as complete as the
+  author's imagination of file-naming conventions. Fixed by adding a
+  `config.*` pattern to `WIRING_PATTERNS`, plus a negative test
+  (`configurationLoader.ts` must stay `core`) so the fix doesn't regress into
+  a naive substring match. When adding a new pattern-list classifier, verify
+  it against a real rendered example before trusting the pattern list is
+  exhaustive — self-authored unit tests will not surface a convention the
+  author didn't think of. `server/src/modules/reviews/smart-diff/constants.ts`,
+  `server/src/modules/reviews/smart-diff/classifier.test.ts`
+
 - **2026-08-14** — a grouped-by-`X` aggregate query (`GROUP BY skill_id`, one
   round trip for the whole list) and a single-item version of the same
   aggregate (one skill's stats) don't need two query implementations. Give the
@@ -167,6 +187,17 @@ _None yet._
 
 ## Tool & Library Notes
 
+- **2026-08-19** — a `/** ... */` JSDoc block comment that quotes a glob
+  pattern ending in `**` immediately followed by a literal `/` (e.g. writing
+  `` `dist/**` `` in prose) closes the comment early: esbuild sees the `*/`
+  inside the text and stops parsing there, then chokes on the next word as
+  invalid syntax (`Expected ";" but found "dist"`). Vitest's `vite:esbuild`
+  transform surfaces this as a failed-to-transform error on the whole file, not
+  a comment warning. Fix: don't write the trailing `**` directly against a
+  `/` in a doc comment — say "a nested `dist` directory" instead of
+  `` `dist/**` ``, or escape it like `` `**\/dist/**` `` if the literal glob
+  must appear. `server/src/modules/reviews/smart-diff/constants.ts`
+
 - **2026-08-14** — capping an uploaded archive's size does **not** cap what it
   decompresses to, and with `fflate` the only place to stop a bomb is the
   per-entry `filter`. `unzipSync` allocates each entry's output buffer from the
@@ -186,6 +217,16 @@ _None yet._
   `server/test/skills-import.test.ts` ("refuses a zip bomb WITHOUT inflating it")
 
 ## Recurring Errors & Fixes
+
+- **2026-08-19** — "zero consumers" for a contract field (the bar for treating
+  a shape change as non-breaking, no deprecation path needed) must be checked
+  against `server/test/contracts.test.ts` too, not just application code —
+  that file's fixture tests `.parse()` a hand-written literal against every
+  exported contract, so a field rename/reshape there (e.g.
+  `SmartDiffFile.finding_lines` → `SmartDiffFile.findings`) makes a previously
+  "unconsumed" contract fail a `ZodError: Required` on the OLD fixture the
+  moment the schema changes, even though no real caller broke.
+  `server/test/contracts.test.ts`
 
 - **2026-08-14** — a repository *update* that returns `Row | undefined` is
   signalling a real read-modify-write race, not type noise, and asserting it

@@ -106,6 +106,20 @@ not show.
 
 ## Codebase Patterns
 
+- **2026-08-19** — when a new feature needs one more capability from an
+  existing shared render component (`FileCard`/`CodeLine` in
+  `client/src/components/diff-viewer`), extend it with OPTIONAL props that
+  default to the prior behaviour rather than forking a second copy.
+  `SmartDiffViewer`'s "click a finding → auto-expand + scroll + highlight that
+  line" needed `FileCard` to accept a controlled `open`/`onOpenChange` (falls
+  back to the original size-based auto-expand `useState` when omitted) and
+  `highlightLine`/`onHighlightMount` (only affects rendering when a line
+  number is passed). Every existing caller (`DiffViewer`) passes neither prop
+  and is byte-for-byte unaffected — confirmed by the untouched existing
+  behaviour still passing after the change, not just by reading the diff.
+  `client/src/components/diff-viewer/FileCard/FileCard.tsx`,
+  `client/src/components/diff-viewer/CodeLine/CodeLine.tsx`
+
 - **2026-08-14** — `client/src/vendor/ui/` is documented as "do not touch"
   (root `AGENTS.md`), but a NEW feature's sidebar entry has to land in
   `vendor/ui/nav.ts` anyway — `Sidebar.tsx` imports the `NAV` constant

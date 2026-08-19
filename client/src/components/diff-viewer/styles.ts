@@ -83,10 +83,20 @@ export function chevronFor(open: boolean): CSSProperties {
   };
 }
 
-/** Row background per line kind (add/del tinted, others transparent). */
-export function lineRowFor(kind: Line["kind"]): CSSProperties {
+/** Row background per line kind (add/del tinted, others transparent).
+ *  `highlighted` overlays an outline — used by SmartDiffViewer's "jump to
+ *  finding" (see FileCard's `highlightLine` prop) without fighting the
+ *  add/del background colour. */
+export function lineRowFor(kind: Line["kind"], highlighted?: boolean): CSSProperties {
   const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
-  return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
+  return {
+    display: "flex",
+    alignItems: "stretch",
+    fontSize: 13,
+    lineHeight: "20px",
+    background,
+    ...(highlighted ? { outline: "2px solid var(--accent-text)", outlineOffset: -1 } : {}),
+  };
 }
 
 /** Gutter sign colour per line kind. */

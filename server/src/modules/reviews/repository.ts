@@ -72,6 +72,18 @@ export class ReviewRepository {
     return reviewRepo.getReview(this.db, reviewId);
   }
 
+  /** Latest `kind='review'` review for a PR (createdAt desc); `undefined` if
+   *  never reviewed. Same semantics as the PR list's latest-review lookup —
+   *  see `./repository/review.repo.ts#latestReview`. */
+  latestReview(prId: string): Promise<ReviewRow | undefined> {
+    return reviewRepo.latestReview(this.db, prId);
+  }
+
+  /** Non-dismissed findings for one review. */
+  findingsForReview(reviewId: string): Promise<FindingRow[]> {
+    return reviewRepo.findingsForReview(this.db, reviewId);
+  }
+
   /** In-flight runs for a PR (status='running') — the server-side source of
    *  truth for "which agents are running now". Joined with the agent name. */
   activeRunsForPull(

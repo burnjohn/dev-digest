@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Finding } from '@devdigest/shared';
@@ -79,6 +79,35 @@ export async function reviewsForPull(
 export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | undefined> {
   const [row] = await db.select().from(t.reviews).where(eq(t.reviews.id, reviewId));
   return row;
+}
+
+/**
+ * The single latest `kind='review'` review for a PR (newest by `createdAt`),
+ * or `undefined` if the PR has never been reviewed. This is the SAME
+ * "latest review" semantics the PR list uses for its score/findings columns
+ * (see `server/src/modules/pulls/routes.ts`, `latestReviewByPr`) — kept as
+ * its own query (rather than reusing `reviewsForPull` above, which returns
+ * every review of every kind, dismissed findings included) so Smart Diff's
+ * badges can never disagree with the list's.
+ */
+export async function latestReview(db: Db, prId: string): Promise<ReviewRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(t.reviews)
+    .where(and(eq(t.reviews.prId, prId), eq(t.reviews.kind, 'review')))
+    .orderBy(desc(t.reviews.createdAt))
+    .limit(1);
+  return row;
+}
+
+/** Non-dismissed findings for one review — same dismissed-exclusion rule as
+ *  the PR list's FINDINGS column (accepted findings still count; dismissed
+ *  ones don't). */
+export async function findingsForReview(db: Db, reviewId: string): Promise<FindingRow[]> {
+  return db
+    .select()
+    .from(t.findings)
+    .where(and(eq(t.findings.reviewId, reviewId), isNull(t.findings.dismissedAt)));
 }
 
 /** Delete a whole review (one agent's run) + its findings (cascade), scoped
