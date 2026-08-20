@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { Db } from '../../../db/client.js';
+import type { Db, DbConn } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import { RunTrace } from '@devdigest/shared';
 import type { RunSummary } from '@devdigest/shared';
@@ -81,14 +81,22 @@ export async function deleteAgentRun(
   workspaceId: string,
   runId: string,
 ): Promise<boolean> {
-  await db
-    .delete(t.reviews)
-    .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)));
-  const rows = await db
-    .delete(t.agentRuns)
-    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId)))
-    .returning({ id: t.agentRuns.id });
-  return rows.length > 0;
+  // ONE transaction: without it a failure between the two DELETEs commits the
+  // review removal while the run row survives — an orphaned timeline entry.
+  // NOTE on ownership: the application layer (use cases + unit-of-work ports)
+  // does not exist yet in this module, so the persistence adapter owns
+  // `db.transaction` directly; a `ReviewUnitOfWork` port takes this over when
+  // the module migrates to the onion layout.
+  return db.transaction(async (tx) => {
+    await tx
+      .delete(t.reviews)
+      .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)));
+    const rows = await tx
+      .delete(t.agentRuns)
+      .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId)))
+      .returning({ id: t.agentRuns.id });
+    return rows.length > 0;
+  });
 }
 
 /** Does this run exist inside the workspace? The tenancy gate for run-addressed
@@ -167,7 +175,7 @@ export async function createAgentRun(
 }
 
 export async function completeAgentRun(
-  db: Db,
+  db: DbConn,
   runId: string,
   values: {
     status: 'done' | 'failed' | 'cancelled';

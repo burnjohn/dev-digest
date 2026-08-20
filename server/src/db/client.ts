@@ -4,6 +4,18 @@ import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/** The transaction handle `Db['transaction']` hands its callback. */
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/**
+ * A database connection a repository HELPER may run on: the shared client or a
+ * transaction handle. Only persistence-layer internals accept this union — it
+ * lets a repository method compose single-statement helpers atomically inside
+ * one `db.transaction`. Never put it on a port/service signature (see the
+ * onion-architecture skill: transaction-leaking signatures are forbidden).
+ */
+export type DbConn = Db | Tx;
+
 export interface DbHandle {
   db: Db;
   sql: postgres.Sql;
