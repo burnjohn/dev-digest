@@ -2,16 +2,19 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, eq } from 'drizzle-orm';
 import {
+  Settings,
   SettingsUpdate,
   ConnTestRequest,
-  type ConnTestResult,
-  type SecretsStatus,
+  ConnTestResult,
+  SecretsStatus,
 } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { ValidationError } from '../../platform/errors.js';
 import { GITHUB_PROVIDER, SECRET_KEY_BY_PROVIDER } from './constants.js';
 import { rowsToSettings } from './helpers.js';
+import { upsertSettings } from './store.js';
+import { GitHubTokenService } from '../github-tokens/service.js';
 
 /**
  * F1 — settings module.
@@ -27,7 +30,9 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
 
-  app.get('/settings', async (req) => {
+  const githubTokens = new GitHubTokenService(app.container);
+
+  app.get('/settings', { schema: { response: { 200: Settings } } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
     const rows = await container.db
       .select()
@@ -38,47 +43,40 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
 
   // Which provider keys are configured (booleans only — the values are NEVER
   // returned). Drives the "Configured / Not set" badges in the API Keys panel.
-  app.get('/settings/secrets-status', async (req): Promise<SecretsStatus> => {
-    await getContext(container, req);
-    const entries = await Promise.all(
-      (Object.entries(SECRET_KEY_BY_PROVIDER) as [keyof SecretsStatus, string][]).map(
-        async ([provider, key]) => [provider, Boolean(await container.secrets.get(key))] as const,
-      ),
-    );
-    // `SecretsStatus` (shared contract, extend-never-edit) still declares a
-    // required `github` field from before per-repo tokens existed; nothing
-    // populates it any more since `SECRET_KEY_BY_PROVIDER` has no `github`
-    // entry (see its comment). This cast hides that the actual JSON body
-    // omits `github` entirely — there is no response schema on this route to
-    // catch the gap. Not a live bug: the client's SettingsApiKeys panel no
-    // longer reads `secretsStatus.github` (removed from KEY_ROWS), so nothing
-    // consumes the missing key today.
-    return Object.fromEntries(entries) as SecretsStatus;
-  });
+  app.get(
+    '/settings/secrets-status',
+    { schema: { response: { 200: SecretsStatus } } },
+    async (req): Promise<SecretsStatus> => {
+      const { workspaceId } = await getContext(container, req);
+      const entries = await Promise.all(
+        (Object.entries(SECRET_KEY_BY_PROVIDER) as [keyof SecretsStatus, string][]).map(
+          async ([provider, key]) => [provider, Boolean(await container.secrets.get(key))] as const,
+        ),
+      );
+      // GitHub PATs are per-repo tokens (github-tokens module), so the
+      // contract's required `github` boolean now reports whether ANY stored
+      // token value resolves — the honest reading of "true ⇒ a key/PAT is
+      // stored". The response schema above guarantees the field is present.
+      const tokens = await githubTokens.list(workspaceId);
+      return {
+        ...(Object.fromEntries(entries) as Omit<SecretsStatus, 'github'>),
+        github: tokens.some((token) => token.configured),
+      };
+    },
+  );
 
-  app.put('/settings', { schema: { body: SettingsUpdate } }, async (req) => {
+  app.put('/settings', { schema: { body: SettingsUpdate, response: { 200: Settings } } }, async (req) => {
     const { workspaceId, userId } = await getContext(container, req);
-    const body = req.body;
-    for (const [key, value] of Object.entries(body)) {
-      await container.db
-        .insert(t.settings)
-        .values({ workspaceId, userId, key, value })
-        .onConflictDoUpdate({
-          target: [t.settings.workspaceId, t.settings.userId, t.settings.key],
-          set: { value },
-        });
-    }
-    const rows = await container.db
-      .select()
-      .from(t.settings)
-      .where(eq(t.settings.workspaceId, workspaceId));
+    // ONE transaction (upsertSettings): a partial payload must land whole or
+    // not at all — no half-applied preference bags on a mid-loop failure.
+    const rows = await upsertSettings(container.db, workspaceId, userId, req.body);
     return rowsToSettings(rows);
   });
 
   app.post(
     '/settings/test-connection',
     {
-      schema: { body: ConnTestRequest },
+      schema: { body: ConnTestRequest, response: { 200: ConnTestResult } },
       config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     },
     async (req): Promise<ConnTestResult> => {

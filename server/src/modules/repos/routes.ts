@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { AssignRepoTokenInput, RepoCreate } from '@devdigest/shared';
+import { z } from 'zod';
+import {
+  AssignRepoTokenInput,
+  GitHubTokenTestResult,
+  RepoCreate,
+  RepoWithToken,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { RepoService } from './service.js';
@@ -26,7 +32,10 @@ export default async function reposRoutes(appBase: FastifyInstance) {
   // Register the clone job handler once.
   service.registerCloneJobHandler();
 
-  app.post('/repos', { schema: { body: RepoCreate } }, async (req, reply) => {
+  app.post(
+    '/repos',
+    { schema: { body: RepoCreate, response: { 200: RepoWithToken, 201: RepoWithToken } } },
+    async (req, reply) => {
     const { workspaceId, userId } = await getContext(app.container, req);
     // `github_token_id` is optional: a caller posting `{ url }` alone still
     // works and gets a repo with NO token — there is no implicit fallback.
@@ -36,18 +45,19 @@ export default async function reposRoutes(appBase: FastifyInstance) {
       req.body.url,
       req.body.github_token_id ?? null,
     );
-    reply.status(created ? 201 : 200);
-    return repo;
-  });
+      reply.status(created ? 201 : 200);
+      return repo;
+    },
+  );
 
-  app.get('/repos', async (req) => {
+  app.get('/repos', { schema: { response: { 200: z.array(RepoWithToken) } } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
   });
 
   app.patch(
     '/repos/:id/github-token',
-    { schema: { params: IdParams, body: AssignRepoTokenInput } },
+    { schema: { params: IdParams, body: AssignRepoTokenInput, response: { 200: RepoWithToken } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return service.assignToken(workspaceId, req.params.id, req.body.github_token_id);
@@ -62,7 +72,7 @@ export default async function reposRoutes(appBase: FastifyInstance) {
   app.post(
     '/repos/:id/test-access',
     {
-      schema: { params: IdParams },
+      schema: { params: IdParams, response: { 200: GitHubTokenTestResult } },
       config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     },
     async (req) => {

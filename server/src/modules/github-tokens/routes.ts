@@ -1,6 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { GitHubTokenInput, GitHubTokenPatch, GitHubTokenTestInput } from '@devdigest/shared';
+import { z } from 'zod';
+import {
+  GitHubToken,
+  GitHubTokenInput,
+  GitHubTokenPatch,
+  GitHubTokenTestInput,
+  GitHubTokenTestResult,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { GitHubTokenService } from './service.js';
@@ -18,21 +25,29 @@ export default async function githubTokensRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new GitHubTokenService(app.container);
 
-  app.get('/github-tokens', async (req) => {
-    const { workspaceId } = await getContext(app.container, req);
-    return service.list(workspaceId);
-  });
+  app.get(
+    '/github-tokens',
+    { schema: { response: { 200: z.array(GitHubToken) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.list(workspaceId);
+    },
+  );
 
-  app.post('/github-tokens', { schema: { body: GitHubTokenInput } }, async (req, reply) => {
-    const { workspaceId } = await getContext(app.container, req);
-    const token = await service.create(workspaceId, req.body);
-    reply.status(201);
-    return token;
-  });
+  app.post(
+    '/github-tokens',
+    { schema: { body: GitHubTokenInput, response: { 201: GitHubToken } } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const token = await service.create(workspaceId, req.body);
+      reply.status(201);
+      return token;
+    },
+  );
 
   app.patch(
     '/github-tokens/:id',
-    { schema: { params: IdParams, body: GitHubTokenPatch } },
+    { schema: { params: IdParams, body: GitHubTokenPatch, response: { 200: GitHubToken } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return service.patch(workspaceId, req.params.id, req.body);
@@ -48,7 +63,7 @@ export default async function githubTokensRoutes(appBase: FastifyInstance) {
   app.post(
     '/github-tokens/test',
     {
-      schema: { body: GitHubTokenTestInput },
+      schema: { body: GitHubTokenTestInput, response: { 200: GitHubTokenTestResult } },
       config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     },
     async (req) => service.test(req.body),
