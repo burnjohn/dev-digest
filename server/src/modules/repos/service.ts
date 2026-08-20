@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Container } from '../../platform/container.js';
 import { type GitHubTokenTestResult, type RepoWithToken } from '@devdigest/shared';
 import { MissingTokenError, NotFoundError } from '../../platform/errors.js';
@@ -21,15 +22,18 @@ import {
  * pure transforms through helpers.ts, literals through constants.ts.
  */
 
-/** Payload enqueued for (and consumed by) the `clone` job. */
-export interface CloneJobPayload {
-  repoId: string;
-  owner: string;
-  name: string;
-  url: string;
+/** Payload enqueued for (and consumed by) the `clone` job. A Zod schema, not a
+ *  bare interface: the payload round-trips through the `jobs.payload` jsonb
+ *  column, so the consumer side parses it instead of trusting a cast. */
+export const CloneJobPayload = z.object({
+  repoId: z.string(),
+  owner: z.string(),
+  name: z.string(),
+  url: z.string(),
   /** The repo's own token, carried so the job never guesses which one to use. */
-  githubTokenId?: string | null;
-}
+  githubTokenId: z.string().nullish(),
+});
+export type CloneJobPayload = z.infer<typeof CloneJobPayload>;
 
 export class RepoService {
   private repo: RepoRepository;
@@ -48,7 +52,7 @@ export class RepoService {
    */
   registerCloneJobHandler(): void {
     this.container.jobs.register(CLONE_JOB_KIND, async (payload) => {
-      await this.runCloneJob(payload as CloneJobPayload);
+      await this.runCloneJob(CloneJobPayload.parse(payload));
     });
   }
 

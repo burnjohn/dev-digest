@@ -17,6 +17,7 @@
  * The constructor takes ONLY a Container. No astgrep / depgraph / tokenizer
  * deps are imported here — those land later and plug into this same shell.
  */
+import { z } from 'zod';
 import type { CodeSymbol, RepoRef } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
 import { extractEndpoints } from '../../adapters/codeindex/extract.js';
@@ -65,6 +66,10 @@ import { runIncremental } from './pipeline/incremental.js';
  * O(1) on the hot path. The list intentionally errs on the inclusive side for
  * standard globals — better to under-flag than to spam reviewers with noise.
  */
+/** Job payloads round-trip through the `jobs.payload` jsonb column — parse on
+ *  the consumer side (extra keys like owner/name hints pass through unharmed). */
+const IndexJobPayload = z.object({ repoId: z.string() });
+
 const PHANTOM_GLOBALS_ALLOWLIST: ReadonlySet<string> = new Set([
   // Console / process / runtime
   'console', 'process', 'globalThis', 'require', 'module', 'exports',
@@ -123,6 +128,13 @@ export class RepoIntelService implements RepoIntel {
     return runFullIndex(this.container, this.repo, { repoId });
   }
 
+  /** Does this repo exist inside the workspace? The tenancy gate for the
+   *  repo-addressed HTTP routes — the facade methods themselves stay
+   *  tenant-agnostic, so the boundary calls this first. */
+  async repoInWorkspace(workspaceId: string, repoId: string): Promise<boolean> {
+    return this.repo.repoInWorkspace(workspaceId, repoId);
+  }
+
   /**
    * Run an incremental refresh INLINE. Same enqueue/inline split as indexRepo.
    * If the persisted state is missing or its `indexerVersion` is stale, this
@@ -171,13 +183,13 @@ export class RepoIntelService implements RepoIntel {
    */
   registerIndexJobHandlers(): void {
     this.container.jobs.register(INDEX_JOB_KIND, async (payload) => {
-      await this.indexRepo((payload as IndexPayload).repoId);
+      await this.indexRepo(IndexJobPayload.parse(payload).repoId);
     });
     this.container.jobs.register(REFRESH_JOB_KIND, async (payload) => {
-      await this.refreshIndex((payload as IndexPayload).repoId);
+      await this.refreshIndex(IndexJobPayload.parse(payload).repoId);
     });
     this.container.jobs.register(RESYNC_JOB_KIND, async (payload) => {
-      await this.resyncRepo((payload as IndexPayload).repoId);
+      await this.resyncRepo(IndexJobPayload.parse(payload).repoId);
     });
   }
 
