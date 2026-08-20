@@ -84,6 +84,11 @@ cleanup() {
   # The isolated build dir has this run's NEXT_PUBLIC_API_BASE compiled in; a
   # later run may use different ports, so don't let a stale compile linger.
   rm -rf "$ROOT/client/.next-e2e"
+  # Next rewrites next-env.d.ts's routes.d.ts reference to the ACTIVE distDir,
+  # so an e2e run dirties the committed file with ".next-e2e/types". Restore
+  # the default so e2e never leaves a git-visible change behind.
+  sed -i '' 's|\./\.next-e2e/types/routes\.d\.ts|./.next/types/routes.d.ts|' \
+    "$ROOT/client/next-env.d.ts" 2>/dev/null || true
   exit "$code"
 }
 trap cleanup EXIT INT TERM
