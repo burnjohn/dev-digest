@@ -6,6 +6,7 @@ dist/
 !agent-runner/dist/**
 build/
 .next/
+.next-e2e/
 out/
 coverage/
 *.tsbuildinfo

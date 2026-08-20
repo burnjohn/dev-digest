@@ -22,6 +22,7 @@ import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  orderFlows,
   resolveArgs,
   stdoutContains,
   summarize,
@@ -51,13 +52,17 @@ async function ab(args: string[]): Promise<string> {
 }
 
 function loadFlows(): { file: string; flow: Flow }[] {
-  return readdirSync(SPECS_DIR)
-    .filter((f) => f.endsWith(".flow.json"))
-    .sort()
-    .map((file) => ({
-      file,
-      flow: JSON.parse(readFileSync(join(SPECS_DIR, file), "utf8")) as Flow,
-    }));
+  // Read-only flows first, mutating flows (`"mutates": true`) last — never by
+  // lexical accident: all flows share one seeded DB and one browser session.
+  return orderFlows(
+    readdirSync(SPECS_DIR)
+      .filter((f) => f.endsWith(".flow.json"))
+      .sort()
+      .map((file) => ({
+        file,
+        flow: JSON.parse(readFileSync(join(SPECS_DIR, file), "utf8")) as Flow,
+      })),
+  );
 }
 
 async function runFlow(file: string, flow: Flow): Promise<FlowResult> {

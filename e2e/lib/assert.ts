@@ -18,6 +18,12 @@ export interface Step {
 export interface Flow {
   name: string;
   description?: string;
+  /**
+   * Flow writes to the shared DB / browser session (e.g. deletes seeded data).
+   * Mutating flows always run AFTER every read-only flow — never by lexical
+   * accident — because all flows share one seeded DB and browser session.
+   */
+  mutates?: boolean;
   steps: Step[];
 }
 
@@ -31,6 +37,33 @@ export interface FlowResult {
   name: string;
   ok: boolean;
   steps: StepResult[];
+}
+
+/**
+ * Order flows for execution: all read-only flows first, then all mutating ones,
+ * stable lexical order within each group. Flows share one DB and one browser
+ * session, so a mutating flow (e.g. 08 deletes the seeded GitHub token) running
+ * before a read-only flow would silently invalidate that flow's seeded-data
+ * assumptions. Fails loudly if the produced order would ever run a mutating
+ * flow before a read-only one (defensive invariant against future edits).
+ */
+export function orderFlows<T extends { file: string; flow: Flow }>(flows: T[]): T[] {
+  const byFile = (a: T, b: T) => a.file.localeCompare(b.file);
+  const ordered = [
+    ...flows.filter((f) => !f.flow.mutates).sort(byFile),
+    ...flows.filter((f) => f.flow.mutates).sort(byFile),
+  ];
+  let firstMutating: string | undefined;
+  for (const item of ordered) {
+    if (item.flow.mutates) {
+      firstMutating ??= item.file;
+    } else if (firstMutating) {
+      throw new Error(
+        `flow ordering violated: mutating flow ${firstMutating} would run before read-only flow ${item.file}`,
+      );
+    }
+  }
+  return ordered;
 }
 
 /** Substitute `{BASE}` (and trim a trailing slash on BASE) in every arg. */

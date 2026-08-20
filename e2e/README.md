@@ -31,6 +31,11 @@ A spec lives in `specs/NN-name.flow.json`:
   command's stdout.
 - Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
   We never use the AI `chat` command, so runs are stable and key-free.
+- A flow that writes to the shared DB / browser session must declare
+  `"mutates": true`. The runner executes all read-only flows first and all
+  mutating flows last (lexical order within each group), so a mutating flow can
+  never invalidate a later read-only flow's seeded-data assumptions by lexical
+  accident.
 
 Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
 #482, the seeded agents), so nothing triggers a model call.
@@ -100,3 +105,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `08-github-tokens` | delete the seeded GitHub token → repo assignment really clears (picker reverts to placeholder); repo stays readable. **`mutates: true`** — always runs last |
