@@ -10,7 +10,7 @@ import type {
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
 import { JobRunner } from './jobs.js';
-import { runBus, type RunBus } from './sse.js';
+import { RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
@@ -84,7 +84,9 @@ export class Container {
     this.db = db;
     this.secrets = overrides.secrets ?? new LocalSecretsProvider(config.secretsPath);
     this.auth = overrides.auth ?? new LocalNoAuthProvider(db);
-    this.runBus = runBus;
+    // One bus PER container: two app instances (and two test apps sharing a
+    // process) must not see each other's run buffers or cancel flags.
+    this.runBus = new RunBus();
     this.jobs = new JobRunner(db);
   }
 
