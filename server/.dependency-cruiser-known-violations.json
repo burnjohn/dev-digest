@@ -1,118 +1,6 @@
 [
   {
     "type": "dependency",
-    "from": "src/modules/polling/routes.ts",
-    "to": "node_modules/drizzle-orm/index.cjs",
-    "unresolvedTo": "drizzle-orm",
-    "dependencyTypes": [
-      "npm",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/polling/routes.ts",
-    "to": "src/db/schema.ts",
-    "unresolvedTo": "../../db/schema.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/pulls/routes.ts",
-    "to": "node_modules/drizzle-orm/index.cjs",
-    "unresolvedTo": "drizzle-orm",
-    "dependencyTypes": [
-      "npm",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/pulls/routes.ts",
-    "to": "src/db/schema.ts",
-    "unresolvedTo": "../../db/schema.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/settings/routes.ts",
-    "to": "node_modules/drizzle-orm/index.cjs",
-    "unresolvedTo": "drizzle-orm",
-    "dependencyTypes": [
-      "npm",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/settings/routes.ts",
-    "to": "src/db/schema.ts",
-    "unresolvedTo": "../../db/schema.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/workspace/routes.ts",
-    "to": "node_modules/drizzle-orm/index.cjs",
-    "unresolvedTo": "drizzle-orm",
-    "dependencyTypes": [
-      "npm",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/workspace/routes.ts",
-    "to": "src/db/schema.ts",
-    "unresolvedTo": "../../db/schema.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "legacy-routes-do-not-query-persistence"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/modules/agents/service.ts",
     "to": "src/modules/agents/repository.ts",
     "unresolvedTo": "./repository.js",
@@ -128,6 +16,36 @@
   {
     "type": "dependency",
     "from": "src/modules/agents/service.ts",
+    "to": "src/platform/container.ts",
+    "unresolvedTo": "../../platform/container.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import",
+      "pre-compilation-only"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/conventions/service.ts",
+    "to": "src/modules/conventions/repository.ts",
+    "unresolvedTo": "./repository.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/conventions/service.ts",
     "to": "src/platform/container.ts",
     "unresolvedTo": "../../platform/container.js",
     "dependencyTypes": [
@@ -172,6 +90,36 @@
   {
     "type": "dependency",
     "from": "src/modules/github-tokens/service.ts",
+    "to": "src/platform/container.ts",
+    "unresolvedTo": "../../platform/container.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import",
+      "pre-compilation-only"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/pulls/service.ts",
+    "to": "src/modules/pulls/repository.ts",
+    "unresolvedTo": "./repository.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/pulls/service.ts",
     "to": "src/platform/container.ts",
     "unresolvedTo": "../../platform/container.js",
     "dependencyTypes": [
@@ -320,6 +268,66 @@
   {
     "type": "dependency",
     "from": "src/modules/reviews/service.ts",
+    "to": "src/platform/container.ts",
+    "unresolvedTo": "../../platform/container.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import",
+      "pre-compilation-only"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/settings/service.ts",
+    "to": "src/modules/settings/repository.ts",
+    "unresolvedTo": "./repository.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/settings/service.ts",
+    "to": "src/platform/container.ts",
+    "unresolvedTo": "../../platform/container.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import",
+      "pre-compilation-only"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/skills/service.ts",
+    "to": "src/modules/skills/repository.ts",
+    "unresolvedTo": "./repository.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-services-do-not-construct-infrastructure"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/skills/service.ts",
     "to": "src/platform/container.ts",
     "unresolvedTo": "../../platform/container.js",
     "dependencyTypes": [
@@ -555,7 +563,6 @@
     "unresolvedTo": "openai",
     "dependencyTypes": [
       "npm",
-      "type-only",
       "import"
     ],
     "rule": {

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces, users } from './core';
 import { skills } from './skills';
@@ -58,6 +58,16 @@ export const agentSkills = pgTable(
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
     order: integer('order').notNull().default(0),
+    // Per-link switch, distinct from the skill's own global `enabled`. Unchecking
+    // a skill in the agent's Skills tab keeps the link (and its order) but stops
+    // the body being appended to THIS agent's prompt. A skill is injected only
+    // when both flags are true.
+    enabled: boolean('enabled').notNull().default(true),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.skillId] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.skillId] }),
+    // Reverse lookup: "which agents use this skill?" (the Skills grid's used-by
+    // count and the delete confirmation). The PK covers agent_id only.
+    skillIdx: index('agent_skills_skill_idx').on(t.skillId),
+  }),
 );

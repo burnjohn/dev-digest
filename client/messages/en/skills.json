@@ -3,23 +3,86 @@
     "crumbLab": "Skills Lab",
     "crumbSkills": "Skills",
     "heading": "Skills",
+    "subtitle": "Reusable review guidance. A skill is text and configuration — never code — and any agent can use it.",
     "addSkill": "Add Skill",
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
-      "fromFile": "Import from file",
+      "create": "Create from scratch",
+      "fromFile": "Import from file (.md or .zip)",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
     },
     "empty": {
       "title": "No skills yet",
-      "body": "Import a skill from a file, a URL, or the community catalog.",
-      "cta": "Import from file"
+      "body": "A skill is reusable review guidance — a rubric, a convention, a security rule. Write one, or import a markdown file.",
+      "cta": "Create your first skill"
     },
     "selectPrompt": {
       "title": "Select a skill",
       "body": "Pick a skill on the left to preview its body."
     }
+  },
+  "card": {
+    "usedBy": "{count, plural, =0 {no agents} =1 {1 agent} other {# agents}}"
+  },
+  "create": {
+    "title": "Create a skill",
+    "subtitle": "Name it and say when it applies — you'll write the body next.",
+    "create": "Create skill",
+    "starterBody": "# {name}\n\nDescribe the rule the reviewer should apply, and when it applies.\n"
+  },
+  "editor": {
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "evals": "Evals",
+      "stats": "Stats",
+      "versions": "Versions"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "bodyLabel": "Skill body",
+    "bodyHint": "Markdown. This text is appended to the prompt of every agent you attach it to — saving a change bumps the version and snapshots the old text.",
+    "unsaved": "unsaved",
+    "tokens": "~{count} tokens",
+    "save": "Save skill",
+    "versionMessage": "Version message (optional)",
+    "versionMessageHint": "What changed in this version? Shown in the Versions tab; leave it blank and a summary is derived from the diff.",
+    "versionMessagePlaceholder": "Added the async/concurrency section"
+  },
+  "evals": {
+    "title": "Evals arrive with their own lesson",
+    "body": "Scoring a skill against saved cases needs the eval module. Until then, compare a review run with the skill on and off — the run trace shows the exact prompt block it added."
+  },
+  "stats": {
+    "usedBy": "Used by",
+    "agentsUnit": "agents",
+    "promptCost": "Prompt cost",
+    "tokensUnit": "tokens",
+    "promptCostNote": "Approximate — added to every review by every agent that uses it.",
+    "pullFrequency": "Pull frequency",
+    "acceptRate": "Accept rate",
+    "findings30d": "Findings (30d)",
+    "untracked": "Not tracked yet — findings are not attributed back to the skill that produced them.",
+    "agentsPanel": "Agents using this skill",
+    "noAgents": "No agent uses this skill yet. Attach it from an agent's Skills tab.",
+    "open": "Open"
+  },
+  "versions": {
+    "title": "Version history",
+    "count": "{count, plural, =1 {1 version} other {# versions}}",
+    "subtitle": "Every save snapshots the body, so a past run can still be read against the exact text it used.",
+    "current": "Current",
+    "diff": "Diff",
+    "restore": "Restore",
+    "initial": "Initial body — {lines} lines",
+    "delta": "+{added} −{removed} lines",
+    "restoreConfirm": "Restore the body from v{version}? This is saved forward as a new version; nothing is erased.",
+    "restored": "Restored v{from} as v{version}",
+    "loadError": "Could not load the version history.",
+    "restoreMessage": "Restored from v{version}"
   },
   "detail": {
     "crumbSkill": "Skill",
@@ -31,8 +94,11 @@
     }
   },
   "drawer": {
-    "title": "Add a skill",
-    "subtitle": "Import from a file, a URL, or search vetted community skills",
+    "title": "Import a skill",
+    "subtitle": "Upload a markdown file or an archive — you'll see exactly what gets stored before anything is saved",
+    "trustNotice": "An imported skill's text becomes instructions inside your agent's prompt. Read it before you enable it. Only markdown is imported: nothing from the file is executed, and nothing is written to disk.",
+    "fileLabel": "Skill file",
+    "fileHint": "A .md file, or a .zip whose markdown is taken as the skill. Max 512 KB.",
     "tabs": {
       "file": "From file",
       "url": "From URL",
@@ -40,22 +106,27 @@
     },
     "importFailed": "Import failed"
   },
+  "import": {
+    "ignored": "Not imported ({count})",
+    "ignoredHint": "These archive members were listed but never opened, stored or run.",
+    "bodyPreview": "What will be stored — parsed from {filename}"
+  },
   "file": {
     "nameLabel": "Skill name",
     "nameHint": "Optional — derived from the first heading if blank.",
     "namePlaceholder": "pr-quality-rubric",
     "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
+    "bodyHint": "This text is appended to the prompt of every agent you attach it to.",
     "bodyPlaceholder": "# Rule\nDescribe the rule…",
-    "importing": "Importing…",
-    "import": "Import skill",
-    "success": "Imported \"{name}\" (stored as untrusted data)."
+    "importing": "Saving…",
+    "import": "Save skill",
+    "success": "Imported \"{name}\". It stays off until you enable it."
   },
   "url": {
     "label": "Skill URL",
-    "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
+    "hint": "Fetched server-side and left disabled until you have read it.",
     "placeholder": "https://example.com/skills/security.md",
-    "fetching": "Fetching…",
+    "fetching": "Reading…",
     "import": "Import from URL",
     "success": "Imported \"{name}\". Disabled until you vet + enable it."
   },
@@ -72,8 +143,8 @@
     "import": "Import"
   },
   "listItem": {
-    "needsVetting": "needs vetting",
-    "vettingTitle": "Untrusted source — vet before enabling",
+    "needsVetting": "third-party",
+    "vettingTitle": "Someone else wrote this — read it before enabling",
     "type": {
       "rubric": "rubric",
       "convention": "convention",
@@ -88,14 +159,32 @@
     }
   },
   "preview": {
-    "untrustedBadge": "untrusted source",
+    "renderedAs": "Rendered as the reviewing agent receives it.",
+    "newTitle": "New skill",
+    "previewSubtitle": "This body is appended to the prompt of every agent that uses it",
+    "editSubtitle": "Saving a changed body creates a new immutable version",
+    "thirdPartyNotice": "This skill was imported. Its text is sent to the model as instructions, exactly like a skill you wrote yourself — read it before enabling it for an agent.",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
     "edit": "Edit",
-    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete skill \"{name}\"? It is removed from every agent that uses it.",
+    "saveError": "Could not save the skill.",
+    "savedToast": "Saved (v{version})",
+    "createdToast": "Created \"{name}\"",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
-    "version": "v{version}"
+    "version": "v{version}",
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "no-then-chains",
+      "description": "Description",
+      "descriptionPlaceholder": "Flag .then() chains and ask for async/await",
+      "descriptionHint": "The skill's interface — write it as a directive, saying when the skill applies. This is what an agent reads first.",
+      "type": "Type"
+    }
   }
 }

@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentSkillDetail,
   AgentSkillLink,
   AgentVersion,
   CiFailOn,
@@ -8,8 +9,8 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
-import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { AgentsRepository, type SkillLinkInput } from './repository.js';
+import { toAgentDto, toAgentSkillDetail, toAgentVersionDto } from './helpers.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -138,21 +139,36 @@ export class AgentsService {
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    return links.map((l) => ({
+      agent_id: agentId,
+      skill_id: l.skill.id,
+      order: l.order,
+      enabled: l.enabled,
+    }));
   }
 
   /**
-   * Set / reorder the agent's linked skills. If `skillIds` is provided, replaces
-   * the whole set in that order. Returns the resulting ordered links.
+   * Linked skills with their full skill fields — what the editor's Skills tab
+   * renders. `link_enabled` is the per-agent switch; `enabled` on the skill
+   * itself is the global one, so the tab can grey out a globally-disabled skill.
+   */
+  async skillDetails(agentId: string): Promise<AgentSkillDetail[]> {
+    const links = await this.repo.linkedSkills(agentId);
+    return links.map(toAgentSkillDetail);
+  }
+
+  /**
+   * Set / reorder / toggle the agent's linked skills — replaces the whole set in
+   * the given order. Returns the resulting ordered links.
    */
   async setSkills(
     workspaceId: string,
     agentId: string,
-    skillIds: string[],
+    links: SkillLinkInput[],
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    await this.repo.setSkills(agentId, skillIds);
+    await this.repo.setSkills(agentId, links);
     return this.skillLinks(agentId);
   }
 
@@ -162,12 +178,13 @@ export class AgentsService {
     agentId: string,
     skillId: string,
     order?: number,
+    enabled?: boolean,
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
-    await this.repo.linkSkill(agentId, skillId, resolvedOrder);
+    await this.repo.linkSkill(agentId, skillId, resolvedOrder, enabled ?? true);
     return this.skillLinks(agentId);
   }
 

@@ -8,8 +8,11 @@ import {
   LEGACY_PERFORMANCE_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 import { GPT_56_LUNA } from '@devdigest/reviewer-core';
+import { SEED_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -243,6 +246,36 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       },
       legacyPrompt: LEGACY_PERFORMANCE_REVIEWER_PROMPT,
     },
+    // The two skill-driven reviewers ship DISABLED: they are the control
+    // experiment for the Skills lesson (run once with their skills off, once
+    // with them on), and leaving them off keeps a fresh clone's review runs
+    // identical to the pre-skills starter.
+    {
+      values: {
+        workspaceId,
+        name: 'Test Quality Reviewer',
+        description: 'Reviews the tests: uncovered branches, missing corner cases, over-mocking, flake.',
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+        enabled: false,
+        version: 1,
+        createdBy: userId,
+      },
+    },
+    {
+      values: {
+        workspaceId,
+        name: 'API Contract Reviewer',
+        description: 'Catches breaking changes to routes, request/response shapes and status codes.',
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+        enabled: false,
+        version: 1,
+        createdBy: userId,
+      },
+    },
   ];
   for (const { values, legacyPrompt } of seedAgents) {
     const [existing] = await db
@@ -270,7 +303,69 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     }
   }
 
+  await seedSkills(db, workspaceId);
+
   return { workspaceId, userId };
+}
+
+/**
+ * Seed the starter skills and link them to their agents.
+ *
+ * Idempotent by name on both sides: an existing skill is left exactly as the
+ * user edited it (never overwritten), and a link is upserted rather than
+ * duplicated. Links are written directly here — the version bump the agents
+ * repository does on a link change is an editor concern, and a seeded agent
+ * should read as version 1.
+ */
+async function seedSkills(db: Db, workspaceId: string): Promise<void> {
+  const skillIdByName = new Map<string, string>();
+
+  for (const sk of SEED_SKILLS) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, sk.name)));
+    if (existing) {
+      skillIdByName.set(sk.name, existing.id);
+      continue;
+    }
+    const [row] = await db
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: sk.name,
+        description: sk.description,
+        type: sk.type,
+        source: 'manual',
+        body: sk.body,
+        enabled: true,
+        version: 1,
+      })
+      .returning();
+    if (!row) continue;
+    skillIdByName.set(sk.name, row.id);
+    await db.insert(t.skillVersions).values({ skillId: row.id, version: 1, body: sk.body });
+  }
+
+  // Link each skill to its agents, keeping SEED_SKILLS order as prompt order.
+  const orderByAgent = new Map<string, number>();
+  for (const sk of SEED_SKILLS) {
+    const skillId = skillIdByName.get(sk.name);
+    if (!skillId) continue;
+    for (const agentName of sk.agents) {
+      const [agent] = await db
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+      if (!agent) continue;
+      const order = orderByAgent.get(agent.id) ?? 0;
+      orderByAgent.set(agent.id, order + 1);
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: agent.id, skillId, order, enabled: true })
+        .onConflictDoNothing();
+    }
+  }
 }
 
 // CLI entrypoint

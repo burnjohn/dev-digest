@@ -11,7 +11,10 @@ import * as t from '../../db/schema.js';
  * `workspaceId` (tenancy guard).
  */
 
-export type RepoRow = typeof t.repos.$inferSelect;
+// Re-exported from db/rows.ts (the shared row-type home) so other modules can
+// name this shape without importing this module's data layer.
+export type { RepoRow } from '../../db/rows.js';
+import type { RepoRow } from '../../db/rows.js';
 
 /** A repo plus the LABEL of the token it authenticates with (null when none). */
 export type RepoWithTokenRow = RepoRow & { githubTokenLabel: string | null };
@@ -124,6 +127,14 @@ export class RepoRepository {
     await this.db
       .update(t.repos)
       .set({ clonePath, lastPolledAt: new Date() })
+      .where(eq(t.repos.id, repoId));
+  }
+
+  /** Record that a PR-list sync just ran for this repo (polling module). */
+  async touchPolledAt(repoId: string): Promise<void> {
+    await this.db
+      .update(t.repos)
+      .set({ lastPolledAt: new Date() })
       .where(eq(t.repos.id, repoId));
   }
 

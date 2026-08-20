@@ -34,7 +34,8 @@ d('schema indexes (Testcontainers pg)', () => {
 
   it('reviews has pr_id and run_id indexes', async () => {
     const names = await indexNames('reviews');
-    expect(names).toContain('reviews_pr_id_idx');
+    // pr_id lookups ride the (pr_id, created_at) composite's prefix.
+    expect(names).toContain('reviews_pr_created_idx');
     expect(names).toContain('reviews_run_id_idx');
   });
 });

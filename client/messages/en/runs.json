@@ -1,5 +1,8 @@
 {
   "viewTrace": "View trace",
+  "cost": {
+    "tokens": "{tokens} tok"
+  },
   "finding": {
     "trifecta": "trifecta"
   },

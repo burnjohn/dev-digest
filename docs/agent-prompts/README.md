@@ -9,6 +9,8 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md) — seeded disabled; driven by its skills
+- [`api-contract-reviewer.md`](./api-contract-reviewer.md) — seeded disabled; driven by its skills
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the

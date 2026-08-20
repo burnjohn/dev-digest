@@ -26,6 +26,8 @@ import { ConfigError, MissingTokenError } from './errors.js';
 import { resolveGitHubToken } from '../modules/github-tokens/resolver.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { RepoRepository } from '../modules/repos/repository.js';
+import { PullsRepository } from '../modules/pulls/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -74,6 +76,8 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _reposRepo?: RepoRepository;
+  private _pullsRepo?: PullsRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -102,6 +106,16 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  /** `repos` table. Shared: workspace/polling read it, repos owns it. */
+  get reposRepo(): RepoRepository {
+    return (this._reposRepo ??= new RepoRepository(this.db));
+  }
+
+  /** `pull_requests` + PR files/commits. Shared: polling imports through it. */
+  get pullsRepo(): PullsRepository {
+    return (this._pullsRepo ??= new PullsRepository(this.db));
   }
 
   get codeIndex(): CodeIndex {

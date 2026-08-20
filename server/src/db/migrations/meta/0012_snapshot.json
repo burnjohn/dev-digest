@@ -1,6 +1,6 @@
 {
-  "id": "5a63e31a-14ea-44ec-a25b-42833a24e81f",
-  "prevId": "8170a92d-c77c-4117-aaff-30536d433dea",
+  "id": "055b0962-71d1-4968-a03e-c004120eb333",
+  "prevId": "e70ba721-19d4-41df-bcb8-059995c57c98",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -290,12 +290,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "github_token_id": {
-          "name": "github_token_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_polled_at": {
           "name": "last_polled_at",
           "type": "timestamp with time zone",
@@ -368,19 +362,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "repos_github_token_id_github_tokens_id_fk": {
-          "name": "repos_github_token_id_github_tokens_id_fk",
-          "tableFrom": "repos",
-          "tableTo": "github_tokens",
-          "columnsFrom": [
-            "github_token_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "repos_created_by_users_id_fk": {
           "name": "repos_created_by_users_id_fk",
           "tableFrom": "repos",
@@ -392,108 +373,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.github_tokens": {
-      "name": "github_tokens",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "github_login": {
-          "name": "github_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_validated_at": {
-          "name": "last_validated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "github_tokens_ws_label_uq": {
-          "name": "github_tokens_ws_label_uq",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "label",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "github_tokens_ws_idx": {
-          "name": "github_tokens_ws_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "github_tokens_workspace_id_workspaces_id_fk": {
-          "name": "github_tokens_workspace_id_workspaces_id_fk",
-          "tableFrom": "github_tokens",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -914,7 +793,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "findings_review_idx": {
+          "name": "findings_review_idx",
+          "columns": [
+            {
+              "expression": "review_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "findings_review_id_reviews_id_fk": {
           "name": "findings_review_id_reviews_id_fk",
@@ -1102,28 +997,19 @@
         }
       },
       "indexes": {
-        "reviews_pr_id_idx": {
-          "name": "reviews_pr_id_idx",
+        "reviews_pr_created_idx": {
+          "name": "reviews_pr_created_idx",
           "columns": [
             {
               "expression": "pr_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "reviews_run_id_idx": {
-          "name": "reviews_run_id_idx",
-          "columns": [
+            },
             {
-              "expression": "run_id",
+              "expression": "created_at",
               "isExpression": false,
-              "asc": true,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -2800,18 +2686,30 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "critical_count": {
+          "name": "critical_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "warning_count": {
+          "name": "warning_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggestion_count": {
+          "name": "suggestion_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "agent_runs_ws_pr_status_idx": {
-          "name": "agent_runs_ws_pr_status_idx",
+        "agent_runs_pr_ran_at_idx": {
+          "name": "agent_runs_pr_ran_at_idx",
           "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
             {
               "expression": "pr_id",
               "isExpression": false,
@@ -2819,9 +2717,9 @@
               "nulls": "last"
             },
             {
-              "expression": "status",
+              "expression": "ran_at",
               "isExpression": false,
-              "asc": true,
+              "asc": false,
               "nulls": "last"
             }
           ],

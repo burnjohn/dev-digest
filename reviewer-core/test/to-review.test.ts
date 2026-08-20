@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Finding, Review, UnifiedDiff } from '@devdigest/shared';
-import { toReviewPayload, gateTriggered, countBlockers } from '../src/index.js';
+import { toReviewPayload, gateTriggered, countBlockers, severityCounts } from '../src/index.js';
 
 /**
  * The review EVENT is computed deterministically from finding severities + the
@@ -87,6 +87,17 @@ describe('countBlockers — deterministic blocker count', () => {
     expect(gateTriggered(warnOnly, 'critical')).toBe(false);
     expect(countBlockers(warnOnly, 'warning')).toBe(1);
     expect(gateTriggered(warnOnly, 'warning')).toBe(true);
+  });
+});
+
+describe('severityCounts — per-severity tally', () => {
+  it('tallies each severity independently', () => {
+    const fs = [finding('CRITICAL'), finding('CRITICAL'), finding('WARNING'), finding('SUGGESTION')];
+    expect(severityCounts(fs)).toEqual({ CRITICAL: 2, WARNING: 1, SUGGESTION: 1 });
+  });
+
+  it('is all-zero for no findings', () => {
+    expect(severityCounts([])).toEqual({ CRITICAL: 0, WARNING: 0, SUGGESTION: 0 });
   });
 });
 

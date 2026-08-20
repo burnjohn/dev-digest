@@ -17,7 +17,7 @@ const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
 if (!hasDocker) {
-  // eslint-disable-next-line no-console
+   
   console.warn(
     '[integration] Docker not available — skipping Testcontainers integration tests.',
   );
@@ -255,7 +255,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     await app.close();
   });
 
-  it('GET /repos/:id/pulls sums cost_usd over priced runs, null when none', async () => {
+  it('GET /repos/:id/pulls reports the latest completed run cost_usd, null when none', async () => {
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
       config,
@@ -285,11 +285,13 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
       .values([run({ costUsd: null }), run({ costUsd: 0.5, status: 'failed' })]);
     expect(await costOf()).toBeNull();
 
-    // Priced, completed runs sum.
+    // LATEST completed run's cost (deliberately not a sum across runs —
+    // the list column answers "what did the current review cost").
     await pg.handle.db
       .insert(t.agentRuns)
-      .values([run({ costUsd: 0.0013 }), run({ costUsd: 0.0014 })]);
-    expect(await costOf()).toBeCloseTo(0.0027, 6);
+      .values([run({ costUsd: 0.0013, ranAt: new Date(Date.now() - 60_000) })]);
+    await pg.handle.db.insert(t.agentRuns).values([run({ costUsd: 0.0014 })]);
+    expect(await costOf()).toBeCloseTo(0.0014, 6);
     await app.close();
   });
 

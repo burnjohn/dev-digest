@@ -127,12 +127,6 @@ export const SecretsStatus = z.object({
   openai: z.boolean(),
   anthropic: z.boolean(),
   openrouter: z.boolean(),
-  // `github` is no longer populated by GET /settings/secrets-status: GitHub
-  // PATs became per-repo tokens (github-tokens module), so there is no single
-  // global GitHub secret left to report here. Left in place rather than
-  // edited out — this file is extend-never-edit — and the route return value
-  // is cast past the gap it leaves; see the cast site's comment in
-  // settings/routes.ts.
   github: z.boolean(),
 });
 export type SecretsStatus = z.infer<typeof SecretsStatus>;
@@ -176,9 +170,18 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
-  // Summed USD across every priced run of this PR (list endpoint only).
-  // Null = no priced run yet — distinct from 0, which is a free model.
+  // USD cost of the LATEST COMPLETED run (list endpoint only). Deliberately not
+  // a sum across runs. Null until a run completes, or when the model is unpriced.
   cost_usd: z.number().nullish(),
+  // Per-severity finding counts summed over each agent's latest review
+  // (list endpoint only; null/absent until the PR has a review).
+  findings_counts: z
+    .object({
+      CRITICAL: z.number().int(),
+      WARNING: z.number().int(),
+      SUGGESTION: z.number().int(),
+    })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

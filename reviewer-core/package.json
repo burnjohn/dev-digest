@@ -6,6 +6,7 @@
   "description": "DevDigest review engine — pure logic (prompt assembly, citation grounding, structured output, reduce, reviewPullRequest). No DB/GitHub/FS; the only side effect is an injected LLMProvider. Consumed by server (local reviews) and agent-runner (CI) as source via tsconfig path alias.",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
     "build": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "test:live": "vitest run --config vitest.live.config.ts"
@@ -16,8 +17,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "eslint": "^9.39.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^2.1.8"
   }
 }

@@ -1,6 +1,6 @@
 {
-  "id": "8170a92d-c77c-4117-aaff-30536d433dea",
-  "prevId": "d9f06fe0-f1a6-4437-91c9-406d2f43cdfb",
+  "id": "e70ba721-19d4-41df-bcb8-059995c57c98",
+  "prevId": "0e43a299-6567-4757-8638-56b54d3b48dc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -290,12 +290,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "github_token_id": {
-          "name": "github_token_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_polled_at": {
           "name": "last_polled_at",
           "type": "timestamp with time zone",
@@ -368,19 +362,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "repos_github_token_id_github_tokens_id_fk": {
-          "name": "repos_github_token_id_github_tokens_id_fk",
-          "tableFrom": "repos",
-          "tableTo": "github_tokens",
-          "columnsFrom": [
-            "github_token_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "repos_created_by_users_id_fk": {
           "name": "repos_created_by_users_id_fk",
           "tableFrom": "repos",
@@ -392,108 +373,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.github_tokens": {
-      "name": "github_tokens",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "github_login": {
-          "name": "github_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_validated_at": {
-          "name": "last_validated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "github_tokens_ws_label_uq": {
-          "name": "github_tokens_ws_label_uq",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "label",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "github_tokens_ws_idx": {
-          "name": "github_tokens_ws_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "github_tokens_workspace_id_workspaces_id_fk": {
-          "name": "github_tokens_workspace_id_workspaces_id_fk",
-          "tableFrom": "github_tokens",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -2766,6 +2645,24 @@
         },
         "blockers": {
           "name": "blockers",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "critical_count": {
+          "name": "critical_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "warning_count": {
+          "name": "warning_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggestion_count": {
+          "name": "suggestion_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": false

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -42,10 +42,18 @@ export interface UpdateAgent {
   enabled?: boolean;
 }
 
-/** A skill linked to an agent (with its order), joined from agent_skills. */
+/** A skill linked to an agent (with its order + per-link switch). */
 export interface LinkedSkillRow {
   skill: typeof t.skills.$inferSelect;
   order: number;
+  /** `agent_skills.enabled` — distinct from the skill's own global `enabled`. */
+  enabled: boolean;
+}
+
+/** One entry of the ordered set written by `setSkills`. */
+export interface SkillLinkInput {
+  skillId: string;
+  enabled?: boolean;
 }
 
 export class AgentsRepository {
@@ -145,8 +153,25 @@ export class AgentsRepository {
     return row;
   }
 
+  /**
+   * Bump the agent's version and snapshot it, because its skill links changed.
+   * Linking, unlinking, reordering and toggling a link all change the assembled
+   * prompt, so they are config changes in exactly the same sense as editing the
+   * system prompt — without this, two runs of "v3" could use different skills.
+   */
+  private async bumpForSkillChange(agentId: string): Promise<void> {
+    const [row] = await this.db
+      .update(t.agents)
+      .set({ version: sql`${t.agents.version} + 1` })
+      .where(eq(t.agents.id, agentId))
+      .returning();
+    if (row) await this.snapshotVersion(row, row.version);
+  }
+
   private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
+    // Only the ENABLED links are recorded: the snapshot answers "what shaped
+    // this version's prompt", and a disabled link shapes nothing.
+    const skills = await this.enabledSkillIdsForAgent(row.id);
     await this.db
       .insert(t.agentVersions)
       .values({
@@ -191,12 +216,16 @@ export class AgentsRepository {
   /** Skills linked to an agent, in `order` ascending. */
   async linkedSkills(agentId: string): Promise<LinkedSkillRow[]> {
     const rows = await this.db
-      .select({ skill: t.skills, order: t.agentSkills.order })
+      .select({
+        skill: t.skills,
+        order: t.agentSkills.order,
+        enabled: t.agentSkills.enabled,
+      })
       .from(t.agentSkills)
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
       .where(eq(t.agentSkills.agentId, agentId))
       .orderBy(asc(t.agentSkills.order));
-    return rows.map((r) => ({ skill: r.skill, order: r.order }));
+    return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
   }
 
   async skillIdsForAgent(agentId: string): Promise<string[]> {
@@ -204,33 +233,82 @@ export class AgentsRepository {
     return links.map((l) => l.skill.id);
   }
 
+  /** Ids of the links that actually reach the prompt (both switches on). */
+  async enabledSkillIdsForAgent(agentId: string): Promise<string[]> {
+    const links = await this.enabledSkillsForPrompt(agentId);
+    return links.map((l) => l.skill.id);
+  }
+
+  /**
+   * The skills that shape this agent's prompt, in link order: both the per-link
+   * switch AND the skill's own global `enabled` must be true. This is the ONLY
+   * query the review pipeline uses — everything else is editor-facing.
+   */
+  async enabledSkillsForPrompt(agentId: string): Promise<LinkedSkillRow[]> {
+    const rows = await this.db
+      .select({
+        skill: t.skills,
+        order: t.agentSkills.order,
+        enabled: t.agentSkills.enabled,
+      })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+      .where(
+        and(
+          eq(t.agentSkills.agentId, agentId),
+          eq(t.agentSkills.enabled, true),
+          eq(t.skills.enabled, true),
+        ),
+      )
+      .orderBy(asc(t.agentSkills.order));
+    return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
+  }
+
   /** Link a skill to an agent at a given order (idempotent: upserts order). */
-  async linkSkill(agentId: string, skillId: string, order: number): Promise<void> {
+  async linkSkill(
+    agentId: string,
+    skillId: string,
+    order: number,
+    enabled = true,
+  ): Promise<void> {
     await this.db
       .insert(t.agentSkills)
-      .values({ agentId, skillId, order })
+      .values({ agentId, skillId, order, enabled })
       .onConflictDoUpdate({
         target: [t.agentSkills.agentId, t.agentSkills.skillId],
-        set: { order },
+        set: { order, enabled },
       });
+    await this.bumpForSkillChange(agentId);
   }
 
   async unlinkSkill(agentId: string, skillId: string): Promise<void> {
     await this.db
       .delete(t.agentSkills)
       .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
+    await this.bumpForSkillChange(agentId);
   }
 
   /**
-   * Replace the full set of linked skills for an agent with `skillIds`, assigning
-   * order = index. Used by the "Skills" editor tab (attach/reorder). Skills not in
-   * the list are unlinked.
+   * Replace the full set of linked skills for an agent with `links`, assigning
+   * order = index. Used by the "Skills" editor tab (attach / reorder / toggle).
+   * Skills not in the list are unlinked.
+   *
+   * NOTE: delete-then-insert without a transaction — this repo runs nothing in
+   * one (see server/INSIGHTS.md), so a crash between the two statements leaves
+   * the agent with no links rather than a half-applied set.
    */
-  async setSkills(agentId: string, skillIds: string[]): Promise<void> {
+  async setSkills(agentId: string, links: SkillLinkInput[]): Promise<void> {
     await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+    if (links.length > 0) {
+      await this.db.insert(t.agentSkills).values(
+        links.map((l, i) => ({
+          agentId,
+          skillId: l.skillId,
+          order: i,
+          enabled: l.enabled ?? true,
+        })),
+      );
+    }
+    await this.bumpForSkillChange(agentId);
   }
 }

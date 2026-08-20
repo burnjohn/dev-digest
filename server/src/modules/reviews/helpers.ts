@@ -9,6 +9,17 @@ import type { FindingRow, PullRow, ReviewRow } from './repository.js';
 // shared with the CI runner); re-exported here for backward-compatible imports.
 export { reduceReviews, sliceDiff } from '@devdigest/reviewer-core';
 
+/**
+ * Render one linked skill as a block of the prompt's `## Skills / rules`
+ * section. The `### name` header is added here rather than in `reviewer-core`
+ * because the engine takes already-resolved strings: the studio resolves skill
+ * bodies from the DB, the CI runner resolves the same slugs from
+ * `.devdigest/skills/*.md`, and both format them this way.
+ */
+export function toSkillPromptBlock(skill: { name: string; body: string }): string {
+  return `### ${skill.name}\n${skill.body.trim()}`;
+}
+
 export interface ReviewDtoFinding extends Finding {
   review_id: string;
   accepted_at: string | null;

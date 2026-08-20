@@ -15,12 +15,71 @@
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files",
+    "scanSummary": "Scanned {sampled} files with {model} · {proposed} proposed, {droppedUngrounded} dropped without evidence, {droppedDuplicate} already decided",
+    "acceptedCount": "{count} accepted",
+    "selectedCount": "{selected} of {total} accepted selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "createSkill": "Create skill",
+    "filter": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "rejected": "Rejected",
+      "all": "All"
+    },
+    "emptyFiltered": {
+      "title": "Nothing here",
+      "body": "No candidate in this state. Switch the filter, or re-scan the repo."
+    }
   },
   "card": {
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "accept": "Accept",
+    "rejected": "Rejected",
+    "reject": "Reject",
+    "undo": "Move back to pending",
+    "edit": "Edit rule",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete candidate",
+    "ruleLabel": "Rule",
+    "rationaleLabel": "Why it matters",
+    "copyEvidence": "Copy evidence path",
+    "openOnGitHub": "Open this line on GitHub",
+    "includeInSkill": "Include",
+    "category": {
+      "naming": "naming",
+      "structure": "structure",
+      "errors": "errors",
+      "testing": "testing",
+      "imports": "imports",
+      "typing": "typing",
+      "api": "api",
+      "general": "general"
+    }
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "mergedFrom": "Merged from {count} accepted conventions in {repo}. Everything below is editable before you save.",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents’ prompts.",
+    "body": "Skill body",
+    "unsaved": "unsaved",
+    "linkAgent": "Link to agent",
+    "linkAgentNone": "Don’t link — just save the skill",
+    "linkAgentHint": "The skill is added to that agent’s prompt, enabled.",
+    "footerHint": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "submit": "Create skill",
+    "submitting": "Creating…",
+    "failed": "Could not create the skill.",
+    "created": "Skill created."
   }
 }

@@ -9,13 +9,13 @@ Several standalone packages (no monorepo workspace — each has its own
 `package.json` and lockfile; cross-package code is shared through tsconfig path
 aliases, not published modules):
 
-| Folder           | Package                     | What it is                                            | Port |
-|------------------|-----------------------------|-------------------------------------------------------|------|
-| `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector)             | 3001 |
-| `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
-| `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
-| `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
-| `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
+| Folder                     | Package                    | What it is                                         | Port |
+| -------------------------- | -------------------------- | -------------------------------------------------- | ---- |
+| `server/`                  | `@devdigest/api`           | Fastify API + Drizzle/Postgres (pgvector)          | 3001 |
+| `client/`                  | `@devdigest/web`           | Next.js 15 web app (the studio)                    | 3000 |
+| `reviewer-core/`           | `@devdigest/reviewer-core` | Pure review engine: diff → prompt → LLM → findings | —    |
+| `e2e/`                     | `@devdigest/e2e`           | Deterministic browser e2e (agent-browser)          | —    |
+| `server/src/vendor/shared` | `@devdigest/shared`        | Zod contracts shared across every package          | —    |
 
 `repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
 project context into reviews) lives inside the server at
@@ -63,6 +63,13 @@ Each package has its own README with deeper diagrams:
 [`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
 [`e2e`](e2e/README.md).
 
+Alongside each README, every package carries a small set of curated files for
+working with an AI agent: **`CLAUDE.md`** (commands, conventions, gotchas,
+do-not-touch zones), **`docs/`** (how it works today), **`specs/`** (what we
+intend to build) and **`INSIGHTS.md`** (decisions and dead ends). The READMEs
+stay the source of truth — `CLAUDE.md` only points at them. Start at the root
+[`CLAUDE.md`](CLAUDE.md).
+
 ## What works on day 1
 
 - **Local launch** — one command brings up Postgres (Docker) + API + web.
@@ -77,16 +84,16 @@ Each package has its own README with deeper diagrams:
 
 These are intentionally **not** in the starter — each lesson adds one back:
 
-| Lesson | You build |
-|--------|-----------|
-| L01 | Run cost badge · severity filter on findings |
-| L02 | Skills in the product · Conventions extractor |
-| L03 | Intent layer · Smart Diff |
-| L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
-| L05 | Project Context Folder · Onboarding generator · PR Brief card |
-| L06 | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI |
-| L07 | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
-| L08 | Plugin export/import · Agent performance dashboard · weekly digest |
+| Lesson | You build                                                                       |
+| ------ | ------------------------------------------------------------------------------- |
+| L01    | Run cost badge · severity filter on findings                                    |
+| L02    | Skills in the product · Conventions extractor                                   |
+| L03    | Intent layer · Smart Diff                                                       |
+| L04    | `devdigest-mcp` server · Blast Radius (reads `repo-intel`)                      |
+| L05    | Project Context Folder · Onboarding generator · PR Brief card                   |
+| L06    | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI             |
+| L07    | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
+| L08    | Plugin export/import · Agent performance dashboard · weekly digest              |
 
 ## Prerequisites
 
@@ -99,13 +106,14 @@ These are intentionally **not** in the starter — each lesson adds one back:
 ```
 
 This script:
+
 1. starts Postgres (`docker compose up -d`) and waits until it's healthy,
 2. creates `server/.env` and `client/.env` from `.env.example` if missing,
 3. installs deps in `server/` and `client/` (only when `node_modules` is absent),
 4. applies DB migrations and seeds demo data,
 5. launches the API (`:3001`) and the web app (`:3000`).
 
-Open **http://localhost:3000**. Press **Ctrl-C** to stop the dev servers —
+Open **http://localhost:3000**. Press **Ctrl-C** o stop the dev servers —
 Postgres keeps running (`docker compose down` to stop it).
 
 Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
@@ -139,13 +147,13 @@ cd ../client && pnpm install && pnpm dev               # web on :3000
 One test suite per package, each gated by its own GitHub Actions workflow with a
 path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 
-| Suite | Workflow | Needs Docker |
-|-------|----------|--------------|
-| client (vitest + jsdom) | `client.yml` | no |
-| server unit (hermetic) | `server-unit.yml` | no |
-| server integration (real Postgres) | `server-integration.yml` | yes |
-| reviewer-core (engine) | `reviewer-core.yml` | no |
-| web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
+| Suite                               | Workflow                 | Needs Docker |
+| ----------------------------------- | ------------------------ | ------------ |
+| client (vitest + jsdom)             | `client.yml`             | no           |
+| server unit (hermetic)              | `server-unit.yml`        | no           |
+| server integration (real Postgres)  | `server-integration.yml` | yes          |
+| reviewer-core (engine)              | `reviewer-core.yml`      | no           |
+| web e2e (agent-browser, real stack) | `e2e-web.yml`            | yes          |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers
 Postgres); everything else is hermetic. The browser e2e flows live in

@@ -13,8 +13,9 @@ import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { deleteAgentRun } from '../src/modules/reviews/repository/run.repo.js';
 import { ReviewRepository } from '../src/modules/reviews/repository.js';
-import { persistPrDetail } from '../src/modules/pulls/pr-files.js';
-import { upsertSettings } from '../src/modules/settings/store.js';
+import { PullsRepository } from '../src/modules/pulls/repository.js';
+import { SettingsRepository } from '../src/modules/settings/repository.js';
+import type { PrDetail } from '@devdigest/shared';
 import type { Finding } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
@@ -140,8 +141,13 @@ d('atomic writes (Testcontainers pg)', () => {
     });
   });
 
-  describe('persistPrDetail (pulls)', () => {
-    const detail = (files: { path: string }[], commits: { sha: string }[]) => ({
+  describe('PullsRepository.replaceDetail (pulls)', () => {
+    const detail = (files: { path: string }[], commits: { sha: string }[]): PrDetail => ({
+      id: null,
+      number: 482,
+      title: 'fixture',
+      status: 'needs_review',
+      head_sha: 'abc',
       body: 'updated body',
       additions: 5,
       deletions: 2,
@@ -160,7 +166,7 @@ d('atomic writes (Testcontainers pg)', () => {
       await db.insert(t.prFiles).values({ prId, path: 'old.ts', additions: 1, deletions: 1 });
       await db.insert(t.prCommits).values({ prId, sha: 'old-sha', message: 'old', author: 'a' });
 
-      await persistPrDetail(db, prId, detail([{ path: 'new-a.ts' }, { path: 'new-b.ts' }], [{ sha: 'new-sha' }]));
+      await new PullsRepository(db).replaceDetail(prId, detail([{ path: 'new-a.ts' }, { path: 'new-b.ts' }], [{ sha: 'new-sha' }]));
 
       const files = await db.select().from(t.prFiles).where(eq(t.prFiles.prId, prId));
       expect(files.map((f) => f.path).sort()).toEqual(['new-a.ts', 'new-b.ts']);
@@ -174,13 +180,13 @@ d('atomic writes (Testcontainers pg)', () => {
 
     it('rolls the file replacement back when a later statement fails (no empty-diff window commits)', async () => {
       const db = pg.handle.db;
-      await persistPrDetail(db, prId, detail([{ path: 'keep.ts' }], [{ sha: 'keep-sha' }]));
+      await new PullsRepository(db).replaceDetail(prId, detail([{ path: 'keep.ts' }], [{ sha: 'keep-sha' }]));
       await pg.handle.sql`
         create trigger devdigest_fail_commit_insert before insert on pr_commits
         for each row execute function devdigest_test_fail()`;
       try {
         await expect(
-          persistPrDetail(db, prId, detail([{ path: 'next.ts' }], [{ sha: 'next-sha' }])),
+          new PullsRepository(db).replaceDetail(prId, detail([{ path: 'next.ts' }], [{ sha: 'next-sha' }])),
         ).rejects.toThrow(/forced test failure/);
         // Without one transaction, the delete+insert of pr_files has already
         // committed by the time the commits statement fails — a concurrent
@@ -309,7 +315,7 @@ d('atomic writes (Testcontainers pg)', () => {
     });
   });
 
-  describe('upsertSettings (settings)', () => {
+  describe('SettingsRepository.upsertMany (settings)', () => {
     let userId: string;
 
     beforeAll(async () => {
@@ -319,8 +325,10 @@ d('atomic writes (Testcontainers pg)', () => {
 
     it('upserts several keys and returns the workspace rows', async () => {
       const db = pg.handle.db;
-      await upsertSettings(db, workspaceId, userId, { theme: 'light', density: 'compact' });
-      const rows = await upsertSettings(db, workspaceId, userId, { theme: 'dark' });
+      const repo = new SettingsRepository(db);
+      await repo.upsertMany(workspaceId, userId, { theme: 'light', density: 'compact' });
+      await repo.upsertMany(workspaceId, userId, { theme: 'dark' });
+      const rows = await repo.listForWorkspace(workspaceId);
       const byKey = new Map(rows.map((r) => [r.key, r.value]));
       expect(byKey.get('theme')).toBe('dark');
       expect(byKey.get('density')).toBe('compact');
@@ -333,7 +341,7 @@ d('atomic writes (Testcontainers pg)', () => {
         for each row when (NEW.key = 'boom_key') execute function devdigest_test_fail()`;
       try {
         await expect(
-          upsertSettings(db, workspaceId, userId, { a_first_key: 1, boom_key: 2 }),
+          new SettingsRepository(db).upsertMany(workspaceId, userId, { a_first_key: 1, boom_key: 2 }),
         ).rejects.toThrow(/forced test failure/);
         const rows = await db
           .select()

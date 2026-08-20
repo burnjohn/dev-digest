@@ -166,7 +166,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
 
   it('runs a review: map-reduce + grounding drops the hallucinated finding, keeps the valid one', async () => {
     const app = await appWith(REVIEW_FIXTURE);
-    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const agent = (
       await app.inject({
@@ -225,6 +225,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     // structured call at 0.001; the two must agree with each other.
     expect(run!.costUsd).toBeCloseTo(0.001, 6);
     expect(trace.stats.cost_usd).toBe(run!.costUsd);
+
+    // the PR list surfaces the latest review's per-severity finding counts
+    const pulls = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json();
+    const listed = pulls.find((p: { id: string }) => p.id === pr.id);
+    expect(listed.findings_counts).toEqual({ CRITICAL: 1, WARNING: 0, SUGGESTION: 0 });
 
     await app.close();
   });

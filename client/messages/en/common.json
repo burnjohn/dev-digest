@@ -13,6 +13,16 @@
     "empty": "Nothing here yet",
     "error": "Something went wrong"
   },
+  "errorBoundary": {
+    "title": "This screen hit an error",
+    "body": "Something in the page failed to render. Retrying re-runs just this screen — your other work is untouched.",
+    "cta": "Try again"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "That URL doesn't match any screen in DevDigest. It may have been renamed, or the link is stale.",
+    "cta": "Back to dashboard"
+  },
   "repoNotFound": {
     "title": "No repo selected",
     "body": "This repository isn't in your workspace — it may have been removed, or the link is stale. Add a repo or pick another from the switcher to get started.",

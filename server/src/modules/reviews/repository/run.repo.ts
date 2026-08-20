@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db, DbConn } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import { RunTrace } from '@devdigest/shared';
@@ -66,6 +66,9 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    critical_count: run.criticalCount,
+    warning_count: run.warningCount,
+    suggestion_count: run.suggestionCount,
   }));
 }
 
@@ -146,6 +149,23 @@ export async function reapStaleRunningRuns(db: Db): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Completed runs for a batch of PRs, newest-first — the PR list's cost badge.
+ * Only `status='done'` counts: a failed run has no meaningful spend to surface.
+ * "Latest per PR" is pure grouping and belongs to the caller.
+ */
+export async function doneRunCostsForPulls(
+  db: Db,
+  prIds: string[],
+): Promise<{ prId: string | null; costUsd: number | null }[]> {
+  if (prIds.length === 0) return [];
+  return db
+    .select({ prId: t.agentRuns.prId, costUsd: t.agentRuns.costUsd })
+    .from(t.agentRuns)
+    .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
+    .orderBy(desc(t.agentRuns.ranAt));
+}
+
 // ---- observability: agent_runs + run_traces -------------------------------
 
 /** Create an agent_runs row in `running` state; returns its id (= the runId). */
@@ -182,14 +202,21 @@ export async function completeAgentRun(
     durationMs: number;
     tokensIn: number;
     tokensOut: number;
-    /** USD for this run; null when unknown (unpriced model, failed run). */
-    costUsd: number | null;
+    /**
+     * USD billed for this run. Omit (or pass null) on failed/cancelled runs and
+     * whenever the model is unpriced — 0 would claim the review was free.
+     */
+    costUsd?: number | null;
     findingsCount: number;
     grounding: string;
     /** Review score (0-100); null on failed/cancelled runs. */
     score?: number | null;
     /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
     blockers?: number | null;
+    /** Per-severity finding tally; null on failed/cancelled runs. */
+    criticalCount?: number | null;
+    warningCount?: number | null;
+    suggestionCount?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
   },
@@ -201,11 +228,14 @@ export async function completeAgentRun(
       durationMs: values.durationMs,
       tokensIn: values.tokensIn,
       tokensOut: values.tokensOut,
-      costUsd: values.costUsd,
+      costUsd: values.costUsd ?? null,
       findingsCount: values.findingsCount,
       grounding: values.grounding,
       score: values.score ?? null,
       blockers: values.blockers ?? null,
+      criticalCount: values.criticalCount ?? null,
+      warningCount: values.warningCount ?? null,
+      suggestionCount: values.suggestionCount ?? null,
       error: values.error ?? null,
     })
     // Only a RUNNING run may be completed. Without this guard a late result

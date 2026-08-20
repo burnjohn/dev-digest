@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "cost_usd" double precision;

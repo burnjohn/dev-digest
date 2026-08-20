@@ -78,6 +78,43 @@ export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | u
   return row;
 }
 
+/**
+ * Review rows backing the PR list's SCORE and FINDINGS columns, for a batch of
+ * PRs, newest-first. Only the columns the list needs.
+ *
+ * Deliberately returns flat rows: picking "the latest per PR" and "the latest
+ * per PR+agent" is pure grouping over a newest-first list, so it lives in
+ * `pulls/helpers.ts` where it unit-tests without a database.
+ */
+export async function reviewSummariesForPulls(
+  db: Db,
+  prIds: string[],
+): Promise<{ id: string; prId: string; agentId: string | null; score: number | null }[]> {
+  if (prIds.length === 0) return [];
+  return db
+    .select({
+      id: t.reviews.id,
+      prId: t.reviews.prId,
+      agentId: t.reviews.agentId,
+      score: t.reviews.score,
+    })
+    .from(t.reviews)
+    .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
+    .orderBy(desc(t.reviews.createdAt));
+}
+
+/** Severities of every finding under a set of reviews (PR-list severity chips). */
+export async function findingSeveritiesForReviews(
+  db: Db,
+  reviewIds: string[],
+): Promise<{ reviewId: string; severity: string }[]> {
+  if (reviewIds.length === 0) return [];
+  return db
+    .select({ reviewId: t.findings.reviewId, severity: t.findings.severity })
+    .from(t.findings)
+    .where(inArray(t.findings.reviewId, reviewIds));
+}
+
 /** Delete a whole review (one agent's run) + its findings (cascade), scoped
  *  to the workspace. Returns false if not found in the workspace. */
 export async function deleteReview(

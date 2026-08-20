@@ -1,11 +1,12 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
-import { RunLogger } from '../../platform/run-logger.js';
-import * as schema from '../../db/schema.js';
+import { reviewPullRequest, countBlockers, severityCounts } from '@devdigest/reviewer-core';
+import { RunLogger, type PinoLike } from '../../platform/run-logger.js';
+import type * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import { taskLine } from './helpers.js';
+import { REVIEW_STRATEGY } from './constants.js';
+import { taskLine, toSkillPromptBlock } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
@@ -16,13 +17,12 @@ export class RunCancelledError extends Error {
   }
 }
 
-/** Minimal structured logger (pino-compatible: (obj, msg)) for runtime logs. */
-export type Logger = {
-  info: (obj: unknown, msg?: string) => void;
-  warn: (obj: unknown, msg?: string) => void;
-  error: (obj: unknown, msg?: string) => void;
-  debug: (obj: unknown, msg?: string) => void;
-};
+/**
+ * Minimal structured logger (pino-compatible: (obj, msg)) for runtime logs.
+ * Aliased to the platform type so there is one definition, not two identical
+ * ones; kept exported here because callers already import it from this module.
+ */
+export type Logger = PinoLike;
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
 // Review per file; we merge findings + take the worst verdict / mean score).
@@ -194,6 +194,13 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // Skills — the agent's linked guidance, in the order the user arranged it.
+      // Only links whose per-agent switch AND whose skill's own `enabled` are
+      // both on reach the prompt; an agent with none produces a prompt byte-
+      // identical to the pre-skills one, because assemblePrompt omits the
+      // section when the array is empty.
+      const skillBlocks = await this.buildSkillBlocks(agent.id, runLog);
+
       // ---- Engine: plan → map/fallback → grounding → adjudication -----------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -203,6 +210,12 @@ export class ReviewRunExecutor {
         model: agent.model,
         diff,
         llm,
+        // Per-agent review strategy (configured in the Agent editor); falls back
+        // to the studio default. single-pass = whole diff in one call.
+        strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Linked skills, already rendered as `### name` blocks. Omitted entirely
+        // when the agent has none.
+        ...(skillBlocks.length > 0 ? { skills: skillBlocks } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -230,6 +243,7 @@ export class ReviewRunExecutor {
       // Deterministic blocker count (severity ≥ the agent's gate) — the signal
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
+      const counts = severityCounts(keptFindings);
 
       // ---- Persist review + findings + markReviewed + agent_runs ------------
       // ONE transaction (ReviewRepository.finalizeRun): a crash mid-persist can
@@ -263,6 +277,9 @@ export class ReviewRunExecutor {
           grounding,
           score: outcome.review.score,
           blockers,
+          criticalCount: counts.CRITICAL,
+          warningCount: counts.WARNING,
+          suggestionCount: counts.SUGGESTION,
           error: null,
         },
       });
@@ -335,6 +352,35 @@ export class ReviewRunExecutor {
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
+    }
+  }
+
+  /**
+   * Resolve the agent's linked skills into prompt blocks, in link order.
+   *
+   * Best-effort by design: a DB hiccup here must not fail the review, so a
+   * failure logs and yields no blocks (the prompt then matches the no-skills
+   * baseline). The token count is logged so the run trace shows what the skills
+   * cost — the same number the Skills tab's budget hint is based on.
+   */
+  private async buildSkillBlocks(agentId: string, runLog: RunLogger): Promise<string[]> {
+    try {
+      // Through the container: `reviews` must not import the agents module's
+      // repository directly (no-cross-module-internals).
+      const links = await this.container.agentsRepo.enabledSkillsForPrompt(agentId);
+      if (links.length === 0) return [];
+
+      const blocks = links.map((l) => toSkillPromptBlock(l.skill));
+      const tokens = this.container.tokenizer.count(blocks.join('\n\n'));
+      runLog.info(
+        `skills: ${links.length} attached (+~${tokens} tokens) — ${links
+          .map((l) => l.skill.name)
+          .join(', ')}`,
+      );
+      return blocks;
+    } catch (err) {
+      runLog.info(`skills: skipped — ${(err as Error).message}`);
+      return [];
     }
   }
 

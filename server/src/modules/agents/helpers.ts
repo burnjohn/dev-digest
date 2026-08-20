@@ -1,6 +1,14 @@
-import type { Agent, AgentVersion, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import type {
+  Agent,
+  AgentSkillDetail,
+  AgentVersion,
+  CiFailOn,
+  Provider,
+  ReviewStrategy,
+  SkillType,
+} from '@devdigest/shared';
 import { AgentVersionConfig } from '@devdigest/shared';
-import type { AgentRow, AgentVersionRow } from './repository.js';
+import type { AgentRow, AgentVersionRow, LinkedSkillRow } from './repository.js';
 
 /**
  * Pure helpers for the agents module — DB row ⇄ DTO mapping and the
@@ -38,6 +46,30 @@ export function toAgentVersionDto(row: AgentVersionRow): AgentVersion {
     version: row.version,
     config: AgentVersionConfig.parse(row.configJson),
     created_at: row.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Map a joined `agent_skills` row to the DTO the editor's Skills tab renders.
+ *
+ * The skill→DTO mapping is repeated here rather than imported from the skills
+ * module: `no-cross-module-internals` forbids reaching into another module's
+ * helpers, and this projection also carries the two link columns, which the
+ * skills module knows nothing about.
+ */
+export function toAgentSkillDetail(link: LinkedSkillRow): AgentSkillDetail {
+  return {
+    id: link.skill.id,
+    name: link.skill.name,
+    description: link.skill.description,
+    type: link.skill.type as SkillType,
+    source: link.skill.source,
+    body: link.skill.body,
+    enabled: link.skill.enabled,
+    version: link.skill.version,
+    evidence_files: link.skill.evidenceFiles ?? null,
+    order: link.order,
+    link_enabled: link.enabled,
   };
 }
 

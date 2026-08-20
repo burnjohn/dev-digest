@@ -1,5 +1,5 @@
 import type { Db } from '../../db/client.js';
-import * as t from '../../db/schema.js';
+import type * as t from '../../db/schema.js';
 import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
@@ -66,6 +66,27 @@ export class ReviewRepository {
 
   getReview(reviewId: string): Promise<ReviewRow | undefined> {
     return reviewRepo.getReview(this.db, reviewId);
+  }
+
+  // ---- PR-list rollups (consumed by the pulls module via container.reviewRepo)
+
+  /** Review rows for a batch of PRs, newest-first — the list's score + findings. */
+  reviewSummariesForPulls(
+    prIds: string[],
+  ): Promise<{ id: string; prId: string; agentId: string | null; score: number | null }[]> {
+    return reviewRepo.reviewSummariesForPulls(this.db, prIds);
+  }
+
+  /** Finding severities under a set of reviews — the list's severity chips. */
+  findingSeveritiesForReviews(
+    reviewIds: string[],
+  ): Promise<{ reviewId: string; severity: string }[]> {
+    return reviewRepo.findingSeveritiesForReviews(this.db, reviewIds);
+  }
+
+  /** Completed runs for a batch of PRs, newest-first — the list's cost badge. */
+  doneRunCostsForPulls(prIds: string[]): Promise<{ prId: string | null; costUsd: number | null }[]> {
+    return runRepo.doneRunCostsForPulls(this.db, prIds);
   }
 
   /** In-flight runs for a PR (status='running') — the server-side source of
@@ -168,14 +189,21 @@ export class ReviewRepository {
       durationMs: number;
       tokensIn: number;
       tokensOut: number;
-      /** USD for this run; null when unknown (unpriced model, failed run). */
-      costUsd: number | null;
+      /**
+       * USD billed for this run. Omit (or pass null) on failed/cancelled runs and
+       * whenever the model is unpriced — 0 would claim the review was free.
+       */
+      costUsd?: number | null;
       findingsCount: number;
       grounding: string;
       /** Review score (0-100); null on failed/cancelled runs. */
       score?: number | null;
       /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
       blockers?: number | null;
+      /** Per-severity finding tally; null on failed/cancelled runs. */
+      criticalCount?: number | null;
+      warningCount?: number | null;
+      suggestionCount?: number | null;
       /** Failure reason (status='failed') / cancellation note. Null clears it. */
       error?: string | null;
     },

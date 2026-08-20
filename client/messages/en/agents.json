@@ -84,7 +84,27 @@
     "title": "Skills",
     "enabledCount": "{linked} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Tick a skill to attach it; drag or use ↑ ↓ to reorder. Changes save immediately and bump the agent's version.",
+    "loadError": "Could not load skills.",
+    "saveError": "Could not save the skill order.",
+    "emptyTitle": "No skills yet",
+    "emptyBody": "A skill is reusable review guidance — a rubric, a convention, a security rule. Create one and it becomes available to every agent.",
+    "emptyCta": "Go to Skills",
+    "manage": "Manage skills",
+    "saving": "Saving…",
+    "autoSaved": "Changes save automatically.",
+    "disabledGlobally": "disabled globally",
+    "attachedOff": "attached, off",
+    "moveUp": "Move {name} up",
+    "moveDown": "Move {name} down",
+    "detach": "Detach {name}",
+    "detachHint": "Detach from this agent (the skill itself is kept)",
+    "type": {
+      "rubric": "rubric",
+      "convention": "convention",
+      "security": "security",
+      "custom": "custom"
+    }
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."

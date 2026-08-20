@@ -66,6 +66,12 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm architecture
 
+      - run: pnpm lint
+
+      # Layer-direction rules (see server/.dependency-cruiser.cjs). Needs
+      # reviewer-core's source on disk, which the step above already ensures.
+      - run: pnpm arch
+
   unit:
     name: tests
     runs-on: ubuntu-latest
