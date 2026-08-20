@@ -7,6 +7,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Icon, IconBtn, Kbd, TextInput, FormField } from "@devdigest/ui";
 import { useAddRepo } from "@/lib/hooks";
@@ -82,16 +83,9 @@ export function AddRepoView() {
         <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
           Paste a GitHub repository URL — DevDigest clones it locally and imports open PRs.
           Model API keys (OpenAI / Anthropic / OpenRouter) aren’t needed here; set them once in{" "}
-          <a
-            href="/settings/api-keys"
-            onClick={(e) => {
-              e.preventDefault();
-              router.push("/settings/api-keys");
-            }}
-            style={{ color: "var(--accent-text)" }}
-          >
+          <Link href="/settings/api-keys" style={{ color: "var(--accent-text)" }}>
             Settings → API Keys
-          </a>
+          </Link>
           .
         </p>
 
