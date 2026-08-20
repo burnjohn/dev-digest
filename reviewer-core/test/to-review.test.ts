@@ -147,6 +147,17 @@ describe('toReviewPayload — inline comment line anchoring', () => {
     expect(p.body).toContain('finding 10-30'); // never silent — still in the summary
   });
 
+  it('a full-file-kind finding with fabricated anchors cannot produce an inline comment at the fabricated line', () => {
+    // A kept full-file-kind finding (allowFullFileKinds scanner path) may carry
+    // line anchors that never intersected the diff. With a diff index present
+    // the fabricated anchor must NOT become a precise inline comment — the
+    // finding falls back to the summary body instead.
+    const f = { ...findingRange('src/x.ts', 999, 999), kind: 'secret_leak' } as Finding;
+    const p = toReviewPayload(review([f]), { failOn: 'critical', diff: diffWith('src/x.ts', [12]) });
+    expect(p.comments ?? []).toHaveLength(0);
+    expect(p.body).toContain('finding 999-999'); // never silent — still in the body
+  });
+
   it('without a diff, falls back to the legacy end_line anchor', () => {
     const r = review([findingRange('src/x.ts', 10, 30)]);
     const p = toReviewPayload(r, { failOn: 'critical' });

@@ -59,12 +59,43 @@ describe('citation grounding gate', () => {
     expect(res.dropped[0]!.reason).toMatch(/not present in diff/);
   });
 
-  it('full-file kinds (secret_leak) ground against the file, not a hunk', () => {
+  it('by default a full-file kind (secret_leak) gets NO line-check bypass — fabricated anchors are dropped', () => {
+    // A cheap model can mislabel a hallucinated finding as secret_leak; the kind
+    // alone must not let fabricated line anchors through the gate.
     const res = groundFindings(
       [f({ file: 'src/config.ts', start_line: 1, end_line: 1, kind: 'secret_leak' })],
       diff,
     );
+    expect(res.kept).toHaveLength(0);
+    expect(res.dropped[0]!.reason).toMatch(/do not intersect/);
+  });
+
+  it('allowFullFileKinds: true restores file-presence-only grounding for dedicated scanner stages', () => {
+    const res = groundFindings(
+      [f({ file: 'src/config.ts', start_line: 1, end_line: 1, kind: 'secret_leak' })],
+      diff,
+      { allowFullFileKinds: true },
+    );
     expect(res.kept).toHaveLength(1);
+  });
+
+  it('allowFullFileKinds: true still drops a full-file kind whose file is not in the diff', () => {
+    const res = groundFindings(
+      [f({ file: 'src/not-here.ts', kind: 'secret_leak' })],
+      diff,
+      { allowFullFileKinds: true },
+    );
+    expect(res.kept).toHaveLength(0);
+    expect(res.dropped[0]!.reason).toMatch(/not present in diff/);
+  });
+
+  it('allowFullFileKinds: true never exempts a plain finding kind from the line check', () => {
+    const res = groundFindings(
+      [f({ file: 'src/config.ts', start_line: 999, end_line: 999, kind: 'finding' })],
+      diff,
+      { allowFullFileKinds: true },
+    );
+    expect(res.kept).toHaveLength(0);
   });
 
   it('range intersection across N+1 hunk lines', () => {

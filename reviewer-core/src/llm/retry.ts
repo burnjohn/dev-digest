@@ -59,17 +59,35 @@ const RETRYABLE_FETCH_TYPES = new Set([
  * Aborts are excluded too: our timeout surfaces as one and the caller decides,
  * because it needs a different error message.
  */
+/**
+ * Message shapes that only network-layer failures produce (undici/node-fetch
+ * transport errors and body truncation). A SyntaxError or TypeError WITHOUT one
+ * of these (and without a `cause`) is a programming bug — retrying it would
+ * re-issue paid requests that can only fail the same way.
+ */
+const NETWORK_SHAPED_MESSAGE =
+  /fetch failed|network|ECONNRESET|ETIMEDOUT|socket|premature close|Unexpected end of JSON input|terminated/i;
+
+function hasNetworkEvidence(e: { message?: string; cause?: unknown }): boolean {
+  if (e.cause !== undefined) return true;
+  return NETWORK_SHAPED_MESSAGE.test(e.message ?? '');
+}
+
 export function isTransient(err: unknown): boolean {
-  const e = err as { name?: string; type?: string; status?: number } | null;
+  const e = err as
+    | { name?: string; type?: string; status?: number; message?: string; cause?: unknown }
+    | null;
   if (!e) return false;
 
   if (e.name === 'FetchError') return RETRYABLE_FETCH_TYPES.has(e.type ?? '');
 
   // Fallback for a future SDK on undici/native fetch, where a truncated body is
   // a TypeError with an undici `cause` and a malformed one a bare SyntaxError.
-  // Both are body-read failures, which is exactly the untimed, unretried gap.
-  if (e.name === 'SyntaxError') return true;
-  if (e.name === 'TypeError' && e.status === undefined) return true;
+  // Both are body-read failures — but ONLY with network-shaped evidence (an
+  // undici `cause` or a transport-error message). Without it, these names are
+  // far more likely a programming bug, which must fail fast, not be retried.
+  if (e.name === 'SyntaxError') return hasNetworkEvidence(e);
+  if (e.name === 'TypeError' && e.status === undefined) return hasNetworkEvidence(e);
 
   return false;
 }

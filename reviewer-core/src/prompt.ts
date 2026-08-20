@@ -42,9 +42,9 @@ const MAX_PR_DESCRIPTION_CHARS = 4000;
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
-  /** Linked skill bodies (trusted-ish; community skills should be sanitized upstream). */
+  /** Linked skill bodies (UNTRUSTED — community-authored; delimiter-wrapped). */
   skills?: string[];
-  /** Relevant memory items (trusted, curated). */
+  /** Relevant memory items (UNTRUSTED — from an upstream store; delimiter-wrapped). */
   memory?: string[];
   /** Project-context spec chunks (untrusted content). */
   specs?: string[];
@@ -92,11 +92,18 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     .filter((part): part is string => Boolean(part))
     .join('\n\n');
 
+  // Skills and memory are wrapped as untrusted like every other external slot
+  // (specs, diff, PR body, repo map, callers): skill bodies are community- or
+  // user-authored and memory items come from an upstream store — the engine's
+  // injection defense must not rest on an upstream sanitization promise it
+  // cannot see. INJECTION_GUARD covers all <untrusted> blocks by label.
   const skillsBlock =
-    parts.skills && parts.skills.length > 0 ? parts.skills.join('\n\n') : undefined;
+    parts.skills && parts.skills.length > 0
+      ? wrapUntrusted('skills', parts.skills.join('\n\n'))
+      : undefined;
   const memoryBlock =
     parts.memory && parts.memory.length > 0
-      ? parts.memory.map((m) => `- ${m}`).join('\n')
+      ? wrapUntrusted('memory', parts.memory.map((m) => `- ${m}`).join('\n'))
       : undefined;
   const specsBlock =
     parts.specs && parts.specs.length > 0

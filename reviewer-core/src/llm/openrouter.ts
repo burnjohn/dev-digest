@@ -1,4 +1,4 @@
-import OpenAI, { type ClientOptions as OpenAIClientOptions } from 'openai';
+import OpenAI, { APIUserAbortError, type ClientOptions as OpenAIClientOptions } from 'openai';
 import type {
   LLMProvider,
   ModelInfo,
@@ -52,13 +52,16 @@ function isAbort(err: unknown): boolean {
   // An abort takes two shapes depending on when it lands. During the body read
   // it stays the raw fetch error (`name === 'AbortError'`); before the headers
   // the SDK catches and wraps it as APIUserAbortError. Crucially, NO openai
-  // error class assigns `.name` — every one of them reports 'Error' — so the
-  // wrapped shape is only identifiable by its constructor.
-  const e = err as { name?: string; constructor?: { name?: string } } | null;
+  // error class assigns `.name` — every one of them reports 'Error'. The
+  // wrapped shape is identified with `instanceof` against the class imported
+  // from the SAME 'openai' module instance the client uses — safe, and unlike
+  // a constructor?.name string compare it survives minification (the package
+  // is consumed via an @vercel/ncc bundle, which mangles class names).
+  if (err instanceof APIUserAbortError) return true;
+  const e = err as { name?: string } | null;
   if (!e) return false;
   const name = e.name;
-  if (name === 'AbortError' || name === 'TimeoutError') return true;
-  return e.constructor?.name === 'APIUserAbortError';
+  return name === 'AbortError' || name === 'TimeoutError';
 }
 
 export interface OpenRouterProviderOptions {
@@ -97,6 +100,8 @@ export class OpenRouterProvider implements LLMProvider {
   private timeoutMs: number;
   private transportRetries: number;
   private sleep?: Sleep;
+  /** The injected test-seam fetch; ALL raw requests (listModels) must use it too. */
+  private fetchImpl?: OpenAIClientOptions['fetch'];
 
   constructor(apiKey: string, opts: OpenRouterProviderOptions = {}) {
     this.id = opts.id ?? 'openrouter';
@@ -106,6 +111,7 @@ export class OpenRouterProvider implements LLMProvider {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.transportRetries = opts.transportRetries ?? DEFAULT_TRANSPORT_RETRIES;
     this.sleep = opts.sleep;
+    this.fetchImpl = opts.fetch;
     this.client = new OpenAI({
       apiKey,
       baseURL: this.baseURL,
@@ -125,6 +131,7 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensOut = 0;
     let costFromApi: number | null = null;
     let lastRaw = '';
+    let lastIssues = '';
     const requestTimeoutMs = req.timeoutMs ?? this.timeoutMs;
 
     // Two independent budgets. `maxRetries` belongs to SCHEMA repair: each
@@ -221,10 +228,19 @@ export class OpenRouterProvider implements LLMProvider {
           attempts: attempt,
         };
       }
+      lastIssues = parsed.error;
       messages.push({ role: 'assistant', content: lastRaw });
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
-    throw new Error(`OpenRouter structured output failed schema validation for ${req.schemaName}`);
+    // The terminal message must carry WHAT failed: the last validation issues
+    // and a truncated head of the last raw output. It surfaces into run events,
+    // and schema failures are the recurring live-debug pain (see INSIGHTS) — a
+    // bare "failed schema validation" forces a paid replay just to see why.
+    throw new Error(
+      `OpenRouter structured output failed schema validation for ${req.schemaName}. ` +
+        `Last validation issues:\n${lastIssues}\n` +
+        `Last raw output (first 500 chars): ${lastRaw.slice(0, 500)}`,
+    );
   }
 
   /**
@@ -233,7 +249,11 @@ export class OpenRouterProvider implements LLMProvider {
    * converted from per-token to USD per 1M tokens; cheapest output first.
    */
   async listModels(): Promise<ModelInfo[]> {
-    const res = await fetch(`${this.baseURL}/models`, {
+    // Route through the injected test-seam fetch when present — using the
+    // global fetch here would silently bypass the seam every other request
+    // honors (and would hit the real network from hermetic tests).
+    const doFetch = (this.fetchImpl ?? fetch) as typeof fetch;
+    const res = await doFetch(`${this.baseURL}/models`, {
       headers: { Authorization: `Bearer ${this.apiKey}` },
     });
     if (!res.ok) throw new Error(`OpenRouter /models returned ${res.status}`);

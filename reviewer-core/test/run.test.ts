@@ -179,6 +179,31 @@ describe('reviewPullRequest (engine)', () => {
     expect(events.some((m) => m.includes('Citation grounding'))).toBe(true);
   });
 
+  it('drops a mislabeled full-file-kind finding with fabricated line anchors (kind grants no bypass)', async () => {
+    // A cheap mapper can mislabel a hallucinated finding as secret_leak; inside
+    // reviewPullRequest the kind must NOT exempt it from line verification —
+    // only dedicated scanner stages may opt in via allowFullFileKinds.
+    const mislabeled = {
+      ...fixture,
+      findings: [
+        { ...fixture.findings[1]!, id: 'f-mislabeled', kind: 'secret_leak' },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', { structured: mislabeled });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+    });
+
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(outcome.dropped.map((d) => d.finding.id)).toContain('f-mislabeled');
+    expect(outcome.dropped[0]!.reason).toMatch(/do not intersect/);
+  });
+
   it('score is deterministic from findings: a clean approve scores 100', async () => {
     // Model "approves" but reports a nonsense low score (the cheap-model bug).
     // The engine must ignore that and score the zero findings as a perfect 100.

@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { APIUserAbortError } from 'openai';
 import { OpenRouterProvider } from '../src/llm/openrouter.js';
 
 const Schema = z.object({ ok: z.boolean() });
@@ -132,6 +133,48 @@ describe('OpenRouterProvider — transport retry', () => {
     expect(res.attempts).toBe(3);
   });
 
+  it('recognises an SDK-wrapped abort even when the class name is minified', async () => {
+    // The package is consumed via an @vercel/ncc bundle, where class names are
+    // mangled — a constructor?.name === 'APIUserAbortError' check dies there.
+    // Simulate minification by renaming the class, then abort via our timeout
+    // in a way the SDK wraps (fetch rejects with a PLAIN error while the
+    // request signal is aborted → the SDK throws APIUserAbortError).
+    const original = Object.getOwnPropertyDescriptor(APIUserAbortError, 'name')!;
+    Object.defineProperty(APIUserAbortError, 'name', { value: 'q', configurable: true });
+    try {
+      const stalling = (async (_url: string, init: { signal?: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(new Error('socket hang up')); // NOT AbortError-shaped
+          });
+        })) as unknown as never;
+
+      await expect(
+        provider(stalling, { timeoutMs: 20, transportRetries: 1 }).completeStructured(request),
+      ).rejects.toThrow(/exceeded 20ms on all 2 transport attempt\(s\)/);
+    } finally {
+      Object.defineProperty(APIUserAbortError, 'name', original);
+    }
+  });
+
+  it('surfaces the last validation issues and a truncated raw head on terminal schema failure', async () => {
+    // Every attempt returns schema-invalid JSON; the terminal error must carry
+    // the last Zod issues and the head of the last raw output — these surface
+    // into run events and are the recurring live-debug pain (INSIGHTS).
+    const { fetch } = scriptedFetch([() => response(async () => okBody({ nope: 1 }))]);
+
+    let thrown: Error | undefined;
+    try {
+      await provider(fetch).completeStructured({ ...request, maxRetries: 0 });
+    } catch (e) {
+      thrown = e as Error;
+    }
+    expect(thrown).toBeDefined();
+    expect(thrown!.message).toContain('failed schema validation for Probe');
+    expect(thrown!.message).toMatch(/ok/); // the missing-field issue path
+    expect(thrown!.message).toContain('"nope"'); // the raw head
+  });
+
   it('reports a timeout as a timeout, not as a schema failure', async () => {
     // A fetch that never settles until the request signal aborts it.
     const stalling = (async (_url: string, init: { signal?: AbortSignal }) =>
@@ -146,6 +189,33 @@ describe('OpenRouterProvider — transport retry', () => {
     await expect(
       provider(stalling, { timeoutMs: 20, transportRetries: 1 }).completeStructured(request),
     ).rejects.toThrow(/exceeded 20ms on all 2 transport attempt\(s\)/);
+  });
+});
+
+describe('OpenRouterProvider — listModels', () => {
+  it('routes listModels through the injected fetch, never the global one', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(String(url));
+      return response(async () => ({
+        data: [
+          { id: 'm1', name: 'M1', context_length: 1000, pricing: { prompt: '0.000001', completion: '0.000002' } },
+        ],
+      }));
+    }) as unknown as never;
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error('global fetch must not be used when a test-seam fetch is injected');
+    }) as typeof fetch;
+    try {
+      const models = await provider(fetchImpl).listModels();
+      expect(urls.some((u) => u.endsWith('/models'))).toBe(true);
+      expect(models[0]).toMatchObject({ id: 'm1', provider: 'openrouter' });
+      expect(models[0]!.pricing).toEqual({ promptPerM: 1, completionPerM: 2 });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });
 
