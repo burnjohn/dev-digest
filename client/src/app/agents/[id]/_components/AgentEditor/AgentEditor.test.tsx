@@ -35,12 +35,16 @@ const AGENT: Agent = {
   version: 1,
 };
 
-function renderWithIntl(ui: React.ReactElement) {
-  return render(
+function withIntl(ui: React.ReactElement) {
+  return (
     <NextIntlClientProvider locale="en" messages={{ agents: messages }}>
       <ToastProvider>{ui}</ToastProvider>
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+function renderWithIntl(ui: React.ReactElement) {
+  return render(withIntl(ui));
 }
 
 describe("A2 Agent Editor (smoke)", () => {
@@ -59,5 +63,19 @@ describe("A2 Agent Editor (smoke)", () => {
 
     expect(mutate).toHaveBeenCalledOnce();
     expect(mutate.mock.calls[0]![0].patch).not.toHaveProperty("strategy");
+  });
+
+  it("discards unsaved edits and shows the new agent's config when switching agents", () => {
+    const view = renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
+
+    const nameInput = screen.getByDisplayValue("Security Reviewer");
+    fireEvent.change(nameInput, { target: { value: "Edited but unsaved" } });
+    expect(screen.getByDisplayValue("Edited but unsaved")).toBeInTheDocument();
+
+    const other: Agent = { ...AGENT, id: "ag2", name: "Perf Reviewer", description: "Latency" };
+    view.rerender(withIntl(<AgentEditor agent={other} tab="config" onTab={() => {}} />));
+
+    expect(screen.getByDisplayValue("Perf Reviewer")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Edited but unsaved")).not.toBeInTheDocument();
   });
 });

@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 import { useRepos } from "../lib/hooks";
 import { AppShell } from "../components/app-shell";
 import { PageContainer } from "../components/page-shell";
-import { EmptyState, Button, Skeleton } from "@devdigest/ui";
+import { EmptyState, ErrorState, Button, Skeleton } from "@devdigest/ui";
 
 export default function HomePage() {
   const router = useRouter();
-  const { data: repos, isLoading, isError } = useRepos();
+  const { data: repos, isLoading, isError, refetch } = useRepos();
 
   React.useEffect(() => {
     if (repos && repos.length > 0) {
@@ -27,7 +27,14 @@ export default function HomePage() {
             <Skeleton height={48} />
             <Skeleton height={48} />
           </div>
-        ) : isError || !repos || repos.length === 0 ? (
+        ) : isError ? (
+          // A failed API call is NOT "no repos" — show a retryable error.
+          <ErrorState
+            title="Couldn't load repositories"
+            body="The DevDigest API didn't respond. Check that the server is running, then retry."
+            onRetry={() => refetch()}
+          />
+        ) : !repos || repos.length === 0 ? (
           <EmptyState
             icon="GitBranch"
             title="No repositories yet"

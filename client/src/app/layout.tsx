@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
@@ -7,7 +6,7 @@ import { Providers } from "../lib/providers";
 import { themeNoFlashScript } from "../lib/theme";
 
 export const metadata: Metadata = {
-  title: "DevDigest",
+  title: { default: "DevDigest", template: "%s · DevDigest" },
   description: "Local-first AI PR review tool",
 };
 
@@ -25,10 +24,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           hydrates. This suppresses ONLY this element's own attribute mismatch
           (one level deep) — real mismatches in descendants are still reported. */}
       <body suppressHydrationWarning>
+        {/* No root <Suspense>: it existed only to silence the useSearchParams
+            CSR bailout globally, which made EVERY route prerender empty. Pages
+            that read search params wrap themselves in a local boundary. */}
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Suspense fallback={null}>
-            <Providers>{children}</Providers>
-          </Suspense>
+          <Providers>{children}</Providers>
         </NextIntlClientProvider>
       </body>
     </html>

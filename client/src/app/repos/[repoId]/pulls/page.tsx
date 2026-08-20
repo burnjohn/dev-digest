@@ -2,7 +2,7 @@
    GET /repos/:id/pulls (F1). Filters/sort live in query (?status&sort). */
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -25,7 +25,7 @@ import { RepoTokenBadge } from "./_components/RepoTokenBadge";
 /** Open PRs carry a derived review status; everything else is merged/closed. */
 const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
 
-export default function PullsPage() {
+function PullsPageInner() {
   const t = useTranslations("prReview");
   const params = useParams<{ repoId: string }>();
   const repoId = params.repoId;
@@ -139,5 +139,25 @@ export default function PullsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function PullsSkeleton() {
+  return (
+    <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 12, maxWidth: 1080, margin: "0 auto" }}>
+      {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+        <Skeleton key={i} height={28} />
+      ))}
+    </div>
+  );
+}
+
+/** useSearchParams needs a local Suspense boundary (the root layout no longer
+    wraps the whole app — that made every route prerender empty). */
+export default function PullsPage() {
+  return (
+    <Suspense fallback={<PullsSkeleton />}>
+      <PullsPageInner />
+    </Suspense>
   );
 }

@@ -6,12 +6,12 @@ import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE } from "../api";
 import { notify } from "../toast";
+import { RunEvent } from "@devdigest/shared";
 import type {
   FindingActionKind,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
-  RunEvent,
   RunSummary,
 } from "@devdigest/shared";
 
@@ -161,9 +161,39 @@ export function useFindingAction() {
 }
 
 /**
+ * Parse one SSE frame into a validated RunEvent, or null when the frame is not
+ * one. Dataless frames (native error events, keepalives) are skipped silently;
+ * anything else that fails to parse is skipped with a console.warn so a
+ * malformed frame never crashes the stream.
+ */
+export function parseRunEventFrame(data: unknown): RunEvent | null {
+  if (typeof data !== "string" || data.length === 0) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(data);
+  } catch {
+    console.warn("[useRunEvents] skipping non-JSON SSE frame:", data);
+    return null;
+  }
+  const parsed = RunEvent.safeParse(json);
+  if (!parsed.success) {
+    console.warn("[useRunEvents] skipping malformed RunEvent frame:", parsed.error.message);
+    return null;
+  }
+  return parsed.data;
+}
+
+/**
  * Subscribe to a run's SSE event stream. Returns the accumulated RunEvents and a
- * `running` flag (true until the stream closes). Live status for the
+ * `running` flag (true until the subscription is torn down). Live status for the
  * RunReviewDropdown / Live Log. Multiple runIds are subscribed in parallel.
+ *
+ * Transport errors do NOT end the run in the UI: native EventSource
+ * auto-reconnects, and because the server's stream is replay-first (the whole
+ * buffer is resent on reconnect) events are deduplicated by runId+seq so a
+ * resumed stream is idempotent. Terminal completion is server-sourced — the
+ * active-runs poll shrinks `runIds`, which tears the stream down via the
+ * effect cleanup (see didRunsSettle on the PR detail page).
  */
 export function useRunEvents(runIds: string[]) {
   const [events, setEvents] = React.useState<RunEvent[]>([]);
@@ -175,21 +205,22 @@ export function useRunEvents(runIds: string[]) {
     setEvents([]);
     setRunning(true);
     const sources: EventSource[] = [];
-    let open = runIds.length;
+    // Reconnects replay the full buffer — remember what we already appended.
+    const seen = new Set<string>();
 
     for (const runId of runIds) {
       const es = new EventSource(`${API_BASE}/runs/${runId}/events`);
       const onMsg = (ev: MessageEvent) => {
-        try {
-          const parsed = JSON.parse(ev.data) as RunEvent;
-          setEvents((prev) => [...prev, parsed]);
-          // Runtime agent failures arrive as SSE `error` events (not as a
-          // mutation/query error), so the global error toast never sees them —
-          // surface them here so the user gets a notification without a reload.
-          if (parsed.kind === "error" && parsed.msg) notify.error(parsed.msg);
-        } catch {
-          /* ignore non-JSON keepalive frames (and dataless native error events) */
-        }
+        const event = parseRunEventFrame(ev.data);
+        if (!event) return;
+        const dedupeKey = `${event.runId}:${event.seq}`;
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        setEvents((prev) => [...prev, event]);
+        // Runtime agent failures arrive as SSE `error` events (not as a
+        // mutation/query error), so the global error toast never sees them —
+        // surface them here so the user gets a notification without a reload.
+        if (event.kind === "error" && event.msg) notify.error(event.msg);
       };
       // The server tags events with kind as the SSE `event:` name AND emits them
       // as default messages too in some clients — listen broadly.
@@ -197,11 +228,9 @@ export function useRunEvents(runIds: string[]) {
       for (const kind of ["info", "tool", "result", "error"]) {
         es.addEventListener(kind, onMsg as EventListener);
       }
-      es.onerror = () => {
-        es.close();
-        open -= 1;
-        if (open <= 0) setRunning(false);
-      };
+      // Deliberately NO es.onerror close: a transient network blip mid-run used
+      // to freeze the UI as "done". EventSource reconnects on its own; the
+      // stream is closed only by this effect's cleanup (run settled/unmount).
       sources.push(es);
     }
 

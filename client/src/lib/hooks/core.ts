@@ -192,6 +192,26 @@ export function usePullDetail(prId: string | number | null | undefined) {
   });
 }
 
+/**
+ * Resolve a PR directly by its (repoId, number) route key — one request instead
+ * of fetching the whole pulls list to find the row's uuid. The response body is
+ * IDENTICAL to `GET /pulls/:id` (404 when unknown), so the result also seeds
+ * the id-keyed `["pull", id]` cache: anything that later asks for the detail by
+ * uuid gets an instant cache hit.
+ */
+export function usePullByNumber(repoId: string | null | undefined, number: number | null | undefined) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["pull-by-number", repoId, number],
+    queryFn: async () => {
+      const pr = await api.get<PrDetail>(`/repos/${repoId}/pulls/number/${number}`);
+      if (pr.id != null) qc.setQueryData(["pull", pr.id], pr);
+      return pr;
+    },
+    enabled: !!repoId && number != null && Number.isFinite(number),
+  });
+}
+
 // ---- Project Context (A3 contract; safe to call once API exposes it) ----
 export function useContextFiles(repoId: string | null | undefined) {
   return useQuery({

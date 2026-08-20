@@ -20,7 +20,9 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
         <Tabs tabs={tabs} value={tab} onChange={onTab} pad="0 24px" />
       </div>
       <div style={s.body}>
-        <ConfigTab agent={agent} />
+        {/* key={agent.id} remounts the form when switching agents — the reset
+            mechanism ConfigTab relies on (it has no state-sync effect). */}
+        <ConfigTab key={agent.id} agent={agent} />
       </div>
     </div>
   );

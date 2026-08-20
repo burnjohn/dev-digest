@@ -5,7 +5,7 @@
    Tab state lives in query (?tab). */
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Skeleton, ErrorState } from "@devdigest/ui";
 import { AppShell } from "../../../../../components/app-shell";
@@ -15,15 +15,18 @@ import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
-import { usePullDetail, usePulls } from "../../../../../lib/hooks";
+import { usePullByNumber } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
-import type { FindingRecord } from "@devdigest/shared";
+import { resolveTab, didRunsSettle } from "./helpers";
+import type { FindingRecord, ReviewRecord } from "@devdigest/shared";
 
-export default function PRDetailPage() {
+const NO_RUNS: ReviewRecord[] = [];
+
+function PRDetailPageInner() {
   const params = useParams<{ repoId: string; number: string }>();
   const search = useSearchParams();
   const router = useRouter();
@@ -31,12 +34,12 @@ export default function PRDetailPage() {
   const { activeRepo } = useActiveRepo();
   const repoNotFound = useRepoNotFound(repoId);
   // The route is keyed by PR number, but every PR API is keyed by the row's
-  // uuid — resolve number → uuid via the (cached) pulls list before fetching.
-  const { data: pulls, isLoading: pullsLoading } = usePulls(repoId);
-  const prId = pulls?.find((p) => p.number === Number(number))?.id ?? null;
-  const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
+  // uuid — resolve number → detail in ONE request (the response is identical to
+  // GET /pulls/:id, and seeds the id-keyed cache); downstream hooks key off
+  // the returned pr.id.
+  const { data: pr, isLoading, isError, error, refetch } = usePullByNumber(repoId, Number(number));
+  const prId = pr?.id ?? null;
 
-  const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews, refetch: refetchReviews } = usePrReviews(prId);
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
@@ -57,7 +60,27 @@ export default function PRDetailPage() {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
 
-  const tab = search.get("tab") ?? "overview";
+  // Run completion is detected from the active-runs poll, not the SSE
+  // transport: a run leaving the live set is the terminal signal (a dropped
+  // EventSource just reconnects). Primitive key, same shape as useRunEvents.
+  const liveKey = liveRunIds.join(",");
+  const prevLiveKey = React.useRef(liveKey);
+  const refetchReviewsRef = React.useRef(refetchReviews);
+  refetchReviewsRef.current = refetchReviews;
+  React.useEffect(() => {
+    const prev = prevLiveKey.current;
+    prevLiveKey.current = liveKey;
+    if (!didRunsSettle(prev, liveKey)) return;
+    if (prId) {
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+    }
+    void refetchReviewsRef.current();
+  }, [liveKey, prId, qc]);
+
+  // Whitelisted ?tab= — unknown values fall back to overview (used to render a
+  // blank content area).
+  const tab = resolveTab(search.get("tab"));
   const traceRunId = search.get("trace");
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
@@ -68,10 +91,10 @@ export default function PRDetailPage() {
   const setTab = (t: string) => setParam("tab", t);
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
-  const runs = reviews ?? [];
+  const runs = reviews ?? NO_RUNS;
   const allFindings: FindingRecord[] = React.useMemo(
     () => runs.flatMap((r) => r.findings),
-    [reviews],
+    [runs],
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
@@ -98,11 +121,7 @@ export default function PRDetailPage() {
   if (isLoading) {
     return (
       <AppShell crumb={crumb}>
-        <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 16, maxWidth: 1080, margin: "0 auto" }}>
-          <Skeleton height={28} width={420} />
-          <Skeleton height={16} width={300} />
-          <Skeleton height={200} />
-        </div>
+        <PrDetailSkeleton />
       </AppShell>
     );
   }
@@ -147,7 +166,8 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
-            cancelMutation={cancel}
+            onCancelAll={() => liveRunIds.forEach((id) => cancel.mutate(id))}
+            cancelPending={cancel.isPending}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {
               if (window.confirm("Delete this run from history? (its logs are removed too)"))
@@ -181,5 +201,25 @@ export default function PRDetailPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+function PrDetailSkeleton() {
+  return (
+    <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 16, maxWidth: 1080, margin: "0 auto" }}>
+      <Skeleton height={28} width={420} />
+      <Skeleton height={16} width={300} />
+      <Skeleton height={200} />
+    </div>
+  );
+}
+
+/** useSearchParams needs a local Suspense boundary (the root layout no longer
+    wraps the whole app — that made every route prerender empty). */
+export default function PRDetailPage() {
+  return (
+    <Suspense fallback={<PrDetailSkeleton />}>
+      <PRDetailPageInner />
+    </Suspense>
   );
 }

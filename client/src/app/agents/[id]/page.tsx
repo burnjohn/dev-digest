@@ -3,7 +3,7 @@
    screen_agents.jsx. */
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button, Dropdown, ErrorState, Skeleton, Icon, Badge } from "@devdigest/ui";
 import { AppShell } from "../../../components/app-shell";
@@ -14,7 +14,7 @@ import { ApiError } from "../../../lib/api";
 
 const VALID_TABS = ["config"];
 
-export default function AgentEditorPage() {
+function AgentEditorPageInner() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const router = useRouter();
@@ -120,5 +120,24 @@ export default function AgentEditorPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function AgentEditorSkeleton() {
+  return (
+    <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 16, maxWidth: 1080, margin: "0 auto" }}>
+      <Skeleton height={24} width={240} />
+      <Skeleton height={200} />
+    </div>
+  );
+}
+
+/** useSearchParams needs a local Suspense boundary (the root layout no longer
+    wraps the whole app — that made every route prerender empty). */
+export default function AgentEditorPage() {
+  return (
+    <Suspense fallback={<AgentEditorSkeleton />}>
+      <AgentEditorPageInner />
+    </Suspense>
   );
 }
