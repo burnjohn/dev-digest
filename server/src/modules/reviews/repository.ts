@@ -87,9 +87,14 @@ export class ReviewRepository {
     return runRepo.deleteAgentRun(this.db, workspaceId, runId);
   }
 
-  /** Mark a still-running run as cancelled (no-op if it already finished). */
-  cancelRunIfRunning(runId: string): Promise<boolean> {
-    return runRepo.cancelRunIfRunning(this.db, runId);
+  /** Does this run exist inside the workspace? Tenancy gate for run-addressed routes. */
+  runInWorkspace(workspaceId: string, runId: string): Promise<boolean> {
+    return runRepo.runInWorkspace(this.db, workspaceId, runId);
+  }
+
+  /** Mark a still-running run as cancelled (no-op if it already finished). Workspace-scoped. */
+  cancelRunIfRunning(workspaceId: string, runId: string): Promise<boolean> {
+    return runRepo.cancelRunIfRunning(this.db, workspaceId, runId);
   }
 
   /** On boot: any run still 'running' is orphaned (its process died / restarted),
@@ -117,12 +122,20 @@ export class ReviewRepository {
     return reviewRepo.findingContext(this.db, findingId);
   }
 
-  setFindingAccepted(findingId: string, at: Date | null): Promise<FindingRow | undefined> {
-    return reviewRepo.setFindingAccepted(this.db, findingId, at);
+  setFindingAccepted(
+    workspaceId: string,
+    findingId: string,
+    at: Date | null,
+  ): Promise<FindingRow | undefined> {
+    return reviewRepo.setFindingAccepted(this.db, workspaceId, findingId, at);
   }
 
-  setFindingDismissed(findingId: string, at: Date | null): Promise<FindingRow | undefined> {
-    return reviewRepo.setFindingDismissed(this.db, findingId, at);
+  setFindingDismissed(
+    workspaceId: string,
+    findingId: string,
+    at: Date | null,
+  ): Promise<FindingRow | undefined> {
+    return reviewRepo.setFindingDismissed(this.db, workspaceId, findingId, at);
   }
 
   // ---- intent -------------------------------------------------------------
@@ -180,7 +193,7 @@ export class ReviewRepository {
     return runRepo.saveRunTrace(this.db, runId, trace);
   }
 
-  getRunTrace(runId: string): Promise<RunTrace | undefined> {
-    return runRepo.getRunTrace(this.db, runId);
+  getRunTrace(workspaceId: string, runId: string): Promise<RunTrace | undefined> {
+    return runRepo.getRunTrace(this.db, workspaceId, runId);
   }
 }

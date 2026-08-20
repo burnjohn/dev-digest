@@ -1,7 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { RunSummary, RunTrace } from '@devdigest/shared';
+import { RunTrace } from '@devdigest/shared';
+import type { RunSummary } from '@devdigest/shared';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -90,12 +91,38 @@ export async function deleteAgentRun(
   return rows.length > 0;
 }
 
-/** Mark a still-running run as cancelled (no-op if it already finished). */
-export async function cancelRunIfRunning(db: Db, runId: string): Promise<boolean> {
+/** Does this run exist inside the workspace? The tenancy gate for run-addressed
+ *  routes (SSE, cancel, trace) whose URLs carry only a runId. */
+export async function runInWorkspace(
+  db: Db,
+  workspaceId: string,
+  runId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: t.agentRuns.id })
+    .from(t.agentRuns)
+    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId)));
+  return rows.length > 0;
+}
+
+/** Mark a still-running run as cancelled (no-op if it already finished).
+ *  Workspace-scoped: the predicate itself carries the tenancy, so a prior
+ *  ownership check cannot be raced into a cross-workspace write. */
+export async function cancelRunIfRunning(
+  db: Db,
+  workspaceId: string,
+  runId: string,
+): Promise<boolean> {
   const rows = await db
     .update(t.agentRuns)
     .set({ status: 'cancelled' })
-    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.status, 'running')))
+    .where(
+      and(
+        eq(t.agentRuns.id, runId),
+        eq(t.agentRuns.workspaceId, workspaceId),
+        eq(t.agentRuns.status, 'running'),
+      ),
+    )
     .returning({ id: t.agentRuns.id });
   return rows.length > 0;
 }
@@ -187,7 +214,23 @@ export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Prom
     .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
 }
 
-export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
-  const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
-  return row ? (row.trace as RunTrace) : undefined;
+export async function getRunTrace(
+  db: Db,
+  workspaceId: string,
+  runId: string,
+): Promise<RunTrace | undefined> {
+  const [row] = await db
+    .select({ trace: t.runTraces.trace })
+    .from(t.runTraces)
+    .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runTraces.runId))
+    .where(and(eq(t.runTraces.runId, runId), eq(t.agentRuns.workspaceId, workspaceId)));
+  if (!row) return undefined;
+  // Persisted jsonb is a trust boundary: validate on read instead of casting.
+  const parsed = RunTrace.safeParse(row.trace);
+  if (!parsed.success) {
+    throw new Error(
+      `run_traces row for run ${runId} failed RunTrace validation: ${parsed.error.message}`,
+    );
+  }
+  return parsed.data;
 }

@@ -133,6 +133,17 @@ export interface ResolvedCallerRow {
 export class RepoIntelRepository {
   constructor(private db: Db) {}
 
+  /** Does this repo exist inside the workspace? The tenancy gate for the
+   *  repo-addressed HTTP routes (index-state, resync) — the facade itself is
+   *  deliberately tenant-agnostic, so the boundary check lives with the caller. */
+  async repoInWorkspace(workspaceId: string, repoId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: t.repos.id })
+      .from(t.repos)
+      .where(and(eq(t.repos.id, repoId), eq(t.repos.workspaceId, workspaceId)));
+    return rows.length > 0;
+  }
+
   async getRepoBasics(repoId: string): Promise<RepoBasics | null> {
     const [row] = await this.db
       .select({

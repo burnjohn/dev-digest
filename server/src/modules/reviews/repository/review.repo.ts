@@ -116,28 +116,40 @@ export async function findingContext(
   return { finding, review, pull };
 }
 
+/** `findings` has no workspace column — tenancy rides on the owning review.
+ *  The predicate lives inside the UPDATE itself, so a check-then-act caller
+ *  cannot be raced into a cross-workspace write. */
+function findingInWorkspace(db: Db, workspaceId: string) {
+  return inArray(
+    t.findings.reviewId,
+    db.select({ id: t.reviews.id }).from(t.reviews).where(eq(t.reviews.workspaceId, workspaceId)),
+  );
+}
+
 export async function setFindingAccepted(
   db: Db,
+  workspaceId: string,
   findingId: string,
   at: Date | null,
 ): Promise<FindingRow | undefined> {
   const [row] = await db
     .update(t.findings)
     .set({ acceptedAt: at, dismissedAt: null })
-    .where(eq(t.findings.id, findingId))
+    .where(and(eq(t.findings.id, findingId), findingInWorkspace(db, workspaceId)))
     .returning();
   return row;
 }
 
 export async function setFindingDismissed(
   db: Db,
+  workspaceId: string,
   findingId: string,
   at: Date | null,
 ): Promise<FindingRow | undefined> {
   const [row] = await db
     .update(t.findings)
     .set({ dismissedAt: at, acceptedAt: null })
-    .where(eq(t.findings.id, findingId))
+    .where(and(eq(t.findings.id, findingId), findingInWorkspace(db, workspaceId)))
     .returning();
   return row;
 }
