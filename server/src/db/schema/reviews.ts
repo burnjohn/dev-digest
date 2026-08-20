@@ -1,12 +1,23 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  index,
+} from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
 
 // ============================================================ Review & findings
 
-export const reviews = pgTable('reviews', {
+export const reviews = pgTable(
+  'reviews',
+  {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id')
     .notNull()
@@ -23,7 +34,14 @@ export const reviews = pgTable('reviews', {
   score: integer('score'),
   model: text('model'),
   createdAt: now(),
-});
+  },
+  (t) => ({
+    // Hot predicates: reviewsForPull filters pr_id on every PR detail read;
+    // deleteAgentRun / the client's run↔review join look rows up by run_id.
+    prIdx: index('reviews_pr_id_idx').on(t.prId),
+    runIdx: index('reviews_run_id_idx').on(t.runId),
+  }),
+);
 
 export const findings = pgTable('findings', {
   id: uuid('id').primaryKey().defaultRandom(),

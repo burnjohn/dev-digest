@@ -6,6 +6,7 @@ import {
   jsonb,
   timestamp,
   doublePrecision,
+  index,
 } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
@@ -13,7 +14,9 @@ import { pullRequests } from './pulls';
 
 // ============================================================ Observability
 
-export const agentRuns = pgTable('agent_runs', {
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id')
     .notNull()
@@ -42,7 +45,13 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
-});
+  },
+  (t) => ({
+    // Hot predicate: every PR page poll filters (workspace_id, pr_id[, status])
+    // — activeRunsForPull / listRunsForPull in modules/reviews/repository/run.repo.ts.
+    wsPrStatusIdx: index('agent_runs_ws_pr_status_idx').on(t.workspaceId, t.prId, t.status),
+  }),
+);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {
