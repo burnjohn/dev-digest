@@ -75,6 +75,25 @@ describe('citation grounding gate', () => {
     expect(res.kept).toHaveLength(1);
   });
 
+  it(
+    'drops a non-intersecting finding with a model-supplied astronomically large range without hanging',
+    { timeout: 2000 },
+    () => {
+      const res = groundFindings(
+        [
+          f({
+            file: 'src/config.ts',
+            start_line: 100_000,
+            end_line: Number.MAX_SAFE_INTEGER,
+          }),
+        ],
+        diff,
+      );
+      expect(res.kept).toHaveLength(0);
+      expect(res.dropped[0]!.reason).toMatch(/do not intersect/);
+    },
+  );
+
   it('groundingSummary reports kept/total', () => {
     const res = groundFindings(
       [
