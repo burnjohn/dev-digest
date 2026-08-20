@@ -6,7 +6,10 @@ import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE } from "../api";
 import { notify } from "../toast";
-import { RunEvent } from "@devdigest/shared";
+// Deep import, not the barrel: this is a RUNTIME value, and the barrel would
+// pull every contract file into the browser bundle (type-only imports below
+// are erased, so they may keep using the barrel).
+import { RunEvent } from "@devdigest/shared/contracts/trace.js";
 import type {
   FindingActionKind,
   PrReviewComment,

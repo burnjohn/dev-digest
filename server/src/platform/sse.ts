@@ -89,6 +89,13 @@ export class RunBus {
 
   /** Subscribe to live events. Replays any buffered events first. */
   subscribe(runId: string, listener: (e: RunEvent) => void): () => void {
+    // A completed run with no live emitter emits nothing ever again: replay
+    // whatever buffer survives and DON'T resurrect per-run state — complete()
+    // will not run a second time, so anything created here would never evict.
+    if (this.completed.has(runId) && !this.emitters.has(runId)) {
+      for (const buffered of this.buffers.get(runId) ?? []) listener(buffered);
+      return () => undefined;
+    }
     const e = this.emitterFor(runId);
     for (const buffered of this.buffers.get(runId) ?? []) listener(buffered);
     e.on('event', listener);
@@ -122,15 +129,36 @@ export class RunBus {
     this.evictTimers.set(runId, timer);
   }
 
-  /** Drop every trace of a run from memory (post-grace; see complete()). */
+  /**
+   * Drop a run's HEAVY state from memory (post-grace; see complete()).
+   *
+   * The terminal flags are deliberately KEPT:
+   *  - `cancelled`: agents for one PR run sequentially, so a cancelled run can
+   *    reach the executor's isCancelled() checkpoint long after the grace
+   *    window — releasing the flag here would let it run (and bill) anyway,
+   *    the exact bug the comment in complete() describes on a 5-minute delay.
+   *  - `completed`: the SSE route ends a late subscriber's stream via
+   *    isComplete()/onDone(); releasing it would make that stream hang forever.
+   * Both are one uuid string per run in a local-first single-instance process —
+   * the unbounded growth this eviction exists to stop is the event BUFFERS.
+   */
   private evict(runId: string): void {
     this.evictTimers.delete(runId);
     this.emitters.delete(runId);
     this.buffers.delete(runId);
     this.seq.delete(runId);
-    this.completed.delete(runId);
-    this.cancelled.delete(runId);
     this.controllers.delete(runId);
+  }
+
+  /** Test seam: does any evictable (heavy) state exist for this run? */
+  hasLiveState(runId: string): boolean {
+    return (
+      this.emitters.has(runId) ||
+      this.buffers.has(runId) ||
+      this.seq.has(runId) ||
+      this.controllers.has(runId) ||
+      this.evictTimers.has(runId)
+    );
   }
 
   /** Whether a run has already completed (for replay-then-end late subscribers). */

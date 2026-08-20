@@ -2,11 +2,15 @@
  * RunBus lifecycle:
  *  - one bus PER Container (no process-wide singleton shared across app
  *    instances / tests);
- *  - per-run state (buffer, seq, completed, cancelled) is evicted a grace
- *    period after complete(), so a long-lived process does not accumulate the
- *    full event log of every run ever executed. Replay-first semantics for
- *    late subscribers keep working inside the grace window, and cancel-state
- *    stays terminal until eviction (see sse-cancel.test.ts).
+ *  - a run's HEAVY state (event buffer, seq, emitters, abort controller) is
+ *    evicted a grace period after complete(), so a long-lived process does not
+ *    accumulate the full event log of every run ever executed. Replay-first
+ *    semantics for late subscribers keep working inside the grace window.
+ *  - the TERMINAL flags (completed, cancelled) are NEVER evicted: agents for
+ *    one PR run sequentially, so a cancelled run may sit queued far longer
+ *    than the grace window — releasing `cancelled` would let it run (and
+ *    bill) anyway; releasing `completed` would make a late SSE subscriber
+ *    hang forever waiting for a 'done' that already happened.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RunBus } from '../src/platform/sse.js';
@@ -55,7 +59,7 @@ describe('RunBus — post-complete eviction', () => {
     expect(bus.buffer('r1')).toHaveLength(1);
   });
 
-  it('evicts buffer, seq, and completion state after the grace period', () => {
+  it('evicts buffer and seq after the grace period', () => {
     const bus = new RunBus();
     bus.publish('r1', 'info', 'line 1');
     bus.publish('r1', 'info', 'line 2');
@@ -64,23 +68,38 @@ describe('RunBus — post-complete eviction', () => {
     vi.advanceTimersByTime(GRACE_MS + 1);
 
     expect(bus.buffer('r1')).toHaveLength(0);
-    expect(bus.isComplete('r1')).toBe(false);
     const seen: RunEvent[] = [];
     bus.subscribe('r1', (e) => seen.push(e));
     expect(seen).toHaveLength(0);
-    // seq restarts too — the run's numbering is gone with the state.
-    const next = bus.publish('r1', 'info', 'fresh');
-    expect(next.seq).toBe(1);
   });
 
-  it('cancel-state survives until eviction, then is released', () => {
+  it('completion stays visible after eviction — a late SSE subscriber must end, not hang', () => {
     const bus = new RunBus();
-    bus.cancel('r1');
-    bus.complete('r1'); // exactly what ReviewService.cancelRun does
-    vi.advanceTimersByTime(GRACE_MS - 1);
-    expect(bus.isCancelled('r1')).toBe(true);
-    vi.advanceTimersByTime(2);
-    expect(bus.isCancelled('r1')).toBe(false);
+    bus.publish('r1', 'info', 'line 1');
+    bus.complete('r1');
+
+    vi.advanceTimersByTime(GRACE_MS + 1);
+
+    // The SSE route's replay-then-end contract: isComplete/onDone must still
+    // report the run as done, or the stream awaits a 'done' that never fires.
+    expect(bus.isComplete('r1')).toBe(true);
+    let done = false;
+    bus.onDone('r1', () => (done = true));
+    return vi.waitFor(() => expect(done).toBe(true));
+  });
+
+  it('cancellation is terminal — it survives eviction', () => {
+    const bus = new RunBus();
+    bus.cancel('r4');
+    bus.complete('r4'); // exactly what ReviewService.cancelRun does
+
+    // Agents run sequentially: run #4 of a fan-out may reach the executor's
+    // isCancelled() checkpoint LONG after the grace window. If eviction
+    // released the flag, the cancelled run would execute and bill anyway.
+    vi.advanceTimersByTime(GRACE_MS * 10);
+    expect(bus.isCancelled('r4')).toBe(true);
+    // And the LLM abort signal handed out later must already be aborted.
+    expect(bus.signalFor('r4').aborted).toBe(true);
   });
 
   it('an uncompleted run is never evicted', () => {
@@ -92,13 +111,28 @@ describe('RunBus — post-complete eviction', () => {
 
   it('a second complete() reschedules rather than double-frees', () => {
     const bus = new RunBus();
-    bus.cancel('r1');
+    bus.publish('r1', 'info', 'line 1');
     bus.complete('r1'); // route-side cancelRun
     vi.advanceTimersByTime(GRACE_MS / 2);
     bus.complete('r1'); // executor notices the cancel and completes again
     vi.advanceTimersByTime(GRACE_MS - 1);
-    expect(bus.isCancelled('r1')).toBe(true); // grace restarted at 2nd complete
+    expect(bus.buffer('r1')).toHaveLength(1); // grace restarted at 2nd complete
     vi.advanceTimersByTime(2);
-    expect(bus.isCancelled('r1')).toBe(false);
+    expect(bus.buffer('r1')).toHaveLength(0);
+  });
+
+  it('subscribing to an evicted run does not resurrect per-run state', () => {
+    const bus = new RunBus();
+    bus.publish('r1', 'info', 'line 1');
+    bus.complete('r1');
+    vi.advanceTimersByTime(GRACE_MS + 1);
+
+    // A completed run with no live emitter gets replay (empty) + immediate
+    // done, and must NOT re-create buffer/seq entries that nothing will ever
+    // evict again (complete() will not be called a second time).
+    const unsubscribe = bus.subscribe('r1', () => undefined);
+    unsubscribe();
+    expect(bus.buffer('r1')).toHaveLength(0);
+    expect(bus.hasLiveState('r1')).toBe(false);
   });
 });

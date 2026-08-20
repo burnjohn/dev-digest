@@ -77,7 +77,7 @@ describe("usePullByNumber", () => {
     expect(result.current.data!.id).toBe("pr-uuid-1");
   });
 
-  it("seeds the id-keyed pull-detail cache with the response", async () => {
+  it("is refreshed alongside the pulls list — a repo refresh invalidates the by-number key", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify(PR), { status: 200 })),
@@ -85,7 +85,9 @@ describe("usePullByNumber", () => {
     const { qc, Wrapper } = makeWrapper();
     const { result } = renderHook(() => usePullByNumber("repo1", 42), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.data).toBeTruthy());
-    expect(qc.getQueryData(["pull", "pr-uuid-1"])).toMatchObject({ id: "pr-uuid-1", number: 42 });
+    // Partial-key invalidation, exactly what useRefreshRepo issues on job done.
+    qc.invalidateQueries({ queryKey: ["pull-by-number", "repo1"] });
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
   it("stays disabled for a non-numeric PR number", () => {
