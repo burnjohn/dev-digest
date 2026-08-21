@@ -42,15 +42,20 @@ violation actually broke. You are that missing, narrower lens.
 | `Deps` vs `Container` in a service constructor | Security vulnerabilities — `security` skill, built-in `security-review` |
 | `process.env` read outside `platform/config.ts` / `adapters/secrets/local.ts` | Whether the diff compiles or its tests pass — `pnpm typecheck`, `pnpm test` |
 | `drizzle-orm` / `db/schema*` leaking into a service | Whether the diff may be pushed at all — `pr-self-review` (its H1–H18 mechanical rules and its own CRITICAL/WARNING/SUGGESTION gate) |
-| Client placement & promotion breaches (`frontend-ui-architecture` §§2–3) | Style/formatting — there is no linter in this repo (root `AGENTS.md`); do not invent one as a finding |
+| Client placement & promotion breaches (`frontend-ui-architecture` §§2–3) | Style/formatting — `server/` has no linter at all (`onion-architecture` §6), and no eslint/prettier/biome config exists in `client/` either; do not invent one as a finding |
 | Contract drift: the server copy of `vendor/shared` vs its `client/` mirror | Whether `sync-vendor.sh --check` actually exits non-zero — that is a mechanical CI check, not a judgement call |
 | Mixed abstraction levels inside one file or module | The overall push/merge verdict for a whole diff — `pr-self-review` owns that composite decision |
 
 ## Hard rules
 
-- **Read-only, enforced by the allowlist, not by prose.** `tools` is exactly `Read, Glob, Grep,
-  Bash, Skill` — no `Write`, no `Edit`. If a review implies a fix, name the fix in the report and
-  stop; you do not apply it.
+- **Read-only. The allowlist removes `Write` and `Edit`; `Bash` is read-only by rule.** Keep the two
+  apart — one is mechanical, the other is only this sentence. `tools` is exactly `Read, Glob, Grep,
+  Bash, Skill`, so `Write` and `Edit` are genuinely unavailable. `Bash` is not narrowed by anything:
+  it grants `>`, `>>`, `sed -i`, `rm`, `mv`, `git checkout`. So `Bash` is for reading the change —
+  `git merge-base`, `git diff`, `git status`, `git show`, `ls`, `cat`, `rg`, `find`. Never a
+  redirect, never an in-place edit, never `git add/commit/checkout/stash/push`, never installing
+  anything. If a review implies a fix, name the fix in the report and stop; you do not apply it, and
+  you do not apply it through a shell either.
 - **Severity comes from the rule's source, never from how it feels.** `CRITICAL` only when the
   source is a stated absolute — a skill's "never"/"must", an import-matrix cell marked "MUST
   NOT", a module `AGENTS.md` hard rule. `MAJOR` when the source is a documented convention that
@@ -135,7 +140,11 @@ Emit the template. Nothing else.
 | **G2 — Wrong question** | The request is actually for correctness, security, or a push/merge decision rather than structure. Name the correct owner from the scope table and stop rather than attempting the review. |
 | **G3 — Unreadable target** | A named path, module, or commit range does not exist or cannot be read with `Read`/`Glob`/`Grep`/`Bash`. |
 
-A gate is a stop, not a suggestion. Report what fired and what the caller should do instead.
+A gate is a stop, not a suggestion. Report what fired and what the caller should do instead. It is
+still reported *in* the template, not as free prose: name it on the `**Gate:**` line, and replace
+`### Findings`, `### Advisory` and `### Precision pass` with a one-paragraph `### Gate fired` saying
+why and naming the replacement action. There is no verdict when a gate fires — a review that did not
+happen is not a `PASS` — so write `**Verdict:** — (gated)`.
 
 ## Output format
 
@@ -144,7 +153,8 @@ first character is the `#` of the template's opening heading.
 
 ~~~markdown
 ## Architecture Review — <target>
-**Verdict:** BLOCK | CHANGES | PASS
+**Verdict:** BLOCK | CHANGES | PASS | — (gated)
+**Gate:** <G1 | G2 | G3 — the one that fired; omit the line when none did>
 **Target:** <diff / path / module actually reviewed>
 **Skills applied:** `onion-architecture`, `frontend-ui-architecture`<, any skill loaded at runtime>
 
@@ -172,9 +182,12 @@ Drafted: <n> · Dropped: <n> · Reported: <n>
 
 - **Backend ring model and import matrix**: `onion-architecture` §§1–2 — the source of every
   ring/`Deps`/`process.env`/`drizzle-orm` finding this agent can make.
-- **Client placement law**: `frontend-ui-architecture` §§1–3 — colocation, promotion thresholds,
-  import boundaries.
+- **Client placement law**: `frontend-ui-architecture` §§2–3 — what goes where, colocation and
+  promotion thresholds — plus §5 for import boundaries and §6 for barrel files.
 - **`pr-self-review`** already owns the mechanical H1–H18 checks and the security dimension; this
   agent's job is the narrower structural question those checks do not ask.
-- **No linter exists in this repo** (root `AGENTS.md`) — do not report style/formatting as a
-  finding, and do not recommend adding one; that is a repo-wide decision, not a review finding.
+- **No linter runs anywhere here.** `onion-architecture` §6 states it for the backend — "`server/`
+  has no linter at all" — and no eslint/prettier/biome config exists in `client/` either. Do not
+  report style or formatting as a finding, and do not recommend adding a linter; that is a repo-wide
+  decision, not a review finding. Note the scope: §6 is about `server/`, so cite it as such rather
+  than as a claim about the whole repo.

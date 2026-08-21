@@ -16,12 +16,12 @@ and produces. The rules themselves live in the agent files; do not restate them 
 | Agent | Model | Permissions | Responsibility |
 |-------|-------|-------------|----------------|
 | [researcher](researcher.md) | `sonnet` | Read-only — no `Write`/`Edit`; `Bash` for reading only | Finds information in the project or on the public internet. Returns a structured report with citations, per-finding confidence, an explicit `NOT FOUND` verdict, and a search log. Interviews first when the request is not researchable as written. |
-| [planner](planner.md) | `opus` | Read + `Write` **restricted to `docs/plans/`**; no `Edit` at all; may spawn agents | Turns a request into a Development Plan. Decomposes into tasks with owned paths, governing skills, binding insights, acceptance, red flags and a done-condition command. Writes one file and no code. |
-| [implementer](implementer.md) | `sonnet` | Read-write in the **current checkout**, confined to its task's owned paths; no `Agent` (leaf worker) | Executes **one** task from a plan — backend or frontend. Runs N-up in parallel. Never commits, pushes, or reviews. |
-| [test-writer](test-writer.md) | `sonnet` | Read-write, but confined to test files — never edits the file under test; `tools` includes `Write`, `Edit`, `Bash`, `Skill`, and two Context7 lookup tools | Writes tests for code that already exists, routed by package across five lanes. Every case names the mutation that would break it, and the report shows a verbatim RED run before the GREEN one. |
-| [architecture-reviewer](architecture-reviewer.md) | `opus` | Read-only — `tools` is exactly `Read, Glob, Grep, Bash, Skill`; no `Write`/`Edit` | Judges structure only — ring/import-matrix violations, `Deps` vs `Container`, client placement/promotion breaches, contract drift between server and client. Never correctness, security, or pushability. |
-| [plan-verifier](plan-verifier.md) | `opus` | Read-only — `tools` is `Read, Glob, Grep, Bash, Skill`; no `Write`/`Edit` | Walks a finished plan's `REQ` list against the code and returns one of four fixed verdicts per requirement (`VERIFIED` / `PARTIAL` / `NOT IMPLEMENTED` / `CANNOT VERIFY`). Judges completeness only, never quality or architecture. |
-| [doc-writer](doc-writer.md) | `sonnet` | Read-write, confined to a closed surface — root/`<pkg>` `docs/**`, `<pkg>/specs/**`, `README.md`; `e2e/specs/*.flow.json` carved out | Documents what already exists, converts a finished plan's Goal + Requirements into a durable spec, or structures supplied material into a doc with diagrams — every behavioural claim cites a `path:line` opened this session. |
+| [planner](planner.md) | `opus` | Read + `Write` (confined to `docs/plans/` **by rule**); no `Edit` at all — mechanical, but note `Bash` reopens the same capability, so it is bounded by rule in the file; `Agent` unscoped, so "delegates only to `researcher`/`Explore`" is also **by rule** | Turns a request into a Development Plan. Decomposes into tasks with owned paths, governing skills, binding insights, acceptance, red flags and a done-condition command. Writes one file and no code. |
+| [implementer](implementer.md) | `sonnet` | Read-write in the **current checkout**, confined to its task's owned paths **by rule** (`tools` cannot scope a path); no `Agent` — that one *is* allowlist-enforced, and it is what keeps the graph a tree | Executes **one** task from a plan — backend or frontend. Runs N-up in parallel. Never commits, pushes, or reviews. |
+| [test-writer](test-writer.md) | `sonnet` | Read-write, confined to test files **by rule**; `tools` includes `Write`, `Edit`, `Bash`, `Skill` and two Context7 tools, none of them path-scoped. Temporarily mutates the file under test to prove RED, always reverting | Writes tests for code that already exists, routed by package across five lanes. Every case names the mutation that would break it, and the report shows a verbatim RED run before the GREEN one. |
+| [architecture-reviewer](architecture-reviewer.md) | `opus` | Read-only — no `Write`/`Edit` in `tools`, which is mechanical; `Bash` is present and read-only **by rule** | Judges structure only — ring/import-matrix violations, `Deps` vs `Container`, client placement/promotion breaches, contract drift between server and client. Never correctness, security, or pushability. |
+| [plan-verifier](plan-verifier.md) | `opus` | Read-only — no `Write`/`Edit` in `tools`, which is mechanical; `Bash` is present and read-only **by rule** | Walks a finished plan's `REQ` list against the code and returns one of four fixed verdicts per requirement (`VERIFIED` / `PARTIAL` / `NOT IMPLEMENTED` / `CANNOT VERIFY`). Judges completeness only, never quality or architecture. |
+| [doc-writer](doc-writer.md) | `sonnet` | Read-write, confined **by rule** to a closed surface — root/`<pkg>` `docs/**`, `<pkg>/specs/**`, `README.md`; `e2e/specs/*.flow.json` carved out | Documents what already exists, converts a finished plan's Goal + Requirements into a durable spec, or structures supplied material into a doc with diagrams — every behavioural claim cites a `path:line` opened this session. |
 
 ## Artifacts
 
@@ -79,7 +79,7 @@ Do not upgrade an analogue to an origin by deleting the hedge.
 
 | Source | What it grounds |
 |---|---|
-| [Create custom subagents](https://code.claude.com/docs/en/sub-agents) — official docs | `description` is the **routing rule**, not a summary, so both descriptions open with trigger conditions and literal user phrasings. `tools` is a closed allowlist and is the real enforcement — hence planner-has-no-`Edit` and implementer-has-no-`Agent`. `skills:` preloads deterministically, where description-matching is probabilistic; that is why skills are preloaded rather than gated on the agent remembering to load them. |
+| [Create custom subagents](https://code.claude.com/docs/en/sub-agents) — official docs | `description` is the **routing rule**, not a summary, so both descriptions open with trigger conditions and literal user phrasings. `tools` is a closed allowlist, and it is real enforcement of exactly one thing — **which tools exist** — hence planner-has-no-`Edit` and implementer-has-no-`Agent`. It bounds nothing else; see the `tools` row under "Adding a new agent" before reading more into it. `skills:` preloads deterministically, where description-matching is probabilistic; that is why skills are preloaded rather than gated on the agent remembering to load them. |
 | [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) — Anthropic engineering | Under-specified delegation made parallel subagents duplicate work and leave gaps; every task needs *an objective, an output format, tool guidance, and explicit boundaries.* This is the origin of the task block's five mandatory fields and of the fixed output templates. |
 | [Agent Skills overview](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) · [authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) — official docs | Progressive disclosure and description-writing, which set the cost model that made full preload a deliberate trade rather than an accident. |
 | Community write-ups on parallel agents (medium confidence) | Parallel writers on shared files "will often fight" — split by explicit file ownership. Corroborates the ownership invariant; not its only justification. |
@@ -113,7 +113,8 @@ One `.md` file per agent, named after the agent. Frontmatter keys:
 | `name` | yes | Must match the filename. |
 | `description` | yes | **This is the routing rule** — Claude picks an agent by its description, so write it as trigger conditions ("Use when…", with literal user phrasings), not as a summary. |
 | `model` | no | `sonnet` \| `opus`. Omit to inherit the session model. |
-| `tools` | no | Comma-separated allowlist. **Omitting it grants everything** — always set it explicitly for a read-only agent. The allowlist is the real enforcement; body prose only restates it. |
+| `tools` | no | Comma-separated allowlist. **Omitting it grants everything** — always set it explicitly for a read-only agent. The allowlist is the real enforcement **for which tools exist**, and only that. It cannot be scoped by path: there is no `Write(docs/**)`. So `Bash` and a bare `Write` are wide open by construction — `Bash` alone grants `>`, `sed -i`, `rm`, `git checkout`, which is a superset of `Write` and `Edit`. An agent granted either needs an explicit prose bound (see `researcher.md`, which enumerates what its `Bash` may and may not do), and where the consequence is serious, a `permissions.deny` entry in `.claude/settings.json` — that one *is* mechanical, it beats `allow`, and it reaches subagents, because permission settings and `PreToolUse` hooks both cascade into a subagent's tool calls ([docs](https://code.claude.com/docs/en/sub-agents); documented, never probed here). Three caveats, because this row is where the next author learns the model. Deny is **not hermetic** — it covers the file tools and the file commands Claude Code recognizes in Bash (`cat`, `head`, `tail`, `sed`) but not an arbitrary subprocess, so `node -e "fs.writeFileSync(…)"` still reaches the file; only [the sandbox](https://code.claude.com/docs/en/sandboxing) blocks every process. **Anchor the path with a leading `/`** (`Edit(/.claude/hooks/**)`): a bare pattern resolves against the session's working directory, and this repo tells you to run commands from inside each package, so an unanchored rule in a session started from `server/` protects nothing and says nothing about it. Anchoring is necessary and **not sufficient**: `.claude/settings.json` itself loads from the current working directory's `.claude/` folder with *no parent-directory fallback*, so a session started in `server/` never reads the root file at all — deny block, `PreToolUse` hook and everything else. `.claude/settings.local.json` is the exception; since v2.1.211 it loads from the git repository root either way. **Start Claude Code at the repo root**; the anchor only fixes the case where the file did load. And **write the rule against `Edit`, never `Write`** — Claude Code consults `Edit(path)` and `Read(path)` rules only; a path rule on `Write`, `NotebookEdit`, `MultiEdit` or `Glob` parses, warns at startup, and is then never consulted, while `Edit(path)` already governs all of them. That is the same trap shape as `Agent(researcher, Explore)` below, and this repo shipped it: the first deny block written here carried two dead `Write(...)` rules under a cwd-relative anchor, so it was doubly inert. **Nothing in `tools` scopes anything.** `Agent(researcher, Explore)` was tried here and behaves as a trap: it parses without error, is echoed back in the agent roster as if it took effect, and then permits every subagent type anyway — verified by having a so-scoped planner successfully dispatch an `implementer`. Deny cannot substitute, because deny is session-wide and would block the parent session from that agent type too. Write the restriction as prose and say plainly that it is prose. |
+| `disallowedTools` | no | The denylist counterpart to `tools` — comma-separated, subtracted from whatever the agent would otherwise hold. Useful for "everything except", where an allowlist would have to be re-audited every time the tool set grows. It carries **every limitation of `tools`**: it names tools, not paths, so `disallowedTools: Write(docs/**)` is not a thing, and nothing here is scoped. No agent in this set uses it; the row exists so the next author knows the field is available and knows it buys no scoping. |
 | `skills` | no | YAML list of skills to preload. Preloaded skills must not set `disable-model-invocation: true`. **A name that does not match a directory under `../skills/` fails silently** — nothing preloads, nothing errors, and you find out when the agent ignores a convention it never received. Check the spelling against the directory, not against memory. Note also that setting `tools` makes it a closed allowlist: omit `Skill` from it and the agent cannot load anything at runtime either. |
 
 Body convention, mirroring the skills: `# Title` → one-paragraph role statement → `## Hard rules`
@@ -127,16 +128,78 @@ Two things worth copying from `researcher.md`:
 - **Name your gate conditions** if the agent can refuse or stop early (G1–G4 there). A stop that
   cites which rule fired is debuggable; "I needed more info" is not.
 
-**Agents register at session start.** A newly written or edited agent file is not dispatchable until
-the session restarts — `Agent` fails with "not found" and lists only what existed at startup. Budget
-for that when authoring: you cannot smoke-test an agent in the session that writes it.
+**Assume a new agent needs a restart — but know that the docs disagree, and why.** The
+[docs](https://code.claude.com/docs/en/sub-agents) say Claude Code watches `.claude/agents/` and
+picks up an added or edited file within seconds, with three exceptions that still need a restart: **the watcher only covers directories that existed when
+the session started**, it does not watch `.claude/agents/` under `--add-dir`, and
+`--disable-slash-commands` disables it entirely. Against that, the one observation recorded here is
+the opposite — a newly written agent was not dispatchable and `Agent` failed with "not found",
+listing only what existed at startup.
+
+**This is unresolved.** The likely reconciliation is the first exception: `.claude/agents/` did not
+exist when that session began, so the watcher never covered it, and the general claim was
+over-generalized from that one case. Nobody has re-probed it since the directory became permanent.
+Until someone does, budget for a restart when authoring — the cost of being wrong that way is a
+wasted minute, and the cost the other way is a smoke test that silently ran against a stale
+definition.
 
 Note what this does *not* mean. Authoring a new agent is ordinary work and can be delegated to an
-existing one — only the **dispatch** of the new agent has to wait. And if a new agent turns up in the
-available list mid-session, that means the user restarted, not that the registry is watched; the
-restart is invisible from inside the session, so it is never evidence about how registration works.
+existing one — only the **dispatch** of the new agent might have to wait. And a new agent turning up
+in the available list mid-session is *not* evidence that the registry is watched: the user may have
+restarted, and a restart is invisible from inside the session. To settle it you need a deliberate
+probe — edit an agent file in a session that started with `.claude/agents/` already on disk, then
+dispatch it and check which definition ran.
 
 Finish with the static checks that *are* possible in-session, because two of them fail **silently**:
 a name in `skills:` that does not match a directory under `../skills/` preloads nothing and reports
 nothing, and a `name` that does not match the filename leaves you dispatching something that is not
 there.
+
+## What was actually probed
+
+This set was smoke-tested once, on 2026-08-21, when the four reviewing agents were added. The runs
+are recorded here rather than in the plan that produced them, because a plan is a snapshot of intent
+that gets deleted when the work lands, and this is the only evidence anyone has that these agents do
+what their files claim.
+
+Every claim below was re-checked by the parent session against the tree, not taken from the agent's
+report — **an agent's own account of its work is a claim, not evidence.**
+
+| # | Run | Verdict | What it proved |
+|---|---|---|---|
+| V1 | `implementer` → a Tier B path in a solo wave | `DONE` | The permissive half of `G5`: a Tier B path with `**Parallel:** no` is assignable. Every acceptance box closed by quoted file content — the `n/a` done condition held. |
+| V2 | `implementer` → the existing `implementer.md` | `BLOCKED` / `G5` | The restrictive half: a rule already in force is refused **even though the plan assigned it**. Verified by md5 against a pre-dispatch copy (`75d51fb7…` unchanged), not by `git diff` — `.claude/agents/` was untracked then, so a diff would have been empty unconditionally. |
+| V3 | `architecture-reviewer` → `server/src/modules/repo-intel/` | `BLOCK`, 12 findings | Precision pass is real: 21 drafted → 4 dropped → 17 reported, with a reason per drop. Finding 1 spot-checked true against `service.ts:105`. |
+| V4 | `test-writer` → `reviewer-core/src/grounding.ts` | `DONE`, 8 cases | Genuine mutation testing: each mutation applied, run, captured red, reverted. `git diff -- reviewer-core/src/` empty afterwards; independent `npm test` green at 31/31. |
+| V5 | `doc-writer` → `server/specs/repo-intel.md` | `DONE`, 405 lines | Grounding holds. Independently confirmed its two substantive claims: `repo-intel/README.md:45` is stale (four more methods are wired from `conventions/service.ts`), and `getBlastRadius`/`getUnresolvedReferences` have no callers outside the module. |
+| V6 | `plan-verifier` → the plan that dispatched V1–V5 | `INCOMPLETE` — 7 `VERIFIED`, 1 `PARTIAL` | The most valuable run: it found six defects **in that plan**, all confirmed. It also refused the framing supplied in its own prompt — "a report I cannot open is not evidence I hold" — and graded a requirement `PARTIAL` rather than accept the parent's word. |
+
+**The outputs of V4 and V5 were deleted after the runs.** `reviewer-core/test/grounding.test.ts` and
+`server/specs/repo-intel.md` were real work on real targets — a smoke test given a fake target proves
+nothing — but neither followed from "add four agents", and a diff should describe one change. Do not
+go looking for those two files; the rows describe what happened, not what is on disk.
+
+V3, V4 and V6 each surfaced a defect in the *instructions* they were given, and all three fixes are
+already in the agent files: `[pre-existing]` marking in `architecture-reviewer`, the explicit
+mutate-and-revert exception in `test-writer`, and several corrections to the plan format. The
+itemized table is not reproduced here — it describes edits that have since landed, so the files
+themselves are the better record. Read it at
+`git show b134c28:docs/plans/01-agent-set-expansion.md` §10.
+
+### Harness facts established the hard way
+
+Each of these cost a real run to establish, and the first three are traps — they parse, they look
+like enforcement, they enforce nothing. Do not re-derive them; do re-probe any row marked unproven.
+
+| Claim | Truth |
+|---|---|
+| `tools: Agent(researcher, Explore)` scopes delegation | **FALSE — a trap.** Parses, is echoed back in the agent roster as if applied, restricts nothing. A planner carrying it dispatched an `implementer` in 1.8s. Reverted to flat `Agent`. |
+| `tools:` can scope a path (`Write(docs/**)`) | **FALSE.** No such syntax. Every path confinement in this agent set is prose. |
+| `Bash` in a read-only agent is harmless | **FALSE.** It grants `>`, `sed -i`, `rm`, `git checkout` — a superset of `Write` + `Edit`. "Read-only, enforced by the allowlist" is false for any agent holding it. |
+| `permissions.deny` with paths works | **TRUE, tested.** An `Edit` probe against `.claude/hooks/pr-gate.mjs` returned a permission refusal, not "string not found" — the probe used a deliberately non-matching `old_string`, so the two outcomes were distinguishable. That is the general method: **to test a restriction, ask an agent to do the thing it forbids**, and design the probe so success and failure look different. |
+| A deny rule on `Write(path)` protects the path | **FALSE.** Only `Edit(path)` and `Read(path)` rules are consulted; `Edit` covers the `Write` tool too. See the `tools` row above. |
+| deny is hermetic | **FALSE.** Covers the file tools and recognized Bash file commands (`cat`, `sed`), not an arbitrary subprocess. `node -e "fs.writeFileSync(…)"` gets through. |
+| deny can restrict one agent | **FALSE.** Session-wide — it would block the parent session too. |
+| deny reaches subagents | **TRUE per the docs, unproven here.** Permission settings and `PreToolUse` hooks both cascade into a subagent's tool calls. No probe was run. |
+| Agents register only at session start | **Contradicted by the docs, unresolved here.** See the restart paragraph above. |
+| `user-invocable: false` blocks preloading a skill | **FALSE.** That is `disable-model-invocation: true`. No skill here sets it. |

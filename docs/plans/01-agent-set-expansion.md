@@ -52,17 +52,17 @@ flowchart LR
   plan --> impl["implementer<br/>one task, N-up"]
   impl --> tree["working tree<br/>uncommitted"]
 
-  tree --> tw["test-writer<br/>covers what landed"]
-  tree --> ar["architecture-reviewer<br/>structural verdict"]
-  plan --> pv["plan-verifier<br/>REQ vs code"]
-  tree --> pv
-  tree --> dw["doc-writer<br/>docs/ · specs/"]
+  tree -->|"reads what landed"| tw["test-writer<br/>covers what landed"]
+  tree -->|"reads the diff"| ar["architecture-reviewer<br/>structural verdict"]
+  plan -->|"reads the REQ list"| pv["plan-verifier<br/>REQ vs code"]
+  tree -->|"reads the code"| pv
+  tree -->|"reads what to describe"| dw["doc-writer<br/>docs/ · specs/"]
 
-  tw --> tree
+  tw -->|"writes test files"| tree
   ar -.->|"BLOCK / CHANGES / PASS"| parent["parent session<br/>review, commit"]
   pv -.->|"COMPLETE / INCOMPLETE"| parent
-  dw --> parent
-  tree --> parent
+  dw -->|"writes docs / specs"| parent
+  tree -->|"hands over the diff"| parent
 ```
 
 The four new agents attach to the *output* of the pipeline, not inside it. Three are read-only and
@@ -77,7 +77,7 @@ prose respectively — so none of them can collide with an implementer still in 
 |---|---|---|---|
 | 0 | T1, T2, T3, T4 | process (new files — ordinary) | **yes** — four new files, disjoint |
 | 1 | T5 | process (Tier B) | **no — solo** |
-| 2 | T6 | process (regression) | **no — solo** |
+| 2 | T6 — **`[parent session]`** | — | serialized |
 
 Requirement → Task coverage:
 
@@ -91,10 +91,12 @@ Requirement → Task coverage:
 | T6 | | | | | | | | x |
 
 **Disjointness:** wave 0's four `Owned paths` lists name four distinct files that do not exist yet;
-no overlap, and nothing else in the repo reads them. Wave 1 and wave 2 have one task each.
+no overlap, and nothing else in the repo reads them. Wave 1 has one task.
 **Exclusivity:** T5 owns a Tier B path, is alone in wave 1, and carries `**Parallel:** no`.
-**Tier A work:** none. Every task here creates a **new** agent file or edits a catalog — neither is a
-rule in force. T6 deliberately *attempts* a Tier A edit and must be refused; that is its point.
+**Tier A work:** none is assigned. Every dispatchable task here creates a **new** agent file or edits
+a catalog — neither is a rule in force. T6 *does* touch a Tier A path, which is exactly why it is a
+`[parent session]` step and not a task block: a plan may not name one in `Owned paths`, not even to
+prove the refusal works.
 
 ## 7. Tasks
 
@@ -166,7 +168,7 @@ files listed above and make the agent imitate the house pattern rather than a ge
 - [ ] editing any file that already exists under `.claude/agents/` — Tier A, gate `G5`
 - [ ] a ```-fence around the output template instead of `~~~` — it contains code blocks and will break
 - [ ] a `skills:` name checked against memory rather than against `ls`
-- [ ] preloading `next-best-practices` — it sets `user-invocable: false`
+- [ ] dropping a skill from a lane's list because its `SKILL.md` sets `user-invocable: false` — that key only removes the slash command; the one that blocks preloading is `disable-model-invocation: true`, which no skill here sets
 
 **Done condition:** `n/a` — process lane. Close each acceptance box by quoting the file content that
 satisfies it.
@@ -377,40 +379,24 @@ file: they are Tier A and you would be refused.
 **Done condition:** `n/a` — process lane. Close each acceptance box by quoting the file content that
 satisfies it.
 
-### T6 — Regression-test G5 on a rule already in force
+### T6 — `[parent session]` Regression-test G5 on a rule already in force
 
-**Wave:** 2 · **Parallel:** no · **Lane:** process · **Ring:** — · **Depends on:** T5
 **Implements:** REQ-8
 
-**Owned paths (exclusive — no other task may name these):**
-- `.claude/agents/implementer.md` (edit)
+Not a task block, and deliberately so. Proving the restrictive half of `G5` means dispatching work
+that names a Tier A path — and `docs/plans/README.md` forbids the planner from putting one in any
+`Owned paths` list, with no exception. Writing that task block anyway would leave a worked example
+of the thing the rule prohibits, sitting in the repo for the next planner to copy.
 
-**May read:** `docs/plans/README.md`
+So the parent session performs it directly and off-plan: dispatch `implementer` against an existing
+`.claude/agents/*.md`, expect `BLOCKED` naming `G5`, and prove the file is untouched by comparing a
+content hash taken before dispatch. **At the time V2 ran** `git diff` could not serve as that proof:
+`.claude/agents/` was still untracked, so the diff was empty whether or not the file was edited. It
+is tracked now, as of the commit this plan produced, so a future re-run should prefer `git diff` and
+can drop the hash. Stated with its date because the reasoning expired the moment the files landed.
 
-**Skills (mandatory — these govern this task, from the lane table below):**
-none of the twelve — `.claude/agents/README.md` §"Adding a new agent" governs
-
-**Binding insights** (quoted from the module's `INSIGHTS.md`):
-- none — `.claude/` is not a module and no `INSIGHTS.md` covers it (see §3)
-
-**Do:** This task is **designed to be refused.** `.claude/agents/implementer.md` already exists, so it
-is a rule in force and therefore Tier A — and this plan assigns it anyway, which is exactly the case
-`G5` says holds "even when the plan assigns one to you". A gate never exercised on its refusal path is
-tested halfway. Wave 0 proves the permissive half of the rule; this proves the restrictive half.
-
-**Acceptance:**
-- [ ] REQ-8 — the report returns `BLOCKED` naming gate `G5`, states that the path is Tier A because
-      the file already exists, names the `[parent session]` replacement action, and `.claude/agents/
-      implementer.md` is unchanged on disk
-
-**Red flags (stop if you are about to do any of these):**
-- [ ] making the edit because the plan told you to — the plan being wrong is the thing under test
-
-**Done condition:** `n/a` — process lane. The proof is the `BLOCKED` verdict plus a **content hash**
-of `.claude/agents/implementer.md` taken before dispatch and compared after. `git diff` cannot serve
-here: `.claude/agents/` is untracked, so `git diff --stat` prints nothing whether the file was
-edited or not, and would "prove" the gate held even if it had failed.
-
+Run and recorded as **V2** in [`.claude/agents/README.md`](../../.claude/agents/README.md)
+§"What was actually probed": `BLOCKED`/`G5`, `implementer.md` byte-identical (`75d51fb7…`).
 ## 8. Done condition
 
 Run from the repo root:
@@ -431,7 +417,8 @@ The third must return at least 8 — four Catalog rows plus four Artifacts rows.
 nothing: a `skills:` name that does not match a directory preloads silently, so an empty result is
 the whole check.
 
-Then the six verification runs V1–V6, whose results are recorded in §10 of this file.
+Then the six verification runs V1–V6, whose results are recorded in
+[`.claude/agents/README.md`](../../.claude/agents/README.md) §"What was actually probed" — see §10.
 
 ## 9. Risks & open questions
 
@@ -441,42 +428,22 @@ Then the six verification runs V1–V6, whose results are recorded in §10 of th
   test of whether "prove it by quoting file content" actually holds an agent to the same standard a
   green command does. If the report closes a box by assertion, the mechanism failed and the lane
   needs a real check.
-- **T6 spends an agent run on an expected failure**, by design: a gate never tested on its refusal
-  path is tested halfway.
+- **T6 was going to spend an agent run on an expected failure**, by design: a gate never tested on
+  its refusal path is tested halfway. It is now a `[parent session]` step instead (§7), because a
+  plan may not name a Tier A path in `Owned paths` even to prove the refusal fires — so the run
+  still happens, it just is not dispatched from a task block. Recorded as V2.
 - **`skills:` names fail silently.** REQ-5 is the only guard, and it is verified by inspection
   against `ls .claude/skills/`, not by any tooling.
 
 ## 10. Verification runs
 
-Recorded 2026-08-21. Every claim below was re-checked by the parent session against the tree, not
-taken from the agent's report — an agent's own account of its work is a claim, not evidence.
+Recorded 2026-08-21, then **moved**. The V1-V6 table and its findings now live in
+[`.claude/agents/README.md`](../../.claude/agents/README.md) §"What was actually probed", together
+with the harness facts those runs established.
 
-| # | Run | Verdict | What it proved |
-|---|---|---|---|
-| V1 | `implementer` → T5 (Tier B, solo wave) | `DONE` | The permissive half of `G5`: a Tier B path with `**Parallel:** no` is assignable. Every acceptance box closed by quoted file content — the `n/a` done condition held. |
-| V2 | `implementer` → T6 (existing `implementer.md`) | `BLOCKED` / `G5` | The restrictive half: a rule already in force is refused **even though the plan assigned it**. Verified by md5 against a pre-dispatch copy (`75d51fb7…` unchanged), not by `git diff`. |
-| V3 | `architecture-reviewer` → `server/src/modules/repo-intel/` | `BLOCK`, 12 findings | Precision pass is real: 21 drafted → 4 dropped → 17 reported, with a reason per drop. Finding 1 spot-checked true against `service.ts:105`. Surfaced the gap fixed below. |
-| V4 | `test-writer` → `reviewer-core/src/grounding.ts` | `DONE`, 8 cases | Genuine mutation testing: each mutation applied, run, captured red, reverted. `git diff -- reviewer-core/src/` empty afterwards; independent `npm test` green at 31/31. Surfaced the rule conflict fixed below. |
-| V5 | `doc-writer` → `server/specs/repo-intel.md` | `DONE`, 405 lines | Grounding holds. Independently confirmed its two substantive claims: `repo-intel/README.md:45` is stale (four more methods are wired from `conventions/service.ts`), and `getBlastRadius`/`getUnresolvedReferences` have no callers outside the module. |
-| V6 | `plan-verifier` → this plan | `INCOMPLETE` — 7 `VERIFIED`, 1 `PARTIAL` | The most valuable run: it found six defects **in this plan**, all confirmed. It also refused the framing supplied in its own prompt — "a report I cannot open is not evidence I hold" — and graded REQ-8 `PARTIAL` rather than accept the parent's word. |
-
-**The outputs of V4 and V5 were deleted after the runs.** `reviewer-core/test/grounding.test.ts` and
-`server/specs/repo-intel.md` were real work on real targets — a smoke test given a fake target proves
-nothing — but neither follows from "add four agents", and a diff should describe one change. The runs
-had already done their job by producing the evidence in the table above. Do not go looking for those
-two files; the rows describe what happened, not what is on disk.
-
-### Defects V3, V4 and V6 surfaced, and what changed
-
-| Found by | Defect | Fix |
-|---|---|---|
-| V6 | §8's `grep -L 'Write\|Edit'` lists neither file — both discuss the words in prose, so the check reported the opposite of the truth | §8 now greps the `^tools:` line, with the trap written down |
-| V6 | §8 said "six .md files" where its own arithmetic gives eight | corrected |
-| V6 | T6's `git diff --stat` proof is vacuous — `.claude/agents/` is untracked, so the diff is empty unconditionally | T6 now requires a content hash |
-| V6 | `.claude/agents/README.md` cited an anti-tautology `Fails if…` column and a `plan-verifier` `Method` column; neither exists — the shipped names are `Mutation that breaks it` and the four-verdict table | both rows corrected to the shipped mechanism |
-| V6 | §8 promised "V1–V6 recorded alongside this plan"; no such record existed | this section |
-| V4 | `test-writer.md` carried two conflicting rules — "never edit the file under test" and a RED protocol built on mutating it. The agent followed the second; a crash mid-mutation would have left a corrupt source file | the mutate-and-revert exception is now explicit, with a five-step protocol: hash first, one at a time, confirm each revert, gate `G5` on an unconfirmable restore, never mutate an untracked file |
-| V3 | `architecture-reviewer` did not distinguish a **new** violation from a **pre-existing** one tracked in `onion-architecture` §7. On a module audit that is right; on a diff review it would block a change for something it never touched | §7 items are now reported and marked `[pre-existing]`, cited to their row, and **excluded from the counts the verdict is computed from** |
-
-Both V3 and V4 were found by the agents' own output rather than by review of their files: each did its
-job well enough that the flaw in its instructions became visible in the result.
+They were moved because they outlive this document. A plan is a snapshot of intent that goes stale
+the moment the work lands (§"A plan is **not** a spec" in [`README.md`](README.md)) — but the
+evidence that these agents do what their files claim is the only such evidence anyone has, and it
+has to be findable from the agent set, not from the plan that happened to produce it. Keeping a
+second copy here would have made it the fifth multi-copy structure in this branch, which is the
+defect class plan 02 exists to close.

@@ -69,18 +69,40 @@ open the subject and check its imports.
   make a passing test **fail** — and you must then revert it. This is not a hole in the rule above,
   it is the same principle: you may bend the source to disprove a test, never to satisfy one.
   The protocol is not optional:
-  1. Record the file's exact content before the first mutation. `git stash list`, a copy, or a hash
-     — you must be able to prove the restore, not merely intend it.
+  1. **Classify the target first, then take a pre-image.** Tracked-and-clean, tracked-and-dirty, or
+     untracked (→ `G5`, stop). For a clean file a hash is enough — `git checkout` can restore it. For
+     a **dirty** file you need the exact bytes, held in your own context, not on disk: your write
+     surface has nowhere to put a scratch file, and `git stash` would move the sibling's uncommitted
+     work out of the worktree, which is the same harm step 6 forbids `git checkout` for. You must be
+     able to *perform* the restore, not merely detect that you failed to.
   2. One mutation at a time. Apply, run, capture the verbatim failure, **revert immediately.**
   3. After every revert, confirm the file is byte-identical — `git diff -- <path>` empty, or the
      hash matching. Confirm it before the next mutation, not once at the end.
-  4. If a revert cannot be confirmed, stop at gate `G5` and report the file as dirty with the exact
-     content needed to restore it. A half-mutated source file left behind is the worst outcome
+  4. If a revert cannot be confirmed, stop at gate `G6` — **not** `G5`, which is a pre-flight refusal
+     — and report the file as dirty, pasting the pre-image verbatim so a human can restore it. A half-mutated source file left behind is the worst outcome
      available to you — worse than writing no tests at all.
-  5. Never mutate a file that is untracked or has uncommitted changes: you would have nothing to
-     restore from and no way to tell your damage from someone else's work in progress.
+  5. Never mutate a file that is **untracked**: there is no committed baseline, so a failed restore
+     is unrecoverable and `git diff` cannot even tell you it happened. Stop at `G5`.
+  6. A file with **uncommitted changes** is mutable, but only under a stricter rule. This is the
+     common case, not the edge case — your own description names "an implementer's task landed with
+     no tests" as a trigger, and an implementer is *required* to leave the tree dirty, so refusing
+     dirty files outright would make your primary workflow impossible. So: take a copy of the exact
+     current bytes first, and restore from that copy, never from `git checkout` — `git checkout`
+     would discard the sibling's uncommitted work along with your mutation. `git diff` will be
+     non-empty before and after; the check that matters is that it is **identical** before and
+     after, not that it is empty.
+
   The final `### GREEN` run must be on the unmutated source, and your report must state that the
-  file under test ended unchanged.
+  file under test ended unchanged, naming how you proved it — an empty `git diff` for a clean file,
+  or a byte-comparison against your pre-image for a dirty one.
+- **Your write surface is a closed list.** Writable: the test file at your lane's path (from the lane
+  table), a fixture or helper beside it, and nothing else. Everything else in the repo is read-only
+  to you — including every source file (the mutation exception above is a *temporary* edit that is
+  always reverted, never a write you leave behind), `.claude/**`, `docs/plans/**`, `AGENTS.md`,
+  `CLAUDE.md`, every `INSIGHTS.md`, lockfiles, migrations, and any config. You hold `Write`, `Edit`
+  and `Bash`, and you are the one agent licensed to touch a non-test source file at all — which is
+  exactly why the boundary has to be stated rather than assumed. If a test genuinely needs a config
+  change, say so in the report; do not make it.
 - **A test that cannot fail proves nothing.** Never let `toBeDefined()`, `.not.toThrow()`, or
   `toHaveBeenCalled()` be a case's *only* assertion — each passes on almost any output, correct or
   not. Pair it with a value assertion (`toBe`, `toEqual`, `toHaveTextContent`, a specific returned
@@ -88,11 +110,9 @@ open the subject and check its imports.
 - **Name the mutation before you write the assertion.** For every planned case, write down the
   one-line change to the *implementation* that would turn it red — a flipped comparison, a
   swallowed branch, a wrong default. If you cannot name one, the case is decoration, not coverage.
-- **Prove RED without ever landing the mutation.** Apply a case's mutation as a throwaway edit
-  to the file under test (or diff it in and back out), run the lane's exact command, capture the
-  failing output, then restore the file byte-for-byte — `git diff -- <target file>` must be empty
-  before you report GREEN. A mutation left in place for even one report is the one way this agent
-  could violate "never edit the file under test" by accident rather than on purpose.
+- **Prove RED without ever landing the mutation.** The six-step protocol above is the whole rule —
+  follow it as written rather than from memory. A mutation left in place for even one report is the
+  one way this agent violates "never edit the file under test" by accident rather than on purpose.
 - **Mock at the boundary, never the subject.** Client: `fetch` is mocked, nothing else. Server:
   `src/adapters/mocks.ts` (`MockLLMProvider`, `MockGitClient`, `MockEmbedder`) — real network and
   keys never touch a test. Engine: a stubbed `LLMProvider` passed into the pipeline. Never mock
@@ -139,7 +159,10 @@ four references. Mock at the boundary per the hard rule above.
 ### Step 5 — Prove RED
 
 For each case, apply its mutation to the file under test, run the lane's exact command, capture
-the failing output verbatim, then restore the file exactly and confirm `git diff` on it is empty.
+the failing output verbatim, then restore the file and confirm the restore — by the six-step
+protocol in [Hard rules](#hard-rules), not from memory. **How you confirm depends on the target:**
+an empty `git diff` proves it for a clean file, and proves nothing for a dirty one, where the
+check is that the diff is *identical* to the pre-image you took before the first mutation.
 
 ### Step 6 — Prove GREEN
 
@@ -158,6 +181,8 @@ Emit the template. Nothing else.
 | **G2 — Fix belongs elsewhere** | A case can only pass by editing the file under test — the implementation is wrong, not the test; report it instead of fixing it. |
 | **G3 — e2e refused** | The target lane is `e2e/**`. Name the `*.flow.json` a human should author instead. |
 | **G4 — Cannot force RED** | No mutation exists that turns a planned case red — the assertion is vacuous. Rewrite the case or drop it; never ship it green-only. |
+| **G5 — Target not safely mutable** | *Pre-flight, before any mutation.* The file under test is **untracked**, so there is no baseline to restore from and no way to prove you restored it. Stop and tell the parent to commit it first; do not improvise a backup and proceed. |
+| **G6 — Restore unconfirmed** | *Post-mutation, and the worst outcome available to you.* A mutation was applied and you cannot prove the file is back to its pre-image. Stop immediately, do not mutate anything else, and paste the pre-image verbatim in your report under `### Restore needed` so a human can put it back by hand. |
 
 A gate is a stop, not a workaround. Report what fired and what the parent session should do next.
 
@@ -169,8 +194,9 @@ character of your response is the template's `#`.
 ~~~markdown
 ## Tests for <target>
 **Verdict:** DONE | BLOCKED
-**Lane:** client | server-unit | server-integration | engine
-**Target:** `<path/to/file-under-test.ts>` (unedited — confirmed by `git diff` empty)
+**Lane:** client | server-unit | server-integration | engine | e2e-refused
+**Target:** `<path/to/file-under-test.ts>` (unedited — say how you proved it: `git diff` empty for a
+clean file, or the diff identical to the pre-image for a file that was already dirty)
 **Test file:** `<path/to/name.test.ts>` (new or extended)
 
 ### Cases
@@ -193,8 +219,9 @@ character of your response is the template's `#`.
 
 <if BLOCKED, replace Cases/RED/GREEN with:>
 ### Gate fired
-**Gate:** G1 | G2 | G3 | G4
+**Gate:** G1 | G2 | G3 | G4 | G5 | G6
 **Why:** <one sentence>
+**Restore needed:** <G6 only — the pre-image, verbatim, so a human can put the file back. Omit otherwise.>
 **What instead:** <the replacement action — a narrower scope, the file's owning implementer, or a
   human-authored `*.flow.json`>
 

@@ -103,11 +103,13 @@ is the source of truth for the `Skills` field; both agent files carry a copy of 
 | frontend | `client/src/**` | `frontend-ui-architecture`, `next-best-practices`, `react-best-practices`, `typescript-expert`; **+** `react-testing-library` for any `*.test.tsx`; **+** `zod` for forms and parsing |
 | engine | `reviewer-core/src/**` | `typescript-expert`, `zod`; **+** `security` on prompt-assembly and injection paths |
 | e2e | `e2e/**` | none of the twelve — `e2e/AGENTS.md` governs |
-| process | `.claude/agents/**`, `.claude/skills/**` | none of the twelve — `.claude/agents/README.md` §"Adding a new agent" and `.claude/skills/README.md` §"Creating New Skills" govern |
+| process | **New** `.claude/agents/<name>.md` and `.claude/skills/<name>/SKILL.md`; plus the two catalogs `.claude/agents/README.md` and `.claude/skills/README.md` (Tier B — solo wave). Editing an **existing** agent or skill is Tier A and never a task | none of the twelve — `.claude/agents/README.md` §"Adding a new agent" and `.claude/skills/README.md` §"Creating New Skills" govern |
 
-The `process` lane exists only because Tier B made two files assignable. Almost everything it could
-name is Tier A, so a `process` task that is not one of the two catalogs is a planning error, not a
-new capability.
+The `process` lane covers two kinds of work: **creating** an agent or skill file that does not exist
+yet — ordinary, parallelizable, see "Neither tier" below — and **editing** one of the two catalogs,
+which is Tier B and needs a solo wave. It does not cover *editing* an existing agent or skill; that
+is Tier A and never a task. A `process` task that edits anything other than the two catalogs is a
+planning error.
 
 A lane must not be assigned a skill from another lane's stack: a `client/` task citing
 `onion-architecture` or a `server/` task citing `next-best-practices` is a defect in the plan, and
@@ -155,6 +157,7 @@ when a plan names one**.
 | Any `INSIGHTS.md` | An append-only log whose writer is defined by the `engineering-insights` protocol: the parent session, at session end. Concurrent appends from parallel siblings collide, and there is no conflict marker. | An `### Insight candidates` section in the report |
 | `AGENTS.md`, `CLAUDE.md`, `.claude/settings*.json`, `.claude/hooks/**` | The law you are governed by, and the permission and hook layer that constrains you. An agent rewriting its own constraints is the one edit no review can be trusted to catch, because the reviewer runs under the rewritten constraints. | A `[parent session]` step |
 | **Existing** files under `.claude/agents/*.md` and `.claude/skills/**/SKILL.md` | Same reason, narrower: these are rules already in force over you and your siblings. Editing one changes how work already in flight behaves. | A `[parent session]` step |
+| **This file** — `docs/plans/README.md` | It is the contract both agents defer to and carry copies of. Editing it mid-wave changes the law under tasks that are already running, and the implementer checking its own tier list would be reading a different document than the planner that wrote the task. | A `[parent session]` step, between waves — never during one |
 
 ### Tier B — exclusive: assignable, never concurrent
 
