@@ -8,6 +8,7 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrIntentDetail,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -111,6 +112,42 @@ export function useCreatePrComment(prId: string | null | undefined) {
     mutationFn: (input: CreateCommentInput) =>
       api.post<PrReviewComment>(`/pulls/${prId}/comments`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pr-comments", prId] }),
+  });
+}
+
+// ---- PR intent (why the PR was opened) — get-or-create, cache-first server-side ----
+/**
+ * Get-or-create the PR's intent classification.
+ *
+ * Deliberately a POST inside a `queryFn`, not a GET — do not "fix" this to a GET.
+ * `POST /pulls/:id/intent` is get-or-create and cache-first ON THE SERVER
+ * (REQ-8/REQ-10 of docs/plans/03-intent-layer.md §5.2): a row already exists →
+ * it is returned with zero model calls; no row → exactly one classification.
+ * `GET /pulls/:id/intent` is purely read-only and 404s when no row exists, so a
+ * `GET` here would render an empty card forever for every PR that has never
+ * been reviewed — the exact bug this plan exists to fix. Mounting the card is
+ * what makes the intent exist. `staleTime: Infinity` + no refetch-on-focus keep
+ * a refocus from re-POSTing once the card has its answer for this session.
+ */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.post<PrIntentDetail>(`/pulls/${prId}/intent`, {}),
+    enabled: !!prId,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Force a fresh classification (the re-classify button, and only the button —
+    no auto-refresh exists). Writes straight into the `usePrIntent` cache entry. */
+export function useReclassifyIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<PrIntentDetail>(`/pulls/${prId}/intent`, { force: true }),
+    onSuccess: (data) => {
+      qc.setQueryData(["pr-intent", prId], data);
+    },
   });
 }
 

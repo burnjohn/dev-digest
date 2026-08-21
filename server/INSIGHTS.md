@@ -8,6 +8,14 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-21 — CORRECTS the seed's "not env parsing": secrets have TWO sources, so a `.it` test is not hermetic by default
+`LocalSecretsProvider.get` reads `~/.devdigest/secrets.json` **and** falls back to `process.env`,
+which `platform/config.ts`'s `import 'dotenv/config'` fills from `server/.env`; `config.secretsPath`
+is hardcoded with no env override, so **only `overrides.secrets` closes both channels**. Any `.it`
+test reaching `container.llm(...)` or `container.github()` without it makes real billed calls that
+`catch` blocks swallow — the lane stays green while billing and flaking on timeouts. Use
+`hermeticOverrides()` from `server/test/helpers/overrides.ts`.
+
 ### 2026-08-18 — a prompt in `docs/agent-prompts/` does NOT mean the agent is seeded
 `api-contract-reviewer.md` shipped and was listed in that folder's README while nothing exported it
 from `seed-prompts.ts` or added it to `seedAgents`, so `pnpm db:seed` quietly produced four reviewers

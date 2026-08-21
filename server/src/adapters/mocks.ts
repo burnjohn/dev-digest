@@ -57,11 +57,15 @@ export interface MockLLMOptions {
 }
 
 export class MockLLMProvider implements LLMProvider {
-  readonly id: 'openai' | 'anthropic';
+  // Widened to include 'openrouter' (plan 03-intent-layer.md T6) — the
+  // classifier resolves `review_intent` via `resolveFeatureModel`, whose
+  // registry default is `openrouter`/`deepseek-v4-flash`, so a `.it` test
+  // needs to be able to inject `overrides.llm.openrouter`.
+  readonly id: 'openai' | 'anthropic' | 'openrouter';
   public calls: { method: string; req: unknown }[] = [];
 
   constructor(
-    id: 'openai' | 'anthropic' = 'openai',
+    id: 'openai' | 'anthropic' | 'openrouter' = 'openai',
     private opts: MockLLMOptions = {},
   ) {
     this.id = id;

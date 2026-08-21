@@ -52,8 +52,15 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'review_intent',
     label: 'PR Review · Intent',
     description: 'Derives a PR’s intent and scope before review.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    // Deliberately cheap, and deliberately NOT the reviewing agent's model: the
+    // intent call is one input-heavy / output-tiny classification per review
+    // (title + body + linked issue + plan/spec + file list with hunk headers —
+    // never hunk bodies), so a flagship model buys nothing. `deepseek-v4-flash`
+    // is the same OpenRouter route `onboarding` above already runs on, so it is
+    // proven here rather than merely cheap on paper. Settings → Feature Models
+    // overrides it per workspace.
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'risk_brief',

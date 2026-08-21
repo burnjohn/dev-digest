@@ -1,11 +1,26 @@
-import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest } from '@devdigest/shared';
+import { ClassifyIntentRequest, PrIntentDetail, RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+import type { IntentLogger } from './intent-classifier.js';
+
+/**
+ * Adapt pino's object-first `req.log.info(obj, msg)` to `classifyIntent`'s
+ * message-first `IntentLogger.info(msg, data)` — the two logging conventions
+ * in this codebase (RunLogger vs. Fastify's request logger) don't share a
+ * call shape, so this is a translation, not a cast.
+ */
+function toIntentLogger(base: FastifyBaseLogger): IntentLogger {
+  return {
+    info: (msg, data) => (data !== undefined ? base.info(data, msg) : base.info(msg)),
+    error: (msg, data) => (data !== undefined ? base.error(data, msg) : base.error(msg)),
+  };
+}
 
 /**
  * reviews module.
@@ -13,6 +28,8 @@ import { ReviewService } from './service.js';
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
+ *   GET    /pulls/:id/intent  → PrIntentDetail | 404    → read-only, NEVER classifies (REQ-10)
+ *   POST   /pulls/:id/intent  {force?}                  → get-or-create; force=true re-classifies
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
@@ -130,6 +147,45 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     return service.reviewsForPull(workspaceId, req.params.id);
   });
+
+  // ---- PR intent (plan 03-intent-layer.md T6) ------------------------------
+  // GET is PURELY read-only (REQ-10): 404 when no row exists, and it never
+  // calls the classifier — no prefetch, retry, or stray `curl` can spend a
+  // model call here. No rate limit, matching the other unlimited reads above.
+  app.get(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams, response: { 200: PrIntentDetail } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      const intent = await service.getIntent(workspaceId, req.params.id);
+      if (!intent) throw new NotFoundError('Intent not found');
+      return intent;
+    },
+  );
+
+  // POST is get-or-create: returns the cached row with ZERO model calls when
+  // one exists and `force` is absent/false; `{ force: true }` is the ONLY
+  // path that re-classifies (D2 — the button, and only the button). Rate
+  // limited like POST /pulls/:id/review — it can spend money.
+  app.post(
+    '/pulls/:id/intent',
+    {
+      schema: { params: IdParams, body: ClassifyIntentRequest, response: { 200: PrIntentDetail } },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      // Previously passed NO logger at all, so composition went unlogged on
+      // this — the get-or-create-on-mount — path, the most common way intent
+      // classification actually runs. One correlation id per POST here too,
+      // matching the run-executor's "one per invocation" contract.
+      return service.getOrClassifyIntent(workspaceId, req.params.id, {
+        force: req.body.force === true,
+        log: toIntentLogger(req.log),
+        correlationId: randomUUID(),
+      });
+    },
+  );
 
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {

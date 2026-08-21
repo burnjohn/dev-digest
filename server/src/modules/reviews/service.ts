@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { FindingActionKind, PrIntentDetail, RunEventKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -7,6 +7,10 @@ import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
+import type { StoredIntent } from './repository/pull.repo.js';
+import { resolveFeatureModel } from '../_shared/feature-models.js';
+import { classifyIntent, type IntentLogger } from './intent-classifier.js';
+import { loadDiff } from './diff-loader.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -33,7 +37,13 @@ export class ReviewService {
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
-    this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
+    // `this` satisfies run-executor's `IntentProvider` structurally (it has a
+    // `getOrClassifyIntent` method below) — passed so the executor's pre-work
+    // step and this service's own routes go through the SAME function
+    // (REQ-8/D4). `getOrClassifyIntent` is a prototype method, so it is safe
+    // to hand out here even though other instance fields above are still
+    // being assigned.
+    this.executor = new ReviewRunExecutor(container, this.repo, this.agents, this);
   }
 
   // ===========================================================================
@@ -175,5 +185,90 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  // ===========================================================================
+  // PR intent (plan 03-intent-layer.md T6) — REQ-8/D4: this is the ONLY place
+  // classification is triggered. Both entry points — the routes below and the
+  // run-executor's pre-work step (which receives `this` as its
+  // `IntentProvider`) — call this SAME function, so "at most once per PR
+  // lifetime" is a property of the code, not two call sites that happen to
+  // agree.
+  // ===========================================================================
+
+  /**
+   * Cache-first: a stored row (and `force !== true`) returns immediately with
+   * ZERO model calls (REQ-8). Tenancy is always checked via `getPull` first —
+   * cheap DB reads, never a model call — before the cache is even consulted,
+   * so a cache hit still enforces workspace scoping.
+   */
+  async getOrClassifyIntent(
+    workspaceId: string,
+    prId: string,
+    // `log` is deliberately `IntentLogger` (message-first `info`/`error`),
+    // NOT the concrete `RunLogger` class — `IntentProvider.getOrClassifyIntent`
+    // (run-executor.ts) still types this param as `RunLogger`, and a real
+    // `RunLogger` instance structurally satisfies the narrower `IntentLogger`
+    // too, so the run-executor call site is untouched. This widening is what
+    // lets `POST /pulls/:id/intent` (routes.ts) — which has no `RunLogger`,
+    // only pino's object-first `req.log` — pass in a small adapter instead.
+    opts: { force?: boolean; log?: IntentLogger; correlationId?: string } = {},
+  ): Promise<PrIntentDetail> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const existing = await this.repo.getIntent(prId);
+    if (existing && opts.force !== true) {
+      return this.toPrIntentDetail(prId, existing);
+    }
+
+    const repoRow = await this.repo.getRepo(pull.repoId);
+    if (!repoRow) throw new NotFoundError('Repo not found');
+
+    const diff = await loadDiff(this.container, this.repo, workspaceId, pull, repoRow);
+    const model = await resolveFeatureModel(this.container, workspaceId, 'review_intent');
+
+    // `this.container` structurally satisfies `IntentClassifierDeps`
+    // (server/INSIGHTS.md, 2026-08-15 — Container satisfies an explicit Deps
+    // interface with no wrapper needed): `llm`/`github` stay lazy resolvers,
+    // `git`/`tokenizer` match by shape.
+    const classified = await classifyIntent(this.container, {
+      repoRef: { owner: repoRow.owner, name: repoRow.name },
+      pull: { title: pull.title, body: pull.body },
+      diff,
+      model,
+      log: opts.log,
+      correlationId: opts.correlationId,
+    });
+
+    const generatedAt = new Date();
+    await this.repo.upsertIntent(prId, classified, { model: model.model, generatedAt });
+
+    return this.toPrIntentDetail(prId, { ...classified, model: model.model, generatedAt });
+  }
+
+  /** REQ-10 — purely read-only: 404s via `undefined` when no row exists, and
+   *  NEVER classifies. No branch here can spend a model call. */
+  async getIntent(workspaceId: string, prId: string): Promise<PrIntentDetail | undefined> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const existing = await this.repo.getIntent(prId);
+    return existing ? this.toPrIntentDetail(prId, existing) : undefined;
+  }
+
+  /** `StoredIntent.generatedAt` is a `Date` (T2's integrator note) — the wire's
+   *  `PrIntentDetail.generated_at` wants an ISO string; assembling that
+   *  conversion is this service's job, not the repository's. */
+  private toPrIntentDetail(prId: string, stored: StoredIntent): PrIntentDetail {
+    return {
+      pr_id: prId,
+      intent: stored.intent,
+      in_scope: stored.in_scope,
+      out_of_scope: stored.out_of_scope,
+      confidence: stored.confidence,
+      sources: stored.sources,
+      model: stored.model,
+      generated_at: stored.generatedAt.toISOString(),
+    };
   }
 }

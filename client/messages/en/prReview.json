@@ -118,5 +118,17 @@
       "ariaWarning": "{count, plural, one {# warning finding} other {# warning findings}}",
       "ariaSuggestion": "{count, plural, one {# suggestion finding} other {# suggestion findings}}"
     }
+  },
+  "overview": {
+    "description": "Description"
+  },
+  "intent": {
+    "title": "Intent",
+    "recompute": "Recompute",
+    "errorBody": "Couldn’t classify this PR’s intent.",
+    "retry": "Retry",
+    "confidence": "{level, select, low {low confidence} medium {medium confidence} high {high confidence} other {{level} confidence}}",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope"
   }
 }

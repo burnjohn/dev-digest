@@ -1,13 +1,31 @@
+import { randomUUID } from 'node:crypto';
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { PrIntentDetail, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
+import { approxTokens } from '../../adapters/tokenizer/index.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { selectSkillBodies, taskLine } from './helpers.js';
+import { intentPromptBlock, selectSkillBodies, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+
+/**
+ * The minimal surface `ReviewRunExecutor` needs from `ReviewService` for PR
+ * intent (plan 03-intent-layer.md T6). A structural interface — NOT an
+ * import of `ReviewService` — so this file stays free of a runtime cycle with
+ * `service.ts` (which already imports `ReviewRunExecutor`). `ReviewService`
+ * satisfies this with no wrapper: it has a `getOrClassifyIntent` method of
+ * this exact shape.
+ */
+export interface IntentProvider {
+  getOrClassifyIntent(
+    workspaceId: string,
+    prId: string,
+    opts?: { force?: boolean; log?: RunLogger; correlationId?: string },
+  ): Promise<PrIntentDetail>;
+}
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -45,6 +63,7 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
+    private intentProvider: IntentProvider,
   ) {}
 
   /**
@@ -59,6 +78,15 @@ export class ReviewRunExecutor {
     jobs: { agent: AgentRow; runId: string }[],
     logger?: Logger,
   ): Promise<void> {
+    // One correlation id per `executeRuns` invocation (NOT per agent run) —
+    // the only scalar that spans the shared pre-work (diff + intent) AND every
+    // per-agent reviewer line, so one review invocation can be grepped out of
+    // stdout without an array-contains join on `runIds`. Seeded into the
+    // RunLogger's base ctx (mirrored to every child via `forRun`'s spread) and
+    // ALSO passed explicitly in each structured log payload below, since the
+    // ctx merge only reaches the pino stdout mirror, never the SSE `data`.
+    const correlationId = randomUUID();
+
     // ONE logger fanned out over every queued run: shared pre-work (diff +
     // intent) is streamed into each target agent's Live Log and persisted into
     // each run's trace. Per-agent work below narrows it to a single run.
@@ -66,7 +94,7 @@ export class ReviewRunExecutor {
       this.container.runBus,
       jobs.map((j) => j.runId),
       logger,
-      { prId: pull.id },
+      { prId: pull.id, correlationId },
     );
 
     // Pre-work failure (e.g. diff load) fails EVERY queued run. The error was
@@ -104,6 +132,39 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // ---- PR intent (plan 03-intent-layer.md T6, REQ-7) ---------------------
+    // Cache-first via the SAME service function GET/POST /pulls/:id/intent
+    // use (REQ-8/D4): a PR whose intent already exists costs nothing here, and
+    // a multi-agent run classifies at most once. This step must NEVER fail
+    // the run — model resolution, LLM error, and persistence failures are all
+    // covered (`getOrClassifyIntent`'s own DB reads/writes and
+    // `resolveFeatureModel` are the parts NOT already caught inside
+    // `classifyIntent`, which never throws). Contrast this deliberately with
+    // the linked-skills block in `runOneAgent`, which IS allowed to throw:
+    // skills are the user's own instructions; intent is enrichment. A silent
+    // fail-open would hide a feature that never ran (server/INSIGHTS.md,
+    // 2026-08-17), so the degradation is logged explicitly, not swallowed.
+    let intent: string | undefined;
+    try {
+      const detail = await runLog.step(
+        'Deriving PR intent',
+        () =>
+          this.intentProvider.getOrClassifyIntent(workspaceId, pull.id, {
+            force: false,
+            log: runLog,
+            correlationId,
+          }),
+        { kind: 'tool' },
+      );
+      intent = intentPromptBlock(detail);
+      runLog.info(
+        `Intent composed: confidence=${detail.confidence}, ${detail.in_scope.length} in-scope item(s), ` +
+          `${detail.out_of_scope.length} out-of-scope item(s), ${intent.length} char(s)`,
+      );
+    } catch (err) {
+      runLog.error(`Failed to derive PR intent — continuing without it: ${(err as Error).message}`);
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +172,17 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          correlationId,
+          intent,
+        );
         logger?.info(
           {
             runId,
@@ -143,6 +214,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    correlationId: string,
+    intent?: string,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -252,6 +325,11 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // T6 — the declared PR intent (untrusted, delimiter-wrapped). Same
+        // omit-when-empty contract: a run whose intent step degraded (or
+        // whose intent is empty) assembles a prompt identical to today's
+        // (REQ-11).
+        ...(intent ? { intent } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -260,6 +338,65 @@ export class ReviewRunExecutor {
         },
       });
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
+
+      // ---- Safe, structured prompt-assembly log (metadata only) -------------
+      // Names/refs/statuses/model ids/integer lengths — NEVER content. Never
+      // logged: any `outcome.assembly.*` string value, `task`, `diff.raw`, or
+      // `pull.body` — only `.length` of each is measured, then the text is
+      // discarded (never placed on the log object). See the privacy invariant
+      // in this module's owning plan (06-prompt-logging).
+      //
+      // Two honesty caveats, encoded in the DATA (not only in this comment):
+      //   1. `system`'s `source` label states inline whether it includes the
+      //      injection guard / scope directive, so its length is understood to
+      //      over-report the agent's own systemPrompt.
+      //   2. Under map-reduce, `outcome.assembly` is the WHOLE-DIFF assembly —
+      //      never sent to the model as-is (real calls are per-chunk, and only
+      //      `diff`/`user` vary across chunks; every other slot is identical).
+      //      `mode` + `chunks` are logged alongside so a reader can multiply.
+      const assembly = outcome.assembly;
+      const sectionText: Record<string, string> = {
+        system: assembly.system,
+        skills: assembly.skills ?? '',
+        memory: assembly.memory ?? '',
+        specs: assembly.specs ?? '',
+        repo_map: assembly.repo_map ?? '',
+        callers: assembly.callers ?? '',
+        pr_description: assembly.pr_description ?? '',
+        intent: assembly.intent ?? '',
+        task,
+        diff: diff.raw,
+        user: assembly.user,
+      };
+      const sectionSource: Record<string, string> = {
+        system: `agent systemPrompt + INJECTION_GUARD${intent ? ' + SCOPE_DIRECTIVE' : ''}`,
+        skills: 'linked skills',
+        memory: 'retrieval',
+        specs: 'retrieval',
+        repo_map: 'repo-intel',
+        callers: 'repo-intel',
+        pr_description: 'PR body',
+        intent: 'pr_intent',
+        task: 'local',
+        diff: 'diff.raw',
+        user: 'joined user message',
+      };
+      const sections = Object.entries(sectionText).map(([name, text]) => ({
+        name,
+        source: sectionSource[name]!,
+        chars: text.length,
+        tokens: approxTokens(text),
+      }));
+      runLog.info('Prompt composed', {
+        correlationId,
+        runId,
+        agent: agent.name,
+        provider: agent.provider,
+        model: agent.model,
+        mode: outcome.mode,
+        chunks: outcome.chunks.length,
+        sections,
+      });
 
       const keptFindings = outcome.review.findings;
 

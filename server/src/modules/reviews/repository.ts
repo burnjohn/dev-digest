@@ -1,6 +1,6 @@
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
+import type { Finding, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
@@ -127,11 +127,20 @@ export class ReviewRepository {
 
   // ---- intent -------------------------------------------------------------
 
-  upsertIntent(prId: string, intent: Intent): Promise<void> {
-    return pullRepo.upsertIntent(this.db, prId, intent);
+  /**
+   * Both parameter types are DERIVED from the free function rather than
+   * restated — see the `completeAgentRun` comment below for why a restated
+   * type on this façade is a bug waiting to happen (INSIGHTS.md, 2026-08-09).
+   */
+  upsertIntent(
+    prId: string,
+    intent: Parameters<typeof pullRepo.upsertIntent>[2],
+    meta: Parameters<typeof pullRepo.upsertIntent>[3],
+  ): Promise<void> {
+    return pullRepo.upsertIntent(this.db, prId, intent, meta);
   }
 
-  getIntent(prId: string): Promise<Intent | undefined> {
+  getIntent(prId: string): ReturnType<typeof pullRepo.getIntent> {
     return pullRepo.getIntent(this.db, prId);
   }
 

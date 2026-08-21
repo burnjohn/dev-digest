@@ -120,6 +120,13 @@
       "when": 1787063035112,
       "tag": "0016_skill_version_message",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787336768877,
+      "tag": "0017_careless_serpent_society",
+      "breakpoints": true
     }
   ]
 }

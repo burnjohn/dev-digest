@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
+import { hermeticOverrides } from './helpers/overrides.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
@@ -114,13 +115,13 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     return buildApp({
       config: config(),
       db: pg.handle.db,
-      overrides: {
+      overrides: hermeticOverrides({
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
         llm: {
           [provider]: new MockLLMProvider(provider, { structured }),
         },
-      },
+      }),
     });
   }
 
