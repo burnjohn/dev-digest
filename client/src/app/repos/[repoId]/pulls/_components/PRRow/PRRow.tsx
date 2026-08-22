@@ -10,6 +10,7 @@ import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
 import { RunCostBadge } from "../RunCostBadge/RunCostBadge";
+import { FindingsSeverityBadge } from "../FindingsSeverityBadge/FindingsSeverityBadge";
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const t = useTranslations("prReview");
@@ -61,6 +62,14 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
       </div>
       <div>
         <RunCostBadge cost={pr.cost} />
+      </div>
+      <div>
+        <FindingsSeverityBadge
+          prId={pr.id ?? ""}
+          critical={pr.findings_critical}
+          warning={pr.findings_warning}
+          suggestion={pr.findings_suggestion}
+        />
       </div>
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
     </div>

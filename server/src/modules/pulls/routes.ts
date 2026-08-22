@@ -129,17 +129,29 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest completed agent_run COST per PR. One IN-query; JS grouping.
-    const latestCostByPr = new Map<string, number | null>();
+    // Latest completed agent_run stats per PR (cost + severity counts). One IN-query; JS grouping.
+    type LatestRunStats = { cost: number | null; critical: number | null; warning: number | null; suggestion: number | null };
+    const latestRunByPr = new Map<string, LatestRunStats>();
     if (prIds.length > 0) {
       const runRows = await container.db
-        .select({ prId: t.agentRuns.prId, cost: t.agentRuns.cost })
+        .select({
+          prId: t.agentRuns.prId,
+          cost: t.agentRuns.cost,
+          critical: t.agentRuns.findingsCritical,
+          warning: t.agentRuns.findingsWarning,
+          suggestion: t.agentRuns.findingsSuggestion,
+        })
         .from(t.agentRuns)
         .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
         .orderBy(desc(t.agentRuns.ranAt));
       for (const rv of runRows) {
-        if (rv.prId && !latestCostByPr.has(rv.prId)) {
-          latestCostByPr.set(rv.prId, rv.cost != null ? Number(rv.cost) : null);
+        if (rv.prId && !latestRunByPr.has(rv.prId)) {
+          latestRunByPr.set(rv.prId, {
+            cost: rv.cost != null ? Number(rv.cost) : null,
+            critical: rv.critical,
+            warning: rv.warning,
+            suggestion: rv.suggestion,
+          });
         }
       }
     }
@@ -168,7 +180,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
-        cost: latestCostByPr.get(r.id),
+        cost: latestRunByPr.get(r.id)?.cost,
+        findings_critical: latestRunByPr.get(r.id)?.critical ?? null,
+        findings_warning: latestRunByPr.get(r.id)?.warning ?? null,
+        findings_suggestion: latestRunByPr.get(r.id)?.suggestion ?? null,
       };
     });
   });
