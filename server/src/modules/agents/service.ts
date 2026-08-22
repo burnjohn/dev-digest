@@ -138,7 +138,7 @@ export class AgentsService {
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order, enabled: l.enabled ?? true }));
   }
 
   /**

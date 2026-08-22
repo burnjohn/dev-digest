@@ -16,7 +16,7 @@
     { "idx": 11, "version": "7", "when": 1785610953328, "tag": "0011_overconfident_ulik",          "breakpoints": true },
     { "idx": 12, "version": "7", "when": 1785955369316, "tag": "0012_oval_the_hand",               "breakpoints": true },
     { "idx": 13, "version": "7", "when": 1786207706663, "tag": "0013_cloudy_exiles",               "breakpoints": true },
-    { "idx": 14, "version": "7", "when": 1781473551344, "tag": "0014_solid_baron_zemo",            "breakpoints": true },
-    { "idx": 15, "version": "7", "when": 1781741443959, "tag": "0015_far_stryfe",                  "breakpoints": true }
+    { "idx": 14, "version": "7", "when": 1786300000000, "tag": "0014_solid_baron_zemo",            "breakpoints": true },
+    { "idx": 15, "version": "7", "when": 1786400000000, "tag": "0015_far_stryfe",                  "breakpoints": true }
   ]
 }
