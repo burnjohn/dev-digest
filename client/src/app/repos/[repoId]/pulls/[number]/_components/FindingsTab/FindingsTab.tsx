@@ -17,6 +17,18 @@ interface FindingsTabProps {
   reviewRunning: boolean;
   lethalTrifecta: FindingRecord[];
   runs: ReviewRecord[];
+  /**
+   * REQ-35: whether the reviews query has actually LOADED —
+   * `usePrReviews(...).isSuccess`, never `!isLoading`. A query that hasn't
+   * landed yet, or is retrying after a failure, is neither loading nor
+   * successful; gating on `isLoading` alone misses that retry case. While
+   * this is false, an empty `runs` array must not be read as "no findings" —
+   * the resolution effect below returns before the degrade branch, so a
+   * `?finding=<id>` pasted into a cold cache survives until the real data
+   * lands instead of being stripped from the URL. Defaults to `true` so
+   * existing callers (and most tests) keep testing the already-loaded case.
+   */
+  runsLoaded?: boolean;
   prRuns: RunSummary[] | undefined;
   prCommits: PrCommit[];
   cancelMutation: UseMutationResult<any, any, string, any>;
@@ -87,6 +99,7 @@ export function FindingsTab({
   reviewRunning,
   lethalTrifecta,
   runs,
+  runsLoaded = true,
   prRuns,
   prCommits,
   cancelMutation,
@@ -146,6 +159,10 @@ export function FindingsTab({
 
   React.useEffect(() => {
     if (!targetFindingId) return;
+    // REQ-35: a not-yet-loaded (or retrying) reviews query must not be read
+    // as "no findings" — wait for a POSITIVE loaded signal before the
+    // degrade branch below can fire or strip `?finding=` from the URL.
+    if (!runsLoaded) return;
     const resolved = resolveTargetFinding(runs, targetFindingId);
 
     if (!resolved) {
@@ -179,7 +196,7 @@ export function FindingsTab({
     }
     setTargetFinding((p) => (p?.id === resolved.finding.id ? p : { id: resolved.finding.id, n: (p?.n ?? 0) + 1 }));
     onTargetResolvedRef.current?.(resolved.finding.id);
-  }, [targetFindingId, runs]);
+  }, [targetFindingId, runs, runsLoaded]);
 
   // Per-run findings for the timeline severity indicators. Keyed by run_id
   // (ReviewRecord.run_id === RunSummary.run_id), non-dismissed. The timeline

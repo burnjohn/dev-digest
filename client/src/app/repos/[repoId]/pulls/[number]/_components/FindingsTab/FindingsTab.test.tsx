@@ -89,13 +89,14 @@ function mkRunSummary(o: Partial<RunSummary> & Pick<RunSummary, "run_id">): RunS
   };
 }
 
-function renderTab(
+function tabJsx(
   runs: ReviewRecord[],
   targetFindingId: string | null,
   onTargetResolved: (id: string | null) => void = vi.fn(),
   prRuns: RunSummary[] = [],
+  runsLoaded: boolean = true,
 ) {
-  return render(
+  return (
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
       <FindingsTab
         prId="pr1"
@@ -103,6 +104,7 @@ function renderTab(
         reviewRunning={false}
         lethalTrifecta={[]}
         runs={runs}
+        runsLoaded={runsLoaded}
         prRuns={prRuns}
         prCommits={[]}
         cancelMutation={{ mutate: vi.fn(), isPending: false } as any}
@@ -112,8 +114,18 @@ function renderTab(
         targetFindingId={targetFindingId}
         onTargetResolved={onTargetResolved}
       />
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+function renderTab(
+  runs: ReviewRecord[],
+  targetFindingId: string | null,
+  onTargetResolved: (id: string | null) => void = vi.fn(),
+  prRuns: RunSummary[] = [],
+  runsLoaded: boolean = true,
+) {
+  return render(tabJsx(runs, targetFindingId, onTargetResolved, prRuns, runsLoaded));
 }
 
 describe("FindingsTab — targetFindingId resolution (REQ-18/19/25/26)", () => {
@@ -216,12 +228,40 @@ describe("FindingsTab — targetFindingId resolution (REQ-18/19/25/26)", () => {
     expect(screen.getByText("The newest run's finding")).toBeInTheDocument();
   });
 
-  it("REQ-19 — degrades quietly when there are no runs at all", () => {
+  it("REQ-19 — degrades quietly when there are no runs at all, once the reviews query has genuinely loaded", () => {
+    // `runsLoaded: true` is the point of this rewrite (REQ-35 — this test
+    // used to pass by accident, because the resolution effect ran before
+    // `runsLoaded` existed and could not tell "loading" from "loaded and
+    // truly empty" apart). Passed explicitly even though it's the default,
+    // so the case under test is unambiguous.
     const onResolved = vi.fn();
-    renderTab([], "anything", onResolved);
+    renderTab([], "anything", onResolved, [], true);
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(onResolved).toHaveBeenCalledWith(null);
+  });
+
+  it("REQ-35 — a not-yet-loaded (or retrying) reviews query must NOT degrade the target away; it resolves and highlights once the real runs land", () => {
+    const onResolved = vi.fn();
+    const { rerender, container } = renderTab([], "f-new", onResolved, [], false);
+
+    // Cold cache: `runs` is `[]` only because the query hasn't landed yet —
+    // this must NOT be read as "no findings".
+    expect(onResolved).not.toHaveBeenCalled();
+    expect(screen.queryByText("Landed after cold load")).not.toBeInTheDocument();
+
+    const NEW_REVIEW = mkReview({
+      id: "review-new",
+      run_id: "run-new",
+      created_at: "2026-08-05T00:00:00.000Z",
+      findings: [mkFinding({ id: "f-new", review_id: "review-new", title: "Landed after cold load" })],
+    });
+    rerender(tabJsx([NEW_REVIEW], "f-new", onResolved, [], true));
+
+    expect(onResolved).toHaveBeenCalledWith("f-new");
+    expect(screen.getByText("Landed after cold load")).toBeInTheDocument();
+    const card = container.querySelector('[data-finding-id="f-new"]');
+    expect(card).toHaveAttribute("data-highlighted", "true");
   });
 
   it("REQ-25 — a finding whose only key-match is dismissed is unresolvable", () => {

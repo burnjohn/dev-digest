@@ -2182,3 +2182,153 @@ feature that shares the channel); scrolling on every render while `expanded` is 
 keyed on the rAF id (see the binding insight); using `scrollIntoView` without the optional-call `?.`
 that keeps jsdom from crashing.
 **Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+### T16 — The deep link must survive a cold load; the scroll memory must find its container
+**Wave:** 7 · **Parallel:** no · **Lane:** frontend · **Depends on:** T14, T15
+**Implements:** REQ-35, REQ-36
+
+> **REQ-35** — `?finding=<id>` is resolved only once the reviews query has actually loaded. A
+> not-yet-loaded (or retrying) query never triggers REQ-19's degrade path and never strips the param
+> from the URL. A link pasted into a cold cache lands on its card.
+>
+> **REQ-36** — `useTabScrollMemory` binds to the real scroll container even though its sentinel is
+> absent on the first commit, so REQ-24 holds in a browser and not only in jsdom.
+
+**Found by `pr-self-review` on `e90b47c` — the gate that blocked the push.** Both defects passed the
+full test suite, `architecture-reviewer` and a COMPLETE 34/34 `plan-verifier` verdict.
+
+**REQ-35 (the CRITICAL).** `FindingsTab.tsx:147-182` reads an empty `runs` array as proof the id is
+unresolvable. `page.tsx:40` builds `isLoading` from `usePulls`/`usePullDetail` only — `usePrReviews`
+(line 41) is not in it — and `page.tsx:108` is `const runs = reviews ?? []`. So on the first render
+where `FindingsTab` mounts, `runs` is `[]`, the degrade branch fires `onTargetResolved(null)`, and
+`page.tsx` strips `?finding=` via `router.replace`. When the reviews land the effect re-runs with
+`targetFindingId === null` and early-returns: the target is gone for good and the shareable URL has
+been rewritten. Only the in-app chip click survives, because its cache is already warm.
+`FindingsTab.test.tsx:219` currently **pins this broken behaviour** — that test must change.
+
+**REQ-36.** `use-tab-scroll-memory.ts:39-46` — the hook is called unconditionally (correct) but the
+sentinel div renders only in `page.tsx`'s success branch. The first commit is the `isLoading` branch,
+so `findScrollContainer(null)` skips its ancestor walk and returns `document.scrollingElement`; the
+`if (!containerRef.current)` guard caches that forever. Both the restore and the listener end up on
+`<html>`, which never scrolls in this shell. Confirmed in a live browser: switching tabs left
+`main.scrollTop` at the clamped value instead of the 0 the hook would have written.
+
+**Owned paths (exclusive):**
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.test.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_lib/use-tab-scroll-memory.ts` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_lib/use-tab-scroll-memory.test.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/page.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/page.test.tsx` (edit)
+
+**Skills:** `react-best-practices`, `react-testing-library`, `next-best-practices`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-22 (an rAF guard keyed on the rAF return value
+deadlocks under a synchronous stub — the existing `pending` boolean is correct, keep it) and
+2026-08-18 (verify through the RTL lane, never the Browser pane).
+
+**Do:**
+1. Thread the reviews query's loaded state from `page.tsx` into `FindingsTab` (e.g. `runsLoaded`
+   from `usePrReviews(...).isSuccess`) and return from the resolution effect **before** the degrade
+   branch while it is false. Keep the existing empty-`runs` branch for the genuinely-loaded-and-empty
+   case — REQ-19 must still hold once the data is known to be complete.
+2. In `use-tab-scroll-memory.ts`, only cache the resolved container when it came from a real ancestor
+   walk (`if (!containerRef.current && sentinelRef.current) …`), and let the listener effect
+   re-attach once the real container appears rather than binding once on mount with `[]` deps.
+   Do not edit `AppFrame` — that rejection stands (§5.6).
+
+**Acceptance:**
+- [ ] REQ-35 — mounting with `runs=[]` and not-loaded does **not** call `onTargetResolved`; a
+      rerender with the real runs then resolves and highlights the target
+- [ ] REQ-35 — `FindingsTab.test.tsx:219`'s "no runs at all" case is rewritten to pass `runsLoaded`
+      true, so it covers the real empty case instead of the loading one
+- [ ] REQ-35 — a page-level test proves `?finding=` is NOT stripped while reviews are loading
+- [ ] REQ-36 — a harness whose sentinel is **absent on the first render** and appears on a rerender
+      still restores the offset; this is the case the current test cannot express
+- [ ] REQ-24 and REQ-19 both still hold, with their existing tests passing
+
+**Must not:** edit `AppFrame`; change the two-step resolver or the highlight; widen the fix to other
+pages' `router.replace` calls.
+**Red flags:** gating on `isLoading` instead of a positive loaded signal (a retrying query is neither
+loading nor successful, and the failed case is the deterministic half of the bug); leaving the old
+test asserting the broken behaviour; re-resolving the container on every render instead of caching it
+once it is genuinely found.
+**Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+### T17 — A tab switch must not overwrite the outgoing tab's remembered offset
+**Wave:** 8 · **Parallel:** no · **Lane:** frontend · **Depends on:** T16
+**Implements:** REQ-37
+
+> **REQ-37** — Scroll offsets are recorded only from genuine user scrolling. The clamp and the
+> programmatic restore that a tab switch causes never write to the offsets map, so returning to a tab
+> lands on the position the user actually left.
+
+**Measured in a live browser after T16, not inferred.** T16 fixed the container resolution (REQ-36),
+which is confirmed: switching to Agent Runs now writes `0` where the old code left the clamped value.
+That exposed the next layer — `diff` scrolled to 2400 → switch away → switch back gives **0**, not
+2400. REQ-24 is still unmet in a browser while its jsdom test passes.
+
+**Mechanism.** `use-tab-scroll-memory.ts`'s listener records
+`offsets[activeTabRef.current] = container.scrollTop` from an rAF callback. A tab switch fires two
+scroll events in quick succession: the browser clamps `scrollTop` when the outgoing tab's taller
+content unmounts, then the layout effect writes the incoming tab's offset. Both coalesce into one rAF
+callback — and rAF callbacks run **before** React flushes passive effects, so `activeTabRef` still
+holds the OUTGOING tab. The callback therefore writes the post-restore value (`0`) under the tab the
+user just left, destroying its remembered position.
+
+Note this cannot be fixed by reading `scrollTop` in the layout effect instead: by then the content has
+already unmounted and the value is already clamped (2400 → 910 in the measured case). The continuous
+listener is required; what must change is which scrolls it trusts.
+
+**Owned paths (exclusive):**
+- `client/src/app/repos/[repoId]/pulls/[number]/_lib/use-tab-scroll-memory.ts` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_lib/use-tab-scroll-memory.test.tsx` (edit)
+
+**Skills:** `react-best-practices`, `react-testing-library`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-22 — the rAF guard must key on the `pending`
+boolean, never on the `requestAnimationFrame` return value. That guard is correct today; keep it and
+do not restructure it. 2026-08-18 — verify through the RTL lane.
+
+**Do:** suppress recording while a tab switch is in flight.
+1. Raise a `switchingRef` flag **synchronously during render** when `activeTab` differs from the ref's
+   current value — render runs before the DOM mutation, so the flag is up before the clamp fires.
+2. Lower it in the layout effect, after the restore has been written.
+3. `onScroll` returns early while the flag is up, so neither the clamp nor the restore schedules an
+   rAF at all.
+
+**Acceptance:**
+- [ ] REQ-37 — a test that shrinks the container's content on tab change (so the browser-equivalent
+      clamp is simulated by writing a smaller `scrollTop`) still restores the ORIGINAL offset on
+      return. Under today's code this reads `0`; name that mutation in a comment.
+- [ ] REQ-37 — a genuine user scroll after the switch settles IS still recorded
+- [ ] REQ-24 — both existing behavioural tests still pass unchanged
+- [ ] REQ-36 — T16's delayed-sentinel harness still passes
+
+**Must not:** edit `AppFrame`; change the `pending` rAF guard's shape; read `scrollTop` in the layout
+effect as a substitute for the listener; touch `page.tsx`.
+**Red flags:** clearing the flag in a `setTimeout`/`requestAnimationFrame` (ordering against the
+coalesced scroll rAF is not guaranteed — clear it synchronously in the layout effect); raising the
+flag in an effect rather than in render, which is after the clamp has already fired.
+**Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+
+### REQ-24 / REQ-36 / REQ-37 — status correction, 2026-08-22
+
+**Not satisfied in a browser.** REQ-24's tests pass and REQ-36's container fix is confirmed working
+(switching tabs now writes to `<main>` rather than to `<html>`), but a live measurement after T17
+still shows the offset lost on the return trip: 2400 → switch away → switch back → 0.
+
+T17's mechanism was mis-diagnosed by the coordinator. It assumed the clamp's `scroll` event arrives
+synchronously with the DOM mutation, so it suppressed recording between the render phase and the end
+of the layout effect. **`scroll` events are asynchronous** — verified in Chrome — so the event lands
+after that window closes and still overwrites the outgoing tab's entry. The task's red flag
+forbidding a deferred flag-clear was therefore wrong.
+
+**The fix that closes the class, not the instance:** drop the scroll listener entirely and snapshot
+`container.scrollTop` in the **render phase** of the tab-change render. React renders before it
+commits, so the DOM still holds the outgoing tab's taller content and the reading is the true
+pre-clamp value — no rAF, no `pending` guard, no suppression window, no dependence on event timing.
+All three defects in this hook came from capturing the position through asynchronous events instead
+of reading it at the one moment it is reliable.
+
+Deferred by the owner: ship the PR first, fix after. `server/specs/smart-diff.md` records the same
+limitation so the spec does not claim behaviour the code does not have.

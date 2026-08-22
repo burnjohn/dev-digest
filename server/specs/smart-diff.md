@@ -235,6 +235,25 @@ invalidations, not polling.
 
 ## Known limitations
 
+**Files-changed scroll restoration does not work in a browser.** The PR page's tab bodies unmount on
+every switch, so `_lib/use-tab-scroll-memory.ts` keeps a per-tab offset map and restores it on the
+way back. Its unit tests pass, and it is wired correctly — but measured in Chrome the position is
+still lost: scroll Files changed to 2400, switch to Agent runs, switch back, and you land at 0.
+
+Two causes were found and fixed (the hook latched onto `document.scrollingElement` because its
+sentinel is absent on the first commit; a tab switch then overwrote the outgoing tab's entry). A
+third remains: **`scroll` events are asynchronous**, so the clamp the browser applies when the
+shorter tab mounts is reported after the suppression window has already closed, and the outgoing
+tab's offset is destroyed anyway.
+
+The design that removes the whole class of bug is to stop listening for scroll events and instead
+read `container.scrollTop` in the render phase of the tab-change render — React renders before it
+commits, so at that moment the DOM still holds the outgoing tab's taller content and the value is
+the true pre-clamp one. That rewrite is not done yet. Until it lands, treat this behaviour as
+aspirational: jsdom cannot reproduce the failure, because there is no clamping and no async event
+dispatch there, so a green test lane is not evidence here.
+
+
 - **`split_suggestion.proposed_splits` always ships `[]`.** Only `too_big` and
   `total_lines` are genuinely computed (`classify.ts:208-211`); no split proposal is
   built, and no UI renders the array.

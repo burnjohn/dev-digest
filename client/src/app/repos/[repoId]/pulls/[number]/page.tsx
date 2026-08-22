@@ -38,7 +38,10 @@ export default function PRDetailPage() {
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
 
   const isLoading = pullsLoading || (prId != null && detailLoading);
-  const { data: reviews, refetch: refetchReviews } = usePrReviews(prId);
+  // REQ-35: `isSuccess`, never `isLoading` — a query that is retrying after a
+  // failure is neither loading nor successful, and that failed-retry case is
+  // the deterministic half of the cold-cache deep-link bug (§12 T16).
+  const { data: reviews, isSuccess: reviewsLoaded, refetch: refetchReviews } = usePrReviews(prId);
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
   // navigation AND reload, and self-clears via polling when runs finish.
@@ -183,6 +186,7 @@ export default function PRDetailPage() {
             reviewRunning={reviewRunning}
             lethalTrifecta={lethalTrifecta}
             runs={runs}
+            runsLoaded={reviewsLoaded}
             prRuns={prRuns}
             prCommits={pr.commits}
             repoFullName={repoFullName}

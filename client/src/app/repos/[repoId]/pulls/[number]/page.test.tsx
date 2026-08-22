@@ -39,8 +39,13 @@ vi.mock("../../../../../lib/hooks", () => ({
   }),
 }));
 
+// REQ-35: controllable per-test so wiring can be proven for both the
+// not-yet-loaded and the loaded case. `vi.hoisted` because `vi.mock` factories
+// are hoisted above ordinary module-scope declarations.
+const reviewsState = vi.hoisted(() => ({ isSuccess: true }));
+
 vi.mock("../../../../../lib/hooks/reviews", () => ({
-  usePrReviews: () => ({ data: [], refetch: refetchReviews }),
+  usePrReviews: () => ({ data: [], isSuccess: reviewsState.isSuccess, refetch: refetchReviews }),
   useCancelRun: () => ({ mutate: vi.fn(), isPending: false }),
   usePrActiveRuns: () => ({ data: [] }),
   usePrRuns: () => ({ data: [] }),
@@ -133,6 +138,7 @@ afterEach(() => {
   capturedDiffTabProps = null;
   capturedFindingsTabProps = null;
   scrollMemoryTab = null;
+  reviewsState.isSuccess = true;
 });
 
 describe("PRDetailPage — T9 wiring", () => {
@@ -216,5 +222,18 @@ describe("PRDetailPage — T9 wiring", () => {
     currentSearch = "tab=diff";
     render(<PRDetailPage />);
     expect(scrollMemoryTab).toBe("diff");
+  });
+
+  it("REQ-35: FindingsTab's runsLoaded prop reflects usePrReviews' isSuccess — a `?finding=` pasted into a cold cache is NOT handed a false-empty `runs` while the reviews query is still loading (or retrying)", () => {
+    currentSearch = "tab=findings&finding=abc-id";
+
+    reviewsState.isSuccess = false;
+    render(<PRDetailPage />);
+    expect(capturedFindingsTabProps.runsLoaded).toBe(false);
+
+    cleanup();
+    reviewsState.isSuccess = true;
+    render(<PRDetailPage />);
+    expect(capturedFindingsTabProps.runsLoaded).toBe(true);
   });
 });
