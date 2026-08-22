@@ -39,6 +39,11 @@ export class ReviewRepository {
     return pullRepo.getPrFiles(this.db, prId);
   }
 
+  /** Smart Diff (T6) — the four columns the classifier needs. */
+  filesForPull(prId: string): ReturnType<typeof pullRepo.filesForPull> {
+    return pullRepo.filesForPull(this.db, prId);
+  }
+
   // ---- reviews + findings -------------------------------------------------
 
   insertReview(values: {

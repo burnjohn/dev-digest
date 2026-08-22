@@ -24,7 +24,7 @@ Verified on branch `hw3-subagents-workflow`, **2026-08-22**:
 | **`pulls/` has no service and no repository** — 2 files (`routes.ts`, `status.ts`) with ~18 inline `container.db` queries. `reviews/` has both, plus `repository/{pull,review,run}.repo.ts`. This drives §5's placement decision. | `find server/src/modules/pulls server/src/modules/reviews -type f` |
 | **`GET /pulls/:id/intent` lives in `reviews/routes.ts`** even though it is `/pulls/`-prefixed, and modules register with **no** path prefix (`server/src/modules/index.ts` exports a bare `Record<string, FastifyPluginAsync>`). This is the sibling precedent. | `grep -n "'/pulls/:id/intent'" server/src/modules/reviews/routes.ts` |
 | **`pnpm typecheck` is green on `main`** (`server/INSIGHTS.md`, 2026-08-16). Treat any error you see as yours. | `cd server && pnpm typecheck` |
-| **The mockup exists but is UNTRACKED.** `docs/mockups/smart-diff-mock.png`, 157 KB, shows as `?? docs/mockups/`. §0.2 makes reading it mandatory; §9 open question 6 raises the fact that it must be committed for that instruction to be followable off the owner's machine. **Read it; do not delete, move or rewrite it.** | `git status --porcelain docs/` |
+| **The mockup is COMMITTED** (was untracked when this plan was written). `docs/mockups/smart-diff-mock.png`, 157 KB, landed in `6175a45` together with this plan, which is what makes §0.2's mandatory read followable off the owner's machine. §9 open question 6 is closed. **Read it; do not delete, move or rewrite it.** | `git ls-files docs/mockups/` |
 
 ### 0.2 Required reading — before any UI task
 
@@ -143,7 +143,7 @@ replaced), `parsePatch` with per-line `oldNo`/`newNo`, `DiffViewer`'s optional-f
 | **REQ-12** | With zero findings the response still returns all three groups with correct membership and ordering, every `findings` array empty, every `default_open` `false`, and `unmatched_finding_count: 0`. |
 | **REQ-13** | On `?tab=diff`, an absent `order` param renders the original order; `?order=smart` renders Smart Diff. The segmented toggle writes and clears the param through the page's existing `setParam` helper, and the mode survives a reload. |
 | **REQ-14** | In **original** order no line finding is rendered anywhere. In **smart** order a finding renders on the exact line of the exact file, matched by `finding.start_line === Line.newNo` from `parsePatch`. |
-| **REQ-15** | When several distinct findings land on the same rendered line, **exactly one** chip renders — carrying the highest severity present and a count (`×N` when N > 1) — and its click target is the highest-severity finding, ties broken by newest review then lowest `id`. |
+| **REQ-15** | ~~When several distinct findings land on the same rendered line, exactly one chip renders…~~ **SUPERSEDED 2026-08-22 — see the rewritten REQ-15 in §12.** Each finding on a line now renders its OWN chip linking to its own card; the single-representative rule survives only on the collapsed-file header (REQ-29). |
 | **REQ-16** | A finding whose line is not present in the rendered patch — truncated context, outdated line, or `patch === null` — is **not dropped**: it renders in a per-file "not on a visible line" list under that file's header and stays clickable. |
 | **REQ-17** | Clicking a finding chip performs an in-app route transition to `?tab=findings&finding=<id>` on the same page — never a link to github.com, never a popup, never a full page load. |
 | **REQ-18** | `FindingsTab` reading `?finding=<id>` opens the `ReviewRunAccordion` of the run holding that finding, clears any `severity` or `hide-low-confidence` filter in `FindingsPanel` that would hide it, scrolls its `data-finding-id` card into view, expands it, and highlights it for ~2s. The param stays in the URL so the link is shareable. |
@@ -413,7 +413,17 @@ flag and there is deliberately no group-level equivalent.
 - add `generated_at`, an ETag or a version field "so the client can tell if it is stale"
 - run `pnpm db:generate` — this change widens no enum and adds no column
 
-**Done condition:** `./scripts/sync-vendor.sh && ./scripts/sync-vendor.sh --check && cd server && pnpm typecheck && cd ../client && pnpm typecheck`
+**Done condition:** `./scripts/sync-vendor.sh && ./scripts/sync-vendor.sh --check && cd server && pnpm typecheck && pnpm exec vitest run --exclude '**/*.it.test.ts' && cd ../client && pnpm typecheck`
+
+> **CORRECTED 2026-08-22, after this step shipped.** The original done condition stopped at the two
+> typechecks and could **not** have caught what this edit broke. Adding required fields to a Zod
+> object silently invalidates every fixture that `.parse()`s it — and `tsc` never sees it, for two
+> independent reasons: `server/tsconfig.json` ends `"include": ["src/**/*.ts"]`, so `server/test/**`
+> is not compiled at all, and `SmartDiff.parse()` takes `unknown`, so even compiling it would raise
+> nothing. `server/test/contracts.test.ts`'s SmartDiff fixture failed at RUNTIME and was only found
+> by T2's own test run one wave later; the parent session repaired it. That file is in no task's
+> `Owned paths`, so no implementer could have fixed it either. **Any contract edit must run the
+> hermetic test suite, not just a typecheck.**
 
 ### 4.3 P2 — `[parent session]`, wave 0, after P1
 
@@ -669,7 +679,7 @@ fallback and the reconciliation, not a replacement.**
 | Header row | `9 files · +247 −38` on the left; the `Smart order \| Original order` segmented toggle right-aligned on the **same** row. `Smart order` is the selected segment in the mock |
 | Group headers | a small coloured square bullet · the name · a muted subtitle · a right-aligned file count. **Blue = Core logic** "The substance of the change — review closely" · **amber = Wiring** "Hooks the core into the app" · **grey = Boilerplate** "Generated / mechanical — skim". Counts read `2 files` / `3 files` / `4 files` |
 | File card header | chevron · file icon · mono path · **a small coloured dot immediately after the path on files that carry findings** · right side: a `summary` pill and the `+84 −0` stat |
-| Findings on lines | a coloured left bar on the offending line plus a right-aligned chip. Three chip styles — `suggestion` (blue), `warning` (amber), `blocker` (red). This confirms D6's one-chip-per-line shape and REQ-15's wording |
+| Findings on lines | a coloured left bar on the offending line plus a right-aligned chip. Three chip styles — `suggestion` (blue), `warning` (amber), `blocker` (red). The mockup shows one chip because its example line carries one finding — it does NOT evidence one-chip-per-LINE. D6 was reversed on 2026-08-22: every finding on a line gets its own chip (§12) |
 | Line gutter | real new-file line numbers with hunk jumps (…28, 29, 30, then 52, 53…) — exactly what `parsePatch` already produces |
 
 **Where the mockup is the spec.** Everything in the table above, plus the file-level expansion
@@ -756,6 +766,21 @@ whether or not its owner is dispatchable.
 | **T9** | x | | | x | x | x | | | |
 
 Every REQ is hit by at least one owner; every task implements at least one REQ.
+
+**REQ-30 … REQ-34 are NOT in the tables above** — they were added by the post-verification remediation
+in §12, after this matrix was written. Their owners live on each §12 task's `Implements:` line and are
+reproduced here so no requirement is orphaned:
+
+| | REQ-30 | REQ-31 | REQ-32 | REQ-33 | REQ-34 |
+|---|---|---|---|---|---|
+| **T10** | x | | | | |
+| **T11** | | x | | | |
+| **T12** | | | | | |
+| **T13** | | | x | | |
+| **T14** | | | | x | |
+| **T15** | | | | | x |
+
+T12 owns the **rewritten** REQ-15 (§12), which supersedes the REQ-15 row in the first table.
 
 ### Disjointness — checked per wave
 
@@ -1069,7 +1094,7 @@ which is *not* the enum's), the chip accessible-name template, and the "not on a
 **Acceptance:**
 - [ ] REQ-22 — `useSmartDiff` declares no `refetchInterval` and no `refetchOnWindowFocus: true`;
       `grep -n "refetchInterval" client/src/lib/hooks/reviews.ts` shows only `usePrActiveRuns`'
-      existing one
+      and `usePrRuns`' TWO pre-existing hits (corrected 2026-08-22 — the box said one)
 - [ ] REQ-21 — an RTL test with a **real** `QueryClient` and a mocked `api` module mounts a harness,
       fires each of the four mutations, and asserts the `["smart-diff", prId]` query refetches. The
       mutation that would break it: deleting `["smart-diff", prId]` from any one `onSuccess` makes
@@ -1764,12 +1789,10 @@ should feel free to argue with them — they live in one file (REQ-4) and cost o
 5. **Severity display wording diverges from the enum.** The mockup says `blocker`, the contract says
    `CRITICAL`. T4 maps them in `prReview.json`. If the owner wants the enum widened instead, that is
    a contract change and a different wave 0.
-6. **`docs/mockups/` is untracked, and §0.2 makes reading it mandatory.** `git status` shows
-   `?? docs/mockups/`, so `docs/mockups/smart-diff-mock.png` exists only on the owner's machine — the
-   instruction is unfollowable for anyone else, and §5.8 is the only fallback. **Recommendation:
-   commit `docs/mockups/smart-diff-mock.png` as part of this work** (157 KB, one file). This plan
-   does not do it on its own authority and §0.1 still says do not touch the directory —
-   **owner's call.**
+6. **CLOSED 2026-08-22 — the mockup is committed.** It was untracked when this plan was written,
+   which made §0.2's mandatory read unfollowable off the owner's machine. `docs/mockups/smart-diff-mock.png`
+   landed in `6175a45` alongside this plan; `git ls-files docs/mockups/` now lists it. §0.1's row was
+   corrected to match.
 
 ---
 
@@ -1819,7 +1842,7 @@ deviating.
 | **D3** | **Mode state lives in the URL:** `?tab=diff&order=smart`. **Original order is the default** — an absent param means original. Written through the page's existing `setParam` helper. |
 | **D4** | **The click is a `router` navigation** to `?tab=findings&finding=<id>` on the same page. `FindingsTab` reads the param, finds the run holding the finding, opens that `ReviewRunAccordion`, clears any `severity`/`hide-low-confidence` filter that would hide it, scrolls to the card, expands and highlights it for ~2s. The param stays in the URL so the link is shareable. |
 | **D5** | **Ordering inside a group is total**, ending on `path` (unique per PR). Files with findings first. Group **membership** never changes on a re-run. |
-| **D6** | **Several findings on one line render as one chip** carrying the highest severity and a count. The click targets the highest-severity finding; ties break on newest review, then lowest `id`. Confirmed by the mockup's three chip styles (§5.8). |
+| **D6** | ~~Several findings on one line render as one chip…~~ **REVERSED by the owner, 2026-08-22.** Show them all: one chip per finding, each linking to its own card. The aggregated `×N` chip and its tie-break are gone — and with them the briefly-agreed plan to add `review_created_at` to the contract, which existed only to pick a winner. `pickFeatured` survives for REQ-29's collapsed-file header alone. See the rewritten REQ-15 in §12. |
 | **D7** | *(revised by the owner, 2026-08-22)* **`pseudocode_summary` is out of scope for this iteration.** The field stays in the contract as a placeholder for future work — declared `z.string().nullish()`, unchanged, never `.default(null)`. **Nothing writes it, nothing reads it, nothing renders it.** The mockup's per-file "What this does:" row and its `summary` pill are therefore not built (REQ-27). This reverses an earlier draft that deleted the field; the earlier justification — that an unfilled model-only field invites a future REQ-8 violation — is now carried by REQ-27's render-nothing acceptance, T7's red flags, and REQ-8's `container.llm` spy (§9 risk 2). |
 | **D8** | **Classification is path-only.** Content heuristics are rejected because `patch` is `null` for large and binary files and can be a stale cache, which would make group membership depend on GitHub's mood. |
 | **D9** | **Smart Diff is not polled.** Freshness comes from invalidation on `onRunDone`, run deletion, review deletion, run start and finding accept/dismiss. |
@@ -1828,3 +1851,334 @@ deviating.
 | **D12** | *(owner, 2026-08-22)* **`split_suggestion.proposed_splits` ships as `[]`, always.** The field stays in the contract; `too_big` and `total_lines` are genuinely computed. No split proposal is built, and no UI renders the array. This closes the question rather than leaving it open. |
 | **D13** | *(owner, 2026-08-22)* **T5, the tab-scroll fix, ships in the same PR as Smart Diff.** It keeps its own requirement (REQ-24) and its own task, because it depends on nothing here and nothing here depends on it — that isolation makes it reviewable on its own terms inside the larger diff. It is **not** split into a separate change, and §8.2 step 12 is a required part of the single demo walkthrough. |
 | **D14** | *(owner, 2026-08-22 — this is criterion 5's real meaning and it overrides every earlier reading)* **Groups are never collapsible. Files are.** A group header is a heading announcing "the files of this group follow"; there is no group-level open/closed state on the wire or in the UI, and `SmartDiffGroup` carries no `default_open` (**REQ-28**). What is collapsed by default is the **diff of every file in the Boilerplate group, regardless of whether it carries findings**; in Core and Wiring a file with findings opens and one without stays shut. The rule is computed once, on the server, and carried as `SmartDiffFile.default_open` so the UI cannot re-derive it differently (**REQ-3**). Because a Boilerplate file's findings are then invisible until it is opened by hand, the collapsed header must advertise them with the coloured dot plus a severity indicator (**REQ-29**) — a `CRITICAL` finding in a generated file must never be reachable only by accident. |
+
+---
+
+## 12. Remediation — wave 4 (added 2026-08-22, after verification)
+
+Three reviews ran once waves 0–3 were green: `plan-verifier` (26 VERIFIED · 3 PARTIAL),
+`architecture-reviewer` (CHANGES — 1 gating MAJOR in new code) and the owner's own inspection of
+the running feature. This wave closes what they found. Two new requirements:
+
+| ID | Requirement |
+|---|---|
+| **REQ-30** | **The canonical contracts directory classifies `core`, not `boilerplate`.** `server/src/vendor/shared/**` is the hand-written source of truth for every API/UI type in the repo — a change there is the most review-worthy change this codebase has, not a generated artifact to skim. Only its *generated mirror*, `client/src/vendor/shared/**`, is `boilerplate`. `client/src/vendor/ui/**` is hand-maintained design-system code and is **not** boilerplate either — `./scripts/sync-vendor.sh` writes `vendor/shared` only. |
+| **REQ-31** | **`TargetFindingSignal` / `TargetFindingContext` live in their own module** at `_components/target-finding-context.ts`, imported by both `FindingsPanel` and `FindingsTab`. Neither reaches into the other's implementation file to get them. |
+
+### T10 — Un-bury the canonical contracts from Boilerplate
+**Wave:** 4 · **Parallel:** yes · **Lane:** backend · **Ring:** R2 · **Depends on:** nothing
+**Implements:** REQ-30 (and repairs REQ-2's pattern set)
+
+**Owned paths (exclusive):**
+- `server/src/modules/reviews/smart-diff/constants.ts` (edit)
+- `server/test/smart-diff-classify.test.ts` (edit)
+
+**Skills:** `onion-architecture`, `typescript-expert`
+**Binding insights:** `server/INSIGHTS.md` 2026-08-16 — typecheck is green on `main`, any error is yours.
+
+**Do:** in `BOILERPLATE_PATTERNS`, under "This repo's own generated/vendored shapes":
+1. **Delete** `/^server\/src\/vendor\/shared\//`. The canonical contracts are `core`. This pattern is
+   why a change to `contracts/skills-api.ts` — or to `brief.ts`, the contract this very feature
+   extends — was sorted into Boilerplate and collapsed by default.
+2. **Narrow** `/^client\/src\/vendor\//` to `/^client\/src\/vendor\/shared\//`. Only the synced
+   mirror is generated; `client/src/vendor/ui/**` is the hand-maintained design system, and
+   `./scripts/sync-vendor.sh` never writes it.
+3. Correct the block's doc comment, which currently claims both trees are vendored.
+
+**Acceptance:**
+- [ ] REQ-30 — `classifyPath('server/src/vendor/shared/contracts/skills-api.ts')` is `'core'`
+- [ ] REQ-30 — `classifyPath('client/src/vendor/shared/contracts/brief.ts')` is `'boilerplate'`
+- [ ] REQ-30 — `classifyPath('client/src/vendor/ui/shell/AppFrame.tsx')` is `'core'`
+- [ ] all three added to the existing `it.each` table in `smart-diff-classify.test.ts`, not a new block
+- [ ] REQ-4 holds — no threshold or pattern moved out of `constants.ts`
+
+**Must not:** widen the fix to other patterns; touch `classify.ts`; edit `vendor/shared/**` itself.
+**Red flags:** deleting `/^client\/src\/vendor\//` outright (the mirror IS boilerplate); adding a
+content-based check (D8 — classification is path-only).
+**Done condition:** `cd server && pnpm typecheck && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+
+### T11 — Promote the target-finding context to its own module
+**Wave:** 4 · **Parallel:** yes · **Lane:** frontend · **Depends on:** nothing
+**Implements:** REQ-31
+
+**Owned paths (exclusive):**
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/target-finding-context.ts` (new)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/index.ts` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx` (edit)
+
+**Skills:** `frontend-ui-architecture`, `react-best-practices`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-18 — verify through the RTL lane, never the Browser pane.
+
+**Do:** `architecture-reviewer` returned CHANGES on this. `TargetFindingSignal` and
+`TargetFindingContext` are new in this change and have two consumer modules, but live inside
+`FindingsPanel.tsx` — so `FindingsTab` imports `../FindingsPanel/FindingsPanel` directly, bypassing
+`FindingsPanel/index.ts`, whose declared surface is narrower. `frontend-ui-architecture` §3: two
+consumers → promote to the nearest common ancestor, which is `_components/`.
+
+Move both to `_components/target-finding-context.ts` and import from there in both consumers. This is
+a **pure move** — no behaviour changes, no test rewrites beyond an import path.
+
+**Acceptance:**
+- [ ] REQ-31 — the context and its type live in `_components/target-finding-context.ts`
+- [ ] REQ-31 — `grep -rn "FindingsPanel/FindingsPanel" client/src` returns nothing
+- [ ] every REQ-18 / REQ-26 test that passed before still passes, unmodified in substance
+- [ ] `FindingsPanel/index.ts`'s exported surface is unchanged or narrowed, never widened
+
+**Must not:** change the resolution logic, the filter-clearing, or the highlight; touch
+`FindingCard`, `ReviewRunAccordion`, `page.tsx` or `SmartDiffViewer`.
+**Red flags:** re-exporting the context from `FindingsPanel` "for compatibility" (that keeps the
+violation); turning the move into a refactor of the resolver.
+**Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+### REQ-15 — REWRITTEN by the owner, 2026-08-22
+
+**Supersedes the original REQ-15 and §11 D6.** The original collapsed every finding on a rendered
+line into ONE chip carrying the highest severity plus a `×N` count, and needed a tie-break to decide
+which finding the click opened. The owner has ruled the opposite way: **show them all.**
+
+> **REQ-15 (rewritten)** — When several distinct findings land on the same rendered line, **each
+> renders its own chip**, ordered by severity descending then `id` ascending, and each chip links to
+> its **own** finding. There is no aggregated `×N` chip on a line. The single-representative rule
+> survives **only** on the collapsed-file header indicator (REQ-29), where one chip must stand for
+> the whole file: there it keeps the highest severity plus a count, and its click targets the
+> highest-severity finding.
+
+**This closes the REQ-15 defect `plan-verifier` reported** (`INCOMPLETE`, REQ-15 `PARTIAL`): the
+unimplementable *"ties broken by newest review"* clause is gone, because with every finding shown
+there is no winner to pick. **`SmartDiffFileFinding` therefore does NOT gain `review_created_at`** —
+an earlier owner decision to add it was made under the one-chip model and is withdrawn with it. The
+contract is unchanged by this wave, so there is no wave-0 step and no `sync-vendor.sh` run.
+
+### T12 — One chip per finding on a line, not one chip per line
+**Wave:** 4 · **Parallel:** yes · **Lane:** frontend · **Depends on:** nothing
+**Implements:** REQ-15 (rewritten)
+
+**Owned paths (exclusive):**
+- `client/src/components/diff-viewer/annotations.ts` (edit)
+- `client/src/components/diff-viewer/CodeLine/CodeLine.tsx` (edit)
+- `client/src/components/diff-viewer/DiffViewer/DiffViewer.test.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/SmartDiffViewer/helpers.ts` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/SmartDiffViewer/SmartDiffViewer.test.tsx` (edit)
+
+**Skills:** `frontend-ui-architecture`, `react-best-practices`, `react-testing-library`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-16 — `vendor/ui` interactive primitives have no
+accessible name by default; every chip keeps its `aria-label`/`title`. 2026-08-18 — verify through
+the RTL lane, never the Browser pane.
+
+**Do:** `DiffAnnotationApi.forLine` currently returns at most ONE chip descriptor for a line, built
+by `pickFeatured` over that line's findings. Change it to return **all** of them (an array), and have
+`CodeLine` render one chip per entry in a row. `pickFeatured` stays — `headerFor` still needs it for
+REQ-29's single collapsed-header indicator — but `forLine` stops calling it.
+
+Order the chips by severity descending, then `id` ascending, so the row is stable between two
+identical renders (the same total-order discipline as REQ-9; a non-total order makes chips swap
+places on refetch).
+
+**Acceptance:**
+- [ ] REQ-15 — two findings of DIFFERENT severity on one line render **two** chips, each clickable,
+      each calling `onOpenFinding` with its **own** id
+- [ ] REQ-15 — two findings of the SAME severity on one line render two chips, both clickable
+- [ ] REQ-15 — no `×N` text appears on any on-line chip; `grep` for the count marker in the on-line
+      path returns nothing
+- [ ] REQ-15 — chip order is stable: the same payload passed twice yields the same left-to-right order
+- [ ] REQ-29 — the collapsed-file header still renders exactly ONE chip with the highest severity and
+      a count, and its click still targets the highest-severity finding — this must not regress
+- [ ] REQ-14 — a chip still renders only on the line whose `newNo` matches, proven with `within(row)`
+- [ ] REQ-16 — the orphan list is unchanged; an orphan is still never also an on-line chip
+
+**Must not:** change `headerFor` or `orphansFor`; delete `pickFeatured`; add `review_created_at` to
+the contract or to any wire type; touch `page.tsx`, `DiffTab`, `FindingsTab`, `FindingsPanel` or
+`FindingCard`; introduce a cap or "+N more" truncation on the number of chips without saying so.
+**Red flags:** keeping the aggregated chip and merely adding a tooltip listing the rest; rendering
+the chips as nested buttons inside one wrapper button; dropping the `aria-label` when there are
+several chips (each needs its own accessible name, or a screen reader hears N identical buttons).
+**Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+### T13 — `package.json` moves to Boilerplate
+**Wave:** 4 · **Parallel:** yes · **Lane:** backend · **Ring:** R2 · **Depends on:** T10 (same files)
+**Implements:** REQ-32
+
+> **REQ-32** — `package.json` classifies `boilerplate`, at any depth, alongside its lock file.
+
+**Owner decision, 2026-08-22.** T10's block forbade widening its pattern edits, so this was
+deliberately NOT folded into it — T10 correctly refused an out-of-band instruction that contradicted
+its own task block, and asked for it to arrive as a plan edit instead. This is that plan edit.
+
+The rationale being overturned is written into the file today: the manifest was called `wiring` on
+the grounds that adding a dependency is a decision worth reading while the lock file is its
+mechanical consequence. The owner has ruled for the mockup instead —
+`docs/mockups/smart-diff-mock.png` shows `package.json` in the Boilerplate group directly above
+`package-lock.json` — so the manifest is skimmed with its lock file.
+
+**Owned paths (exclusive):**
+- `server/src/modules/reviews/smart-diff/constants.ts` (edit)
+- `server/test/smart-diff-classify.test.ts` (edit)
+
+**Skills:** `onion-architecture`, `typescript-expert`
+**Binding insights:** `server/INSIGHTS.md` — and T10's finding, not yet logged there:
+`BOILERPLATE_PATTERNS` is **first-match-wins**, with no "most specific wins" semantics. Check that no
+earlier, broader entry already shadows what you add.
+
+**Do:**
+1. Remove the `package.json` entry from `WIRING_PATTERNS` (currently `constants.ts:155`), together
+   with its trailing comment "the manifest is wiring, only its LOCK file is boilerplate" — now false.
+2. Add it to `BOILERPLATE_PATTERNS`, with a comment recording that this is an owner decision matching
+   the mockup, not a Linguist rule (Linguist does NOT treat `package.json` as generated).
+3. Update the `LOCK_FILES` doc comment if it implies the manifest is handled elsewhere.
+
+**Acceptance:**
+- [ ] REQ-32 — `classifyPath('package.json')` is `'boilerplate'`
+- [ ] REQ-32 — `classifyPath('client/package.json')` is `'boilerplate'`
+- [ ] both added to the existing `it.each` table; any row asserting `package.json` as `'wiring'` is
+      updated, never left to contradict
+- [ ] REQ-30 still holds — T10's three vendor-tree cases stay green
+- [ ] REQ-4 holds — nothing moved out of `constants.ts`
+
+**Must not:** touch any other manifest (`Cargo.toml`, `pyproject.toml`, `go.mod`, `composer.json`,
+`Gemfile`) — the owner ruled on `package.json` only and there is no mockup evidence for the rest;
+touch `classify.ts`; re-open T10's vendor lookahead.
+**Red flags:** adding the pattern where an earlier entry already shadows it (first match wins);
+sweeping in every manifest "for consistency".
+**Done condition:** `cd server && pnpm typecheck && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+
+### T14 — The deep-link target owns the keyboard cursor and is the only card open
+**Wave:** 5 · **Parallel:** no · **Lane:** frontend · **Depends on:** T11 (context module), T12
+**Implements:** REQ-33
+
+> **REQ-33** — When `?finding=<id>` resolves, the target card is the **only** card the panel presents
+> as selected: it carries the highlight, it carries the `focused` ring, it is the card the `j`/`k`
+> cursor and the `a`/`d` shortcuts act on, and no other card is expanded by the "first card opens by
+> default" rule. Landing on a deep link never leaves two cards looking selected.
+
+**Owner-reported, 2026-08-22, from the running app.** Clicking a `warning` chip on
+`server/package.json` appeared to open a `CRITICAL` finding in a different file
+(`server/src/modules/skills/helpers.ts`). Verified against the database: the URL carried the CORRECT
+id (`a23d6cf1-…` = WARNING, `server/package.json:3`, "Version bump understates the change severity"),
+so neither the chip (T7/T12) nor the resolver (T8) is at fault. `FindingsPanel.tsx:125-128` is:
+
+```tsx
+focused={i === focusIdx}                          // focusIdx stays 0 — never moves to the target
+defaultExpanded={i === 0 || f.id === target?.id}  // card 0 opens even when a target exists
+highlighted={f.id === target?.id}
+```
+
+so card 0 gets the focus ring AND opens, while the real target is highlighted somewhere below. Two
+cards read as "this one", and the eye takes the top.
+
+**This is not cosmetic.** The panel's `a`/`d` shortcuts fire on `shown[focusIdx]`
+(`FindingsPanel.tsx:89-90`), so after following a deep link, pressing `a` (accept) or `d` (dismiss)
+acts on **card 0**, not on the highlighted finding the user is looking at. That is a destructive
+action on the wrong record.
+
+**Owned paths (exclusive):**
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx` (edit)
+
+**Skills:** `react-best-practices`, `react-testing-library`, `frontend-ui-architecture`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-16 — state that outlives a re-render must be
+*held*, not re-derived; the existing `target.n` nonce is how a repeat click re-fires. 2026-08-18 —
+verify through the RTL lane, never the Browser pane.
+
+**Do:**
+1. When a target resolves, move `focusIdx` to that finding's index **in `shown`** — the filtered,
+   rendered list, not `findings` — so the ring, the highlight and the keyboard cursor are one card.
+   Do it in the same effect that already clears the filters, and only after the clearing has taken
+   effect, or the index will be computed against the pre-clear list.
+2. Change `defaultExpanded` so the "first card opens" rule yields to a target:
+   `target ? f.id === target.id : i === 0`. With a deep link there is exactly one open card.
+3. Re-fire on `target.n` like the existing effect, so clicking the same chip twice re-selects.
+
+**Acceptance:**
+- [ ] REQ-33 — with a target that is NOT first in the list, `focused` lands on the target and not on
+      card 0; assert on the rendered attribute, not on internal state
+- [ ] REQ-33 — with a target, card 0 is NOT expanded unless it *is* the target
+- [ ] REQ-33 — the `a`/`d` shortcut, fired after a deep link resolves, calls the action mutation with
+      the **target's** id. This is the case that makes the bug destructive — it must be covered.
+- [ ] REQ-33 — with NO target, behaviour is unchanged: card 0 focused and expanded
+- [ ] REQ-18 — filter-clearing still works, and the focus index is correct *after* a filter was
+      cleared (target hidden by a severity chip, then revealed)
+- [ ] every existing `FindingsPanel` test still passes, j/k navigation included
+
+**Must not:** touch `FindingCard`, `FindingsTab`, `target-finding-context.ts`, `SmartDiffViewer` or
+`page.tsx`; change the resolver; remove the j/k cursor.
+**Red flags:** computing the index against `findings` instead of `shown` (they differ whenever a
+filter is active — the exact case step 1 has to survive); setting `focusIdx` in render instead of an
+effect; leaving card 0 expanded "because it looks empty otherwise".
+**Done condition:** `cd client && pnpm typecheck && pnpm test`
+
+### T15 — One scroll, and it happens after the layout settles
+**Wave:** 6 · **Parallel:** no · **Lane:** frontend · **Depends on:** T14
+**Implements:** REQ-34
+
+> **REQ-34** — Landing on `?finding=<id>` performs **exactly one** scroll, issued only after the
+> target card has expanded and any filter-clearing has re-rendered the list, so the card the user
+> lands on is the card that is highlighted.
+
+**Owner-reported, 2026-08-22, second round.** After T14 the *correct* card is highlighted — but the
+viewport lands somewhere else, showing a different finding. Two independent causes, both confirmed by
+reading the code; fix both:
+
+**Cause 1 — two competing smooth scrolls, and the WRONG one lands last.**
+`ReviewRunAccordion.tsx:47-53` calls `scrollIntoView({ behavior: "smooth", block: "start" })` on the
+RUN header whenever `targetRunId` matches — and it fires **even when the accordion is already open**,
+because `setOpen(true)` being a no-op does not stop the scroll on the next line. `FindingCard.tsx:64-74`
+calls `scrollIntoView({ behavior: "smooth", block: "center" })` on the card.
+
+React runs effects **child-first**, so the order is: card scrolls to itself, then the accordion
+scrolls to the run header — **the accordion wins because it lands last.** The viewport parks at the
+top of the run and shows that run's FIRST finding.
+
+This is why the owner reported that other deep links "work fine" and only this one does not: when the
+target happens to be near the top of its run, both scrolls agree and the bug is invisible. Verified
+against the database for the reported case — the target is the **5th of 6** findings in its run
+(four `CRITICAL`s sort above the `WARNING` on `server/package.json:3`), and the card the owner saw
+was that run's first `CRITICAL`. The accordion is the PR's newest run, already open by default, so
+opening was never the issue.
+
+**Cause 2 — the scroll is computed before the card grows.** `FindingCard`'s effect calls
+`setExpanded(true)` and `scrollIntoView` in the same body, so the position is measured against the
+COLLAPSED card; the expansion renders a frame later and pushes everything down. T14's filter-clearing
+compounds it by changing the number of cards *above* the target in the same cascade.
+
+**Owned paths (exclusive):**
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.test.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx` (edit)
+- `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.test.tsx` (edit)
+
+**Skills:** `react-best-practices`, `react-testing-library`, `typescript-expert`
+**Binding insights:** `client/INSIGHTS.md` 2026-08-22 — an rAF guard keyed on the
+`requestAnimationFrame` RETURN VALUE deadlocks under a synchronous test double; if you defer with
+rAF, key any guard on an independent boolean. 2026-08-18 — verify through the RTL lane.
+
+**Do:**
+1. Give `ReviewRunAccordion` an opt-out — e.g. `scrollOnTarget?: boolean` defaulting to `true`, so
+   the Timeline jump keeps working exactly as it does today. `FindingsTab` passes `false` when the
+   accordion is being opened by a **finding** deep link rather than a Timeline click, so the card
+   owns the scroll and the accordion only opens.
+2. In `FindingCard`, split the effect: expand and highlight first, then issue the scroll only once
+   the expanded content has rendered — a follow-up effect keyed on `expanded`, or one deferred frame.
+   Whichever you choose, the scroll must be issued **once** per target, not on every render while
+   `expanded` stays true.
+
+**Acceptance:**
+- [ ] REQ-34 — a finding deep link calls `scrollIntoView` exactly ONCE across the whole tree: the
+      card's, never the accordion's. Assert the accordion's element is not scrolled.
+- [ ] REQ-34 — the card's `scrollIntoView` is called only after `expanded` is true; a test that
+      would pass with the old same-effect ordering must fail
+- [ ] REQ-34 — repeat clicks on the same chip (`highlightNonce` bumps) still re-scroll, exactly once each
+- [ ] the Timeline "go to review" jump still scrolls the accordion — `scrollOnTarget` defaults to
+      `true` and `RunHistory`'s path is unchanged. This is the regression this task most risks.
+- [ ] REQ-18's existing scroll tests still pass; the "does not scroll a normally-rendered card" case
+      still holds
+- [ ] no scroll is issued when there is no target at all
+
+**Must not:** touch `FindingsPanel`, `SmartDiffViewer`, `page.tsx` or `target-finding-context.ts`;
+change the resolver or the highlight duration; remove the Timeline scroll.
+**Red flags:** dropping the accordion's scroll entirely (breaks the Timeline jump — it is a different
+feature that shares the channel); scrolling on every render while `expanded` is true; an rAF guard
+keyed on the rAF id (see the binding insight); using `scrollIntoView` without the optional-call `?.`
+that keeps jsdom from crashing.
+**Done condition:** `cd client && pnpm typecheck && pnpm test`

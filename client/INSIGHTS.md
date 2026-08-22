@@ -6,6 +6,15 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-22 — an rAF throttle guard keyed on the `requestAnimationFrame` RETURN VALUE deadlocks under a sync stub
+`if (rafId != null) return; rafId = requestAnimationFrame(cb)` is correct in a browser, where rAF is
+always async — but a test double that invokes `cb` synchronously (the natural way to make an
+rAF-throttled hook deterministic under Vitest without fake-timer ceremony) runs `cb`'s own
+`rafId = null` reset BEFORE the outer assignment lands, so the outer assignment writes a non-null id
+back over it and every subsequent call is blocked forever. Key the guard on an independent `pending`
+boolean; keep `rafId` only for `cancelAnimationFrame`.
+(`_lib/use-tab-scroll-memory.ts`)
+
 ### 2026-08-18 — A hidden Browser pane freezes EVERY React Query query, and it looks like a dead API
 When the in-app Browser pane is not displayed, `document.visibilityState` is `"hidden"` and no
 query ever resolves: every page renders permanent `Skeleton`s and issues zero requests to :3001,

@@ -1,6 +1,14 @@
 import type { CSSProperties } from "react";
 
 export const s = {
+  /** Right side of the section header: the Smart/Original toggle plus the
+   *  existing show/hide-comments button, right-aligned on one row. */
+  headerRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  } satisfies CSSProperties,
+  toggleRow: { display: "flex", alignItems: "center", gap: 6 } satisfies CSSProperties,
   /** Warning strip above the diff when `files` did not come live from GitHub. */
   notice: {
     display: "flex",

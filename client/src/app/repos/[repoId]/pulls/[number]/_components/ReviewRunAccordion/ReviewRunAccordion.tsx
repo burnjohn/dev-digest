@@ -31,26 +31,41 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  scrollOnTarget = true,
 }: {
   review: ReviewRecord;
   prId: string;
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
-  /** When this matches review.run_id, the accordion opens and scrolls into view
-   *  (driven from the Timeline: clicking an agent name navigates here). */
+  /** When this matches review.run_id, the accordion opens and (unless
+   *  `scrollOnTarget` is false) scrolls into view (driven from the Timeline:
+   *  clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** REQ-34: `setOpen(true)` being a no-op when already open does NOT stop
+   *  the `scrollIntoView` call below — so this accordion's scroll would still
+   *  fire even for a target it never needed to open, racing a FindingCard's
+   *  own scroll and winning because React runs effects child-first (the card
+   *  scrolls first, the accordion scrolls last and wins). A finding deep
+   *  link needs the CARD to own the scroll, so FindingsTab passes `false`
+   *  when this accordion is opening because a finding resolved into it,
+   *  rather than because of a Timeline "go to review" click. Defaults to
+   *  `true` so the Timeline jump (`RunHistory` → `handleGoToReview`) is
+   *  unaffected. */
+  scrollOnTarget?: boolean;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (review.run_id && review.run_id === targetRunId) {
       setOpen(true);
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (scrollOnTarget) {
+        rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetRunId, targetNonce, review.run_id]);
+  }, [targetRunId, targetNonce, review.run_id, scrollOnTarget]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;

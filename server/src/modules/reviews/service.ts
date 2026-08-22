@@ -1,5 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, PrIntentDetail, RunEventKind, RunTrace } from '@devdigest/shared';
+import type {
+  FindingActionKind,
+  PrIntentDetail,
+  RunEventKind,
+  RunTrace,
+  Severity,
+  SmartDiff,
+} from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -11,6 +18,7 @@ import type { StoredIntent } from './repository/pull.repo.js';
 import { resolveFeatureModel } from '../_shared/feature-models.js';
 import { classifyIntent, type IntentLogger } from './intent-classifier.js';
 import { loadDiff } from './diff-loader.js';
+import { buildSmartDiff, type ClassifiableFinding } from './smart-diff/classify.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -208,6 +216,55 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  /**
+   * Smart Diff (`docs/plans/04-smart-diff.md` §5.1/T6, REQ-1/REQ-7/REQ-8/
+   * REQ-11/REQ-12/REQ-20/REQ-23/REQ-25). Computed on READ and persisted
+   * nowhere (§5.7) — no table, no cache, no memoization keyed on `prId`. This
+   * method does the I/O (the cached `pr_files` read + every review's
+   * findings) and the row → `ClassifiableFinding` mapping; ALL classification,
+   * ordering, dedup and `default_open` logic lives in the pure
+   * `buildSmartDiff` (T2) — nothing here re-implements it. It never resolves
+   * `container.llm` or `container.github()`: `pr_files` is read exactly as
+   * `pulls/routes.ts`'s `servePersisted` does, so an unavailable upstream
+   * degrades to whatever is cached (REQ-20) rather than triggering a refetch.
+   */
+  async smartDiffForPull(workspaceId: string, prId: string): Promise<SmartDiff> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const files = await this.repo.filesForPull(prId);
+    const reviews = await this.repo.reviewsForPull(prId);
+
+    // Flatten findings across EVERY review run of the PR, dropping dismissed
+    // ones (REQ-7). `buildSmartDiff` does the newest-review-wins dedup itself
+    // from `review_created_at` — this loop only maps rows to its input shape.
+    const findings: ClassifiableFinding[] = [];
+    for (const { review, findings: reviewFindings } of reviews) {
+      for (const f of reviewFindings) {
+        if (f.dismissedAt != null) continue;
+        findings.push({
+          id: f.id,
+          file: f.file,
+          start_line: f.startLine,
+          end_line: f.endLine,
+          severity: f.severity as Severity,
+          title: f.title,
+          review_created_at: review.createdAt.toISOString(),
+        });
+      }
+    }
+
+    return buildSmartDiff(
+      files.map((f) => ({
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch,
+      })),
+      findings,
+    );
   }
 
   // ===========================================================================

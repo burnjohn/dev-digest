@@ -8,6 +8,23 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-22 — a Zod contract edit that passes BOTH typechecks can still break every fixture
+Adding required fields to a schema in `vendor/shared/contracts/` invalidates every test that
+`.parse()`s it, and `tsc` cannot see it for two independent reasons: `server/tsconfig.json` ends
+`"include": ["src/**/*.ts"]`, so `server/test/**` is never compiled, and `.parse()` takes `unknown`,
+so compiling it would raise nothing anyway. `test/contracts.test.ts`'s SmartDiff fixture failed at
+RUNTIME one wave later. A contract edit's done condition must run
+`pnpm exec vitest run --exclude '**/*.it.test.ts'`, never just `pnpm typecheck`.
+
+### 2026-08-22 — `smart-diff` pattern arrays are FIRST-match-wins, with no "most specific" rule
+`classifyPath` runs `BOILERPLATE_PATTERNS.some()` before `WIRING_PATTERNS.some()`, and each array is
+an ordered `.some()` — so a broad early entry silently shadows a narrower one appended later. GitHub
+Linguist's generic `(^|/)vendor/` swallowed BOTH `server/src/vendor/shared/**` (the canonical,
+hand-written contracts — the most review-worthy tree in the repo) and `client/src/vendor/ui/**` (the
+hand-maintained design system), burying them in Boilerplate; only `client/src/vendor/shared/**` is
+generated. Fixed with a lookahead. Appending an override and assuming it wins is the trap — a red
+test is the only thing that surfaces it.
+
 ### 2026-08-21 — CORRECTS the seed's "not env parsing": secrets have TWO sources, so a `.it` test is not hermetic by default
 `LocalSecretsProvider.get` reads `~/.devdigest/secrets.json` **and** falls back to `process.env`,
 which `platform/config.ts`'s `import 'dotenv/config'` fills from `server/.env`; `config.secretsPath`

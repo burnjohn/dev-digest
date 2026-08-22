@@ -46,3 +46,6 @@ without Docker); everything else hermetic (adapters mocked). A DB-backed test **
 
 [README.md](README.md) · [docs/](docs) (design notes) · [specs/](specs) ·
 [INSIGHTS.md](INSIGHTS.md) (gotchas & decisions log)
+
+Feature specs worth naming: [specs/smart-diff.md](specs/smart-diff.md) — reviewer-ordered
+file groups + per-line findings, and the zero-token guarantee that keeps them free.

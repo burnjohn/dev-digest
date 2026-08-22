@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ClassifyIntentRequest, PrIntentDetail, RunRequest } from '@devdigest/shared';
+import { ClassifyIntentRequest, PrIntentDetail, RunRequest, SmartDiffResponse } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -28,6 +28,12 @@ function toIntentLogger(base: FastifyBaseLogger): IntentLogger {
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
+ *   GET    /pulls/:id/smart-diff                        → SmartDiff — reviewer-ordered file
+ *                                                          groups + findings (plan 04-smart-diff.md
+ *                                                          T6). Computed on read; ZERO LLM calls
+ *                                                          (REQ-8) and NO GitHub call — reads the
+ *                                                          cached `pr_files` exactly as
+ *                                                          `pulls/routes.ts`'s `servePersisted` does
  *   GET    /pulls/:id/intent  → PrIntentDetail | 404    → read-only, NEVER classifies (REQ-10)
  *   POST   /pulls/:id/intent  {force?}                  → get-or-create; force=true re-classifies
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
@@ -147,6 +153,23 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     return service.reviewsForPull(workspaceId, req.params.id);
   });
+
+  // ---- Smart Diff (plan 04-smart-diff.md T6) -------------------------------
+  // Reviewer-ordered view of the PR's changed files (REQ-1). Computed on read
+  // and persisted nowhere (§5.7) — every request recomputes the whole payload
+  // from `pr_files` + every review's findings as they are at that instant, so
+  // there is no cache here to go stale. Zero LLM calls (REQ-8) and no GitHub
+  // call: this reads the persisted `pr_files` cache exactly as
+  // `pulls/routes.ts`'s `servePersisted` does, so an unavailable upstream
+  // degrades to whatever is cached (REQ-20) rather than triggering a refetch.
+  app.get(
+    '/pulls/:id/smart-diff',
+    { schema: { params: IdParams, response: { 200: SmartDiffResponse } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.smartDiffForPull(workspaceId, req.params.id);
+    },
+  );
 
   // ---- PR intent (plan 03-intent-layer.md T6) ------------------------------
   // GET is PURELY read-only (REQ-10): 404 when no row exists, and it never

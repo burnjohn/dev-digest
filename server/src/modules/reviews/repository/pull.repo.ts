@@ -34,6 +34,34 @@ export async function getPrFiles(
 }
 
 /**
+ * Smart Diff (`docs/plans/04-smart-diff.md` §5.1/T6) — just the four columns
+ * the classifier needs from the cached `pr_files` row. A partial `select`, so
+ * the return shape is a plain row projection, never a query builder. Mapping
+ * this into T2's `ClassifiableFile` shape is the SERVICE's job (R2), not this
+ * repository's — R3 may not import anything under `modules/**`, including a
+ * sibling `smart-diff/` module file.
+ */
+export interface PrFileForSmartDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+  /** `null` when GitHub omitted the patch (too large, or binary). */
+  patch: string | null;
+}
+
+export async function filesForPull(db: Db, prId: string): Promise<PrFileForSmartDiff[]> {
+  return db
+    .select({
+      path: t.prFiles.path,
+      additions: t.prFiles.additions,
+      deletions: t.prFiles.deletions,
+      patch: t.prFiles.patch,
+    })
+    .from(t.prFiles)
+    .where(eq(t.prFiles.prId, prId));
+}
+
+/**
  * Record the commit a review just ran against, so the PR list can derive
  * `reviewed` vs `needs_review` (head moved since the last review) vs `stale`.
  */

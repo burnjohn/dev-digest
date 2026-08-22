@@ -8,7 +8,8 @@ import { Toggle, EmptyState, SeverityBadge } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION, SEVERITY_ORDER } from "./constants";
+import { TargetFindingContext } from "../target-finding-context";
+import { KEY_TO_ACTION, LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
 import { severityCounts, visibleFindings } from "./helpers";
 import { s } from "./styles";
 
@@ -36,6 +37,16 @@ export function FindingsPanel({
   const [sev, setSev] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
+  const target = React.useContext(TargetFindingContext);
+  // Resolved against THIS panel's own findings — `target` is a page-wide
+  // signal shared by every FindingsPanel (FindingsTab wraps all review-run
+  // accordions in one Provider), so `targetFinding` is the thing that is
+  // null for every panel except the one that actually owns the id.
+  const targetFinding = React.useMemo(
+    () => (target ? (findings.find((f) => f.id === target.id) ?? null) : null),
+    [target, findings],
+  );
+
   // Counts are tallied after the confidence filter so a chip's number matches
   // exactly what clicking it reveals; the shown list applies both filters.
   const counts = React.useMemo(() => severityCounts(findings, hideLow), [findings, hideLow]);
@@ -51,6 +62,25 @@ export function FindingsPanel({
     [counts],
   );
 
+  // REQ-18: a filter that would hide the deep-link target is CLEARED, not
+  // merely bypassed — the toolbar must show what is actually being shown.
+  // REQ-33: the same effect then moves the keyboard cursor onto the target's
+  // index in `shown` (the filtered, RENDERED list — never `findings`, whose
+  // order and membership can both differ once a severity filter or sort is
+  // applied). `shown` is a dependency so this effect re-fires a SECOND time
+  // once the setSev/setHideLow calls above land: the first pass still sees
+  // the pre-clear list and correctly finds no match, only the second pass
+  // (with the filter already cleared) can find the target's true position.
+  React.useEffect(() => {
+    if (!targetFinding) return;
+    if (sev && sev !== targetFinding.severity) setSev(null);
+    if (hideLow && targetFinding.confidence < LOW_CONFIDENCE_THRESHOLD) setHideLow(false);
+
+    const idx = shown.findIndex((f) => f.id === targetFinding.id);
+    if (idx !== -1) setFocusIdx(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetFinding, target?.n, shown]);
+
   // Clear a severity filter whose chip is no longer rendered (count dropped to 0
   // after toggling hide-low-confidence), so the list falls back to all findings
   // instead of a confusing empty state for an invisible chip.
@@ -58,10 +88,13 @@ export function FindingsPanel({
     if (sev && counts[sev] === 0) setSev(null);
   }, [sev, counts]);
 
-  // Reset the j/k cursor to the top whenever the visible set changes.
+  // Reset the j/k cursor to the top whenever the visible set changes — unless
+  // a deep-link target is active, in which case the effect above owns the
+  // cursor and this one must stay out of its way.
   React.useEffect(() => {
+    if (targetFinding) return;
     setFocusIdx(0);
-  }, [sev, hideLow]);
+  }, [sev, hideLow, targetFinding]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -107,7 +140,9 @@ export function FindingsPanel({
               key={f.id}
               f={f}
               focused={i === focusIdx}
-              defaultExpanded={i === 0}
+              defaultExpanded={targetFinding ? f.id === targetFinding.id : i === 0}
+              highlighted={f.id === target?.id}
+              highlightNonce={target?.n}
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
