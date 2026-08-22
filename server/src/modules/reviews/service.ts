@@ -18,6 +18,29 @@ export { findingRowToDto, reviewToDto } from './helpers.js';
 export type { ReviewDto, ReviewDtoFinding } from './helpers.js';
 
 /**
+ * REQ-7 retry window (W3 part 3): a stored `model: null` row (a REQ-7
+ * fallback classification, honestly persisted) is treated as a cache MISS
+ * only once `generatedAt` is older than this window — never on every call.
+ * `usePrIntent` POSTs on every mount of the PR page, so without a window a
+ * persistent cause (no `OPENROUTER_API_KEY` configured — a supported,
+ * key-less boot state) would turn every page view into a fresh
+ * classification attempt *plus* a fresh `loadDiff`, bounded only by the
+ * route's 10/min rate limit. The window keeps a transient failure
+ * self-healing while stopping a permanent one from becoming a retry loop.
+ *
+ * Consequence accepted deliberately: legacy pre-feature rows also carry
+ * `model: null` (migration backfill, `confidence: 'low'`, `sources: []`), so
+ * they get re-classified once under this same rule and then settle with a
+ * real model — desirable, since they can never otherwise improve.
+ *
+ * `getIntent` (the GET route, below) does NOT adopt this predicate — REQ-10
+ * requires GET to stay purely read-only with no branch that can spend a
+ * model call. The asymmetry is intentional: GET reports what is stored,
+ * POST decides whether to improve it.
+ */
+const INTENT_RETRY_WINDOW_MS = 15 * 60 * 1000;
+
+/**
  * Review service (the core). Orchestrates:
  *   diff → assemblePrompt(system + repo-map + diff)
  *        → llm.completeStructured({ schema: Review }) (single-pass)
@@ -218,7 +241,15 @@ export class ReviewService {
     if (!pull) throw new NotFoundError('Pull request not found');
 
     const existing = await this.repo.getIntent(prId);
-    if (existing && opts.force !== true) {
+    // A `model: null` row (a REQ-7 fallback, honestly persisted — W3 part 2)
+    // is a cache MISS only once it is older than the retry window; a fresh
+    // one, or a row with a real model, is always a hit. See
+    // INTENT_RETRY_WINDOW_MS above for why the window exists.
+    const isStaleFallback =
+      existing !== undefined &&
+      existing.model === null &&
+      Date.now() - existing.generatedAt.getTime() >= INTENT_RETRY_WINDOW_MS;
+    if (existing && opts.force !== true && !isStaleFallback) {
       return this.toPrIntentDetail(prId, existing);
     }
 
@@ -232,7 +263,7 @@ export class ReviewService {
     // (server/INSIGHTS.md, 2026-08-15 — Container satisfies an explicit Deps
     // interface with no wrapper needed): `llm`/`github` stay lazy resolvers,
     // `git`/`tokenizer` match by shape.
-    const classified = await classifyIntent(this.container, {
+    const { intent: classified, fallback } = await classifyIntent(this.container, {
       repoRef: { owner: repoRow.owner, name: repoRow.name },
       pull: { title: pull.title, body: pull.body },
       diff,
@@ -241,10 +272,14 @@ export class ReviewService {
       correlationId: opts.correlationId,
     });
 
+    // W3 part 2: a REQ-7 fallback never ran the resolved model, so it must
+    // not be stamped with one — `model` is nullable in both `db/schema/
+    // reviews.ts` and `IntentMeta` for exactly this case.
+    const persistedModel = fallback ? null : model.model;
     const generatedAt = new Date();
-    await this.repo.upsertIntent(prId, classified, { model: model.model, generatedAt });
+    await this.repo.upsertIntent(prId, classified, { model: persistedModel, generatedAt });
 
-    return this.toPrIntentDetail(prId, { ...classified, model: model.model, generatedAt });
+    return this.toPrIntentDetail(prId, { ...classified, model: persistedModel, generatedAt });
   }
 
   /** REQ-10 — purely read-only: 404s via `undefined` when no row exists, and

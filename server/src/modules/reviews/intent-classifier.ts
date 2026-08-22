@@ -57,6 +57,22 @@ export interface IntentClassifierDeps extends IntentSourceDeps {
   tokenizer: Tokenizer;
 }
 
+/**
+ * Sibling result type — deliberately NOT a widened `ClassifiedIntent` (that
+ * would touch `vendor/shared/contracts/intent.ts`, its generated client
+ * mirror, the repository round-trip, and a new nullable column + migration —
+ * two Tier A paths). `classifyIntent` has exactly one call site
+ * (`service.ts::getOrClassifyIntent`), so a local sibling type is enough to
+ * let the caller persist `model: null` honestly on a REQ-7 fallback instead
+ * of stamping the resolved model onto a classification it never produced.
+ */
+export interface ClassifyIntentResult {
+  intent: ClassifiedIntent;
+  /** `true` for either fallback path (source gathering threw, or the LLM
+   *  call/parse failed); `false` only for a real model answer. */
+  fallback: boolean;
+}
+
 export interface ClassifyIntentInput {
   repoRef: RepoRef;
   pull: IntentSourcePull;
@@ -128,7 +144,20 @@ function clampConfidence(
       (s.status === 'used' || s.status === 'truncated'),
   );
   if (!hasSubstance) return 'low';
-  const degraded = sources.some((s) => s.status === 'unreachable' || s.status === 'truncated');
+  // Same kind filter as `hasSubstance` above, and for the same reason: only
+  // the three evidence kinds may degrade confidence. Without this filter,
+  // `file_list`'s `truncated` status (stamped by `renderFileList` once the
+  // rendered list crosses `FILE_LIST_MAX_CHARS` — routine for a PR of
+  // ~35-50+ changed files) permanently capped every medium-or-larger PR at
+  // `medium`, however good its body/issue/specs were. This is the same class
+  // of bug the `PLAN_SPEC_MIN_SLICE` branch in `intent-sources.ts` already
+  // guards against ("would poison the confidence clamp with a bogus
+  // `truncated`") — that one just missed this second spot.
+  const degraded = sources.some(
+    (s) =>
+      (s.kind === 'pr_body' || s.kind === 'linked_issue' || s.kind === 'plan_or_spec') &&
+      (s.status === 'unreachable' || s.status === 'truncated'),
+  );
   if (degraded && modelConfidence === 'high') return 'medium';
   return modelConfidence;
 }
@@ -136,7 +165,7 @@ function clampConfidence(
 export async function classifyIntent(
   deps: IntentClassifierDeps,
   input: ClassifyIntentInput,
-): Promise<ClassifiedIntent> {
+): Promise<ClassifyIntentResult> {
   const { repoRef, pull, diff, model, log, correlationId } = input;
 
   let promptSections: string[];
@@ -149,9 +178,12 @@ export async function classifyIntent(
     // gatherIntentSources wraps every I/O call itself, so this is a defensive
     // net for anything unexpected — never let source gathering block a review.
     log?.error(`intent: source gathering failed, using fallback: ${(err as Error).message}`);
-    return fallbackIntent(pull, diff, [
-      { kind: 'pr_body', ref: 'body', status: pull.body ? 'unreachable' : 'missing', chars: 0 },
-    ]);
+    return {
+      intent: fallbackIntent(pull, diff, [
+        { kind: 'pr_body', ref: 'body', status: pull.body ? 'unreachable' : 'missing', chars: 0 },
+      ]),
+      fallback: true,
+    };
   }
 
   const userMessage = promptSections.join('\n\n');
@@ -194,17 +226,20 @@ export async function classifyIntent(
     });
     const confidence = clampConfidence(result.data.confidence, sources);
     return {
-      intent: result.data.intent,
-      in_scope: result.data.in_scope,
-      out_of_scope: result.data.out_of_scope,
-      confidence,
-      sources,
+      intent: {
+        intent: result.data.intent,
+        in_scope: result.data.in_scope,
+        out_of_scope: result.data.out_of_scope,
+        confidence,
+        sources,
+      },
+      fallback: false,
     };
   } catch (err) {
     // Covers: unresolvable provider (deps.llm rejects, e.g. no API key
     // configured), a rejected completeStructured call, and a response that
     // fails IntentClassification parsing (surfaces as a rejection too).
     log?.error(`intent: classification call failed, using fallback: ${(err as Error).message}`);
-    return fallbackIntent(pull, diff, sources);
+    return { intent: fallbackIntent(pull, diff, sources), fallback: true };
   }
 }
