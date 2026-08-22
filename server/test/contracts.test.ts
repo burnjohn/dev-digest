@@ -15,6 +15,9 @@ import {
   Settings,
   Repo,
   PrDetail,
+  IntentSourceStatus,
+  IntentClassification,
+  ClassifiedIntent,
 } from '@devdigest/shared';
 
 /**
@@ -206,5 +209,67 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * Coverage for the intent contracts (server/src/vendor/shared/contracts/intent.ts,
+ * plan 03-intent-layer.md T1). REQ-5's five-value status vocabulary and REQ-6's
+ * "no sources field, no .default()" constraints on `IntentClassification` are
+ * both structural — pinned here so a later edit can't silently erode them.
+ */
+describe('intent contracts', () => {
+  it('IntentSourceStatus enumerates exactly the five REQ-5 values, and rejects anything else', () => {
+    for (const status of ['used', 'truncated', 'skipped', 'missing', 'unreachable']) {
+      expect(IntentSourceStatus.safeParse(status).success).toBe(true);
+    }
+    expect(IntentSourceStatus.safeParse('read').success).toBe(false);
+  });
+
+  it('IntentClassification requires confidence (no silent default)', () => {
+    const withoutConfidence = IntentClassification.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+    });
+    expect(withoutConfidence.success).toBe(false);
+
+    const complete = IntentClassification.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'medium',
+    });
+    expect(complete.success).toBe(true);
+  });
+
+  it('IntentClassification has no sources field — a model-supplied sources array is stripped, not persisted', () => {
+    const parsed = IntentClassification.parse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+      sources: [{ kind: 'pr_body', ref: 'body', status: 'used', chars: 10 }],
+    });
+    expect('sources' in parsed).toBe(false);
+  });
+
+  it('ClassifiedIntent requires a sources array (not optional)', () => {
+    const withoutSources = ClassifiedIntent.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+    });
+    expect(withoutSources.success).toBe(false);
+
+    const withSources = ClassifiedIntent.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+      sources: [],
+    });
+    expect(withSources.success).toBe(true);
   });
 });
