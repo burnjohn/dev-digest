@@ -1,54 +1,64 @@
-import type { Skill, SkillVersion } from '@devdigest/shared';
-import { unzipSync, strFromU8 } from 'fflate';
-import type { Container } from '../../platform/container.js';
-import { SkillsRepository } from './repository.js';
-import type { SkillStats } from './repository.js';
-import { toSkillDto, toSkillVersionDto } from './helpers.js';
-import { ValidationError } from '../../platform/errors.js';
+import type { Container } from "../../platform/container.js";
+import type { Skill, SkillSource, SkillType } from "@devdigest/shared";
+import { SkillsRepository } from "./repository.js";
+import type { SkillRow, SkillStats, SkillVersionRow } from "./repository.js";
+import { THREAT_LEVEL } from "./scanner.js";
+import type { ThreatLevel } from "./scanner.js";
 
-export type { SkillStats };
+/**
+ * A1 — skills service. Business logic for the Skills library.
+ *
+ * A Skill = named, versioned text body (rubric / convention / security / custom)
+ * that agents can be linked to. Body changes are versioned via `skill_versions`
+ * (repository). Metadata changes (name, description, enabled, type) are NOT versioned.
+ */
 
 export interface CreateSkillInput {
   name: string;
   description?: string;
-  type?: 'rubric' | 'convention' | 'security' | 'custom';
-  source?: 'manual' | 'imported_url' | 'extracted' | 'community';
+  type: SkillType;
   body: string;
+  source?: SkillSource;
   enabled?: boolean;
+}
+
+export interface ImportSkillInput {
+  name: string;
+  body: string;
+  source?: SkillSource;
+  description?: string;
+  enabled?: boolean;
+  threatLevel?: ThreatLevel;
 }
 
 export interface UpdateSkillInput {
   name?: string;
   description?: string;
-  type?: 'rubric' | 'convention' | 'security' | 'custom';
-  source?: 'manual' | 'imported_url' | 'extracted' | 'community';
+  type?: SkillType;
   body?: string;
   enabled?: boolean;
-  version_message?: string;
 }
 
-export interface ImportPreviewResult {
-  name: string;
-  description: string;
-  type: 'rubric' | 'convention' | 'security' | 'custom';
-  source: 'imported_url';
-  body: string;
-  ignored_files: string[];
+function toSkillDto(row: SkillRow): Skill {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    type: row.type as SkillType,
+    source: row.source as SkillSource,
+    body: row.body,
+    enabled: row.enabled,
+    version: row.version,
+    evidence_files: (row.evidenceFiles as string[] | null) ?? null,
+    threat_level: (row.threatLevel as ThreatLevel) ?? THREAT_LEVEL.UNKNOWN,
+  };
 }
 
-const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
-
-/**
- * A1 — skills service. Business logic for the Skills tab.
- *
- * A Skill = name + description + type + source + body + enabled + versioned.
- * Body changes are versioned via `skill_versions` (repository).
- */
 export class SkillsService {
-  private repo: SkillsRepository;
+  repo: SkillsRepository;
 
   constructor(private container: Container) {
-    this.repo = container.skillsRepo;
+    this.repo = new SkillsRepository(container.db);
   }
 
   async list(workspaceId: string): Promise<Skill[]> {
@@ -61,19 +71,32 @@ export class SkillsService {
     return row ? toSkillDto(row) : undefined;
   }
 
-  async delete(workspaceId: string, id: string): Promise<boolean> {
-    return this.repo.deleteById(workspaceId, id);
-  }
-
   async create(workspaceId: string, input: CreateSkillInput): Promise<Skill> {
     const row = await this.repo.insert({
       workspaceId,
       name: input.name,
-      description: input.description ?? '',
-      type: input.type ?? 'custom',
-      source: input.source ?? 'manual',
+      description: input.description ?? "",
+      type: input.type,
+      source: input.source ?? "manual",
       body: input.body,
-      enabled: input.enabled,
+      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+    });
+    return toSkillDto(row);
+  }
+
+  /** Import a skill from an external source. Source defaults to 'imported_url'. */
+  async import(workspaceId: string, input: ImportSkillInput): Promise<Skill> {
+    const row = await this.repo.insert({
+      workspaceId,
+      name: input.name,
+      description: input.description ?? "",
+      type: "custom",
+      source: input.source ?? "manual",
+      body: input.body,
+      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      ...(input.threatLevel !== undefined
+        ? { threatLevel: input.threatLevel }
+        : {}),
     });
     return toSkillDto(row);
   }
@@ -85,130 +108,44 @@ export class SkillsService {
   ): Promise<Skill | undefined> {
     const row = await this.repo.update(workspaceId, id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.description !== undefined
+        ? { description: patch.description }
+        : {}),
       ...(patch.type !== undefined ? { type: patch.type } : {}),
-      ...(patch.source !== undefined ? { source: patch.source } : {}),
       ...(patch.body !== undefined ? { body: patch.body } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-      ...(patch.version_message !== undefined ? { message: patch.version_message } : {}),
     });
     return row ? toSkillDto(row) : undefined;
   }
 
-  /**
-   * Config history for a skill, newest version first. Workspace-scoped: returns
-   * undefined when the skill isn't in this workspace (the route maps that to 404).
-   */
-  async listVersions(
-    workspaceId: string,
-    skillId: string,
-  ): Promise<SkillVersion[] | undefined> {
-    const skill = await this.repo.getById(workspaceId, skillId);
-    if (!skill) return undefined;
-    const rows = await this.repo.listVersions(skillId);
-    return rows.map(toSkillVersionDto);
+  async delete(workspaceId: string, id: string): Promise<boolean> {
+    return this.repo.deleteById(workspaceId, id);
   }
 
-  /**
-   * Restore a skill to a previous body version. Returns undefined when the skill
-   * or the requested version doesn't exist in this workspace.
-   */
+  async versions(workspaceId: string, id: string): Promise<SkillVersionRow[]> {
+    // Guard: ensure skill belongs to workspace before exposing versions.
+    const skill = await this.repo.getById(workspaceId, id);
+    if (!skill) return [];
+    return this.repo.listVersions(id);
+  }
+
+  async stats(
+    workspaceId: string,
+    id: string,
+  ): Promise<SkillStats | undefined> {
+    return this.repo.stats(workspaceId, id);
+  }
+
+  async updateThreatLevel(id: string, threatLevel: ThreatLevel): Promise<void> {
+    await this.repo.updateThreatLevel(id, threatLevel);
+  }
+
   async restore(
     workspaceId: string,
-    skillId: string,
+    id: string,
     version: number,
   ): Promise<Skill | undefined> {
-    const skill = await this.repo.getById(workspaceId, skillId);
-    if (!skill) return undefined;
-    const row = await this.repo.restore(workspaceId, skillId, version);
+    const row = await this.repo.restore(workspaceId, id, version);
     return row ? toSkillDto(row) : undefined;
   }
-
-  /** Usage and finding stats for a skill. Returns undefined when not found. */
-  async stats(workspaceId: string, skillId: string): Promise<SkillStats | undefined> {
-    const skill = await this.repo.getById(workspaceId, skillId);
-    if (!skill) return undefined;
-    return this.repo.stats(skillId);
-  }
-
-  /**
-   * Parse a file upload and return a preview of what would be created — WITHOUT
-   * persisting anything. Supports .md and .zip only. Max 5 MB.
-   */
-  importPreview(filename: string, base64: string): ImportPreviewResult {
-    const buf = Buffer.from(base64, 'base64');
-
-    if (buf.byteLength > MAX_IMPORT_SIZE) {
-      throw new ValidationError(
-        `File too large: ${buf.byteLength} bytes (max ${MAX_IMPORT_SIZE} bytes)`,
-      );
-    }
-
-    const lower = filename.toLowerCase();
-
-    if (lower.endsWith('.md')) {
-      const text = buf.toString('utf-8');
-      const name = extractMarkdownTitle(text) ?? stemFromFilename(filename);
-      return {
-        name,
-        description: '',
-        type: 'custom',
-        source: 'imported_url',
-        body: text,
-        ignored_files: [],
-      };
-    }
-
-    if (lower.endsWith('.zip')) {
-      const entries = unzipSync(new Uint8Array(buf));
-      const paths = Object.keys(entries);
-
-      // Find SKILL.md first, then fall back to the first top-level *.md
-      const skillMdPath = paths.find((p) => p.toUpperCase() === 'SKILL.MD');
-      const firstMdPath =
-        skillMdPath ??
-        paths.find((p) => !p.includes('/') && p.toLowerCase().endsWith('.md'));
-
-      if (!firstMdPath) {
-        throw new ValidationError('No .md file found in the zip archive');
-      }
-
-      const bodyBytes = entries[firstMdPath];
-      if (!bodyBytes) {
-        throw new ValidationError(`Could not read ${firstMdPath} from the zip archive`);
-      }
-      const body = strFromU8(bodyBytes);
-      const name = extractMarkdownTitle(body) ?? stemFromFilename(firstMdPath);
-
-      const ignoredFiles = paths.filter((p) => p !== firstMdPath && !p.endsWith('/'));
-
-      return {
-        name,
-        description: '',
-        type: 'custom',
-        source: 'imported_url',
-        body,
-        ignored_files: ignoredFiles,
-      };
-    }
-
-    throw new ValidationError(
-      `Unsupported file type: "${filename}". Only .md and .zip are supported.`,
-    );
-  }
-}
-
-// ---- private helpers -------------------------------------------------------
-
-/** Extract the first # heading from markdown text, or undefined. */
-function extractMarkdownTitle(text: string): string | undefined {
-  const match = text.match(/^#\s+(.+)/m);
-  return match?.[1]?.trim();
-}
-
-/** Return the filename stem (no extension, no path). */
-function stemFromFilename(filename: string): string {
-  const base = filename.split('/').pop() ?? filename;
-  const dot = base.lastIndexOf('.');
-  return dot > 0 ? base.slice(0, dot) : base;
 }

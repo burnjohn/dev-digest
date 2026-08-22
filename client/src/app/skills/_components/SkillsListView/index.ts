@@ -1,1 +1,1 @@
-export { SkillsListView } from "./SkillsListView";
+export * from "./SkillsListView";

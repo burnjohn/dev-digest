@@ -31,6 +31,9 @@ function run(o: Partial<RunSummary>): RunSummary {
     ran_at: "2026-06-11T18:44:34.000Z",
     score: null,
     blockers: null,
+    findings_critical: null,
+    findings_warning: null,
+    findings_suggestion: null,
     ...o,
   };
 }
@@ -49,7 +52,6 @@ describe("RunHistory — outcome badge", () => {
     expect(screen.getByText("rejected")).toBeInTheDocument();
     expect(screen.queryByText("done")).not.toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument(); // CircularScore renders the number
-    expect(screen.getByText(/5 blockers/)).toBeInTheDocument();
   });
 
   it("a clean done run reads 'approved'", () => {
@@ -84,5 +86,58 @@ describe("RunHistory — outcome badge", () => {
     renderRuns([run({ status: "done", tokens_in: 0, tokens_out: 0, cost_usd: null, score: 80 })]);
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — per-severity chips", () => {
+  it("shows SeverityChip counts when findings_critical/warning/suggestion are set", () => {
+    renderRuns([
+      run({
+        status: "done",
+        findings_count: 6,
+        blockers: 2,
+        score: 45,
+        findings_critical: 2,
+        findings_warning: 3,
+        findings_suggestion: 1,
+      }),
+    ]);
+    expect(screen.getByText("2")).toBeInTheDocument(); // critical count
+    expect(screen.getByText("3")).toBeInTheDocument(); // warning count
+    expect(screen.getByText("1")).toBeInTheDocument(); // suggestion count
+  });
+
+  it("shows no chips when all per-severity counts are null", () => {
+    const { container } = renderRuns([
+      run({
+        status: "done",
+        findings_count: 0,
+        blockers: 0,
+        score: 90,
+        findings_critical: null,
+        findings_warning: null,
+        findings_suggestion: null,
+      }),
+    ]);
+    // SeverityChip renders faded dots with opacity:0.2 — none should appear
+    const fadedDots = container.querySelectorAll('[style*="opacity: 0.2"]');
+    expect(fadedDots).toHaveLength(0);
+  });
+
+  it("shows only non-zero chips", () => {
+    renderRuns([
+      run({
+        status: "done",
+        findings_count: 4,
+        blockers: 4,
+        score: 20,
+        findings_critical: 4,
+        findings_warning: 0,
+        findings_suggestion: 0,
+      }),
+    ]);
+    expect(screen.getByText("4")).toBeInTheDocument();
+    // warning=0, suggestion=0 → no chips for those counts
+    expect(screen.queryAllByText("0")).toHaveLength(0);
   });
 });

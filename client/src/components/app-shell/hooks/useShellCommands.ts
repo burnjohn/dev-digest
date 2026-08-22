@@ -4,8 +4,8 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { NAV, SETTINGS_ITEM, resolveHref, type Command } from "@devdigest/ui";
-import { useActiveRepo } from "../../../lib/repo-context";
-import { useTheme } from "../../../lib/theme";
+import { useActiveRepo } from "../../../lib/contexts/repoContext";
+import { useTheme } from "../../../lib/contexts/theme";
 
 /**
  * Builds the command-palette command set: one "Go to …" command per nav item,

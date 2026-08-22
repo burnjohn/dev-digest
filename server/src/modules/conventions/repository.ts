@@ -1,49 +1,140 @@
-import { eq, and } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
-import { conventions } from '../../db/schema.js';
-import type { ConventionRow } from '../../db/rows.js';
+import { and, eq } from "drizzle-orm";
+import type { Db } from "../../db/client.js";
+import * as t from "../../db/schema.js";
+import type { ConventionRow } from "../../db/rows.js";
+export type { ConventionRow };
 
 export class ConventionsRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private db: Db) {}
 
-  async insertBatch(
-    rows: Array<{
-      workspaceId: string;
-      repoId: string;
-      category: string;
+  /** Всі конвенції репо: accepted першими, потім по confidence desc */
+  async listByRepo(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<ConventionRow[]> {
+    const rows = await this.db
+      .select()
+      .from(t.conventions)
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.repoId, repoId),
+        ),
+      );
+    return rows.sort((a, b) => {
+      if (a.accepted !== b.accepted) return a.accepted ? -1 : 1;
+      return (b.confidence ?? 0) - (a.confidence ?? 0);
+    });
+  }
+
+  /**
+   * Re-scan: видаляємо всі старі конвенції репо і вставляємо нові.
+   * Так при кожному скані маємо свіжі результати.
+   */
+  async replaceAll(
+    workspaceId: string,
+    repoId: string,
+    candidates: Array<{
       rule: string;
       evidencePath: string;
       evidenceSnippet: string;
       confidence: number;
     }>,
-  ): Promise<void> {
-    if (rows.length === 0) return;
-    await this.db.insert(conventions).values(rows);
+  ): Promise<ConventionRow[]> {
+    await this.db
+      .delete(t.conventions)
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.repoId, repoId),
+        ),
+      );
+
+    if (candidates.length === 0) return [];
+
+    const rows = await this.db
+      .insert(t.conventions)
+      .values(
+        candidates.map((c) => ({
+          workspaceId,
+          repoId,
+          rule: c.rule,
+          evidencePath: c.evidencePath,
+          evidenceSnippet: c.evidenceSnippet,
+          confidence: c.confidence,
+          accepted: false,
+        })),
+      )
+      .returning();
+
+    return rows;
   }
 
-  async listByRepo(workspaceId: string, repoId: string): Promise<ConventionRow[]> {
-    return this.db
-      .select()
-      .from(conventions)
-      .where(and(eq(conventions.workspaceId, workspaceId), eq(conventions.repoId, repoId)))
-      .orderBy(conventions.id);
-  }
-
-  async update(
+  /** Accept: позначаємо як прийняту */
+  async accept(
+    workspaceId: string,
     id: string,
-    patch: { rule?: string; category?: string; accepted?: boolean },
   ): Promise<ConventionRow | undefined> {
     const [row] = await this.db
-      .update(conventions)
-      .set(patch)
-      .where(eq(conventions.id, id))
+      .update(t.conventions)
+      .set({ accepted: true })
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.id, id),
+        ),
+      )
       .returning();
     return row;
   }
 
-  async deleteByRepo(workspaceId: string, repoId: string): Promise<void> {
-    await this.db
-      .delete(conventions)
-      .where(and(eq(conventions.workspaceId, workspaceId), eq(conventions.repoId, repoId)));
+  /** Reject = фізично видаляємо */
+  async reject(workspaceId: string, id: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(t.conventions)
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.id, id),
+        ),
+      )
+      .returning({ id: t.conventions.id });
+    return rows.length > 0;
+  }
+
+  /** Inline edit: оновити текст правила */
+  async updateRule(
+    workspaceId: string,
+    id: string,
+    rule: string,
+  ): Promise<ConventionRow | undefined> {
+    const [row] = await this.db
+      .update(t.conventions)
+      .set({ rule })
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.id, id),
+        ),
+      )
+      .returning();
+    return row;
+  }
+
+  /** Тільки accepted — для створення скіла */
+  async listAccepted(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<ConventionRow[]> {
+    return this.db
+      .select()
+      .from(t.conventions)
+      .where(
+        and(
+          eq(t.conventions.workspaceId, workspaceId),
+          eq(t.conventions.repoId, repoId),
+          eq(t.conventions.accepted, true),
+        ),
+      );
   }
 }

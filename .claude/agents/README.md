@@ -1,289 +1,215 @@
-# Agent registry — dev-digest
+# DevDigest Agents
 
-Seven agents in this directory. Each runs as an isolated child process with its own context window and explicit tool allowlist.
+Custom Claude Code subagents for the DevDigest project. Each agent is a Markdown file with YAML
+frontmatter (`name`, `description`, `model`, `tools`, optional `skills:`) plus a system-prompt body.
+Claude routes work to an agent based on its `description`, so the descriptions are written as
+trigger rules ("Use proactively when…").
 
-**Invocation:** via the `Agent` tool with `subagent_type: <name>`, or automatically by Claude Code when a user message matches the `description` trigger phrases.
+| Agent | Model | Role | Writes code? |
+|-------|-------|------|--------------|
+| [`researcher`](./researcher.md) | sonnet | Read-only research (project + internet), strict structured output | No |
+| [`planner`](./planner.md) | opus | Read-only architect — produces a structured Development Plan | No (only the plan file) |
+| [`implementer`](./implementer.md) | sonnet | Implements ONE task from a plan (backend or UI), self-verifies | Yes |
+| [`test-writer`](./test-writer.md) | sonnet | Writes unit + integration tests (backend + reviewer-core), self-verifies | Yes |
+| [`architecture-reviewer`](./architecture-reviewer.md) | opus | Read-only structural/architecture review of a diff or file set | No |
+| [`plan-verifier`](./plan-verifier.md) | opus | Read-only requirements-completion / traceability check | No |
+| [`doc-writer`](./doc-writer.md) | sonnet | Writes documentation (Diátaxis + Mermaid), knows where docs belong | Yes |
+
+## Intended workflow
+
+```
+you / main session
+   └─ planner (opus, read-only) → docs/plans/<feature>.md
+         (phased tasks with Type · Skills · Owned paths · Depends-on · Acceptance)
+         └─ N× implementer (sonnet, parallel) — one task each, inside its Owned paths
+               └─ pr-self-review (existing skill) — final gate before push
+```
+
+The pipeline mirrors Claude Code's recommended **Explore → Plan → Implement → Commit** loop: the
+planner runs read-only during Plan, the implementers run during Implement, and review stays a
+separate fresh-context step.
 
 ---
 
-## Agents at a glance
+## `researcher`
 
-| Agent | Model | Write/Edit | Web | permissionMode | maxTurns | Asks questions |
-|-------|-------|-----------|-----|----------------|----------|----------------|
-| researcher | sonnet-4-6 | no | yes | default | default | yes |
-| planner | sonnet-4-6 | no | no | default | default | yes |
-| implementer | sonnet-4-6 | yes | no | default | 40 | no |
-| test-writer | sonnet-4-6 | yes (Write) | no | default | 30 | no |
-| architecture-reviewer | opus-4-7 | no | no | plan | default | no |
-| plan-verifier | opus-4-7 | no | no | plan | 10 | no |
-| doc-writer | sonnet-4-6 | yes (Write) | no | acceptEdits | 26 | no |
+Pre-existing read-only research agent. Finds information inside the project or on the public
+internet and returns it in a strict template. Never edits files, never runs deep-research. The
+planner and implementer both follow its writing conventions (YAML frontmatter + Hard rules + fixed
+output template).
 
 ---
 
-## researcher
+## `planner`
 
-**File:** `researcher.md`
+**What it does.** Turns a request into a structured, file-specific **Development Plan** written to
+`docs/plans/<feature>.md`. Knows every DevDigest module (`server/`, `client/`, `reviewer-core/`,
+`e2e/`, `@devdigest/shared`) and assigns each task a `Type`, a skill set, non-overlapping
+`Owned paths`, dependencies (a DAG), known gotchas from module insights, and measurable acceptance
+criteria. Read-only except for the plan file.
 
-**Responsibility:** Read-only research in two modes. Mode A traces code in the repository (file:line evidence, data-flow). Mode B queries external sources (docs, RFCs, CVEs, changelogs). Combined mode produces both reports plus a Synthesis section.
+**Carries the full skill set.** It preloads the same skills the implementer uses (backend + UI +
+core practices) plus `mermaid-diagram`, on purpose: it plans the implementation, so every practice
+an implementer must follow has to be reflected in the plan.
 
-**Tools:** `Bash`, `Read`, `WebFetch`, `WebSearch`, `Agent`, `ToolSearch`
+**Based on:**
 
-**Preloaded skills:** none
-
-**Input:** a specific research question + mode (repo / external / both). If the question is vague, asks up to three clarifying questions before starting.
-
-**Output artifacts:**
-
-- *Codebase Research Report* — findings table with `file:line` evidence, key code references, data/control flow, gaps & unknowns, confidence rating
-- *External Research Report* — findings table with URLs, sources list, conflicts section, not-found list, confidence rating
-- *Synthesis* — how repo findings relate to external findings (combined mode only)
-
----
-
-## planner
-
-**File:** `planner.md`
-
-**Responsibility:** Read-only analysis of the codebase, CLAUDE.md files, and LEARNINGS.md → structured Development Plan. The plan is implementer-aware: every task row names the skill the implementer must apply, so the plan cannot contradict onion-architecture, drizzle, or React rules.
-
-**Tools:** `Read`, `Bash`, `Glob`, `Grep`, `Skill`, `ToolSearch`, `AskUserQuestion`
-
-**Preloaded skills:** `onion-architecture`, `frontend-architecture`, `next-best-practices`, `fastify-best-practices`, `drizzle-orm-patterns`
-
-Skills are injected into the agent's system prompt before the first message, so the plan is constrained by implementation rules from the start.
-
-**Input:** a feature description with clear goal and scope. If scope is missing, asks up to three clarifying questions before reading any files.
-
-**Output artifact — Development Plan:**
-
-```
-## Development Plan — <name>
-### Context       — affected packages, relevant skills, constraints from LEARNINGS.md
-### Tasks         — table: task | package | primary files | skill to apply
-### Architecture notes — decisions implementer must not override
-### Out of scope  — explicit exclusions
-### Implementer checklist — test commands, onion rule reminder, review hand-off note
-```
-
-**Rules that govern output:**
-- Every task row must name a skill
-- Tasks are specific (file + function + what changes), never vague
-- Only one approach proposed — committed, briefly justified
-- Past failures from LEARNINGS.md surfaced in Architecture notes
-
-**Sources for planner rules:**
-
-| Rule | Source |
-|------|--------|
-| No Write/Edit — explicit read-only allowlist | [Sub-agents docs — tools field](https://code.claude.com/docs/en/subagents): «if omitted, agent inherits ALL tools» |
-| `skills:` preload injects rules before first message | [Sub-agents docs — skills field](https://code.claude.com/docs/en/subagents): «full skill content injected into subagent context at startup» |
-| `description:` with trigger phrases drives routing | [Sub-agents docs — description](https://code.claude.com/docs/en/subagents): «anti-pattern: vague or missing trigger phrases» |
-| `AskUserQuestion` in allowlist enables clarification | [Tools Reference](https://code.claude.com/docs/en/tools-reference): must be explicitly listed to be available |
-| `name:` lowercase-hyphens, no colons | [Sub-agents docs — name field](https://code.claude.com/docs/en/subagents): «file silently skipped if name contains colons» |
+- **`description` as the routing signal**, written as a trigger rule — [Claude Code subagents docs](https://code.claude.com/docs/en/sub-agents), [Best practices for Claude Code subagents (PubNub)](https://www.pubnub.com/blog/best-practices-for-claude-code-sub-agents/)
+- **Read-only planning, separated from implementation** (Explore → Plan → Implement) — [Best practices for Claude Code](https://code.claude.com/docs/en/best-practices); modelled on the built-in `Plan` subagent — [subagents docs](https://code.claude.com/docs/en/sub-agents)
+- **Opus for design/architecture** (model tiering) — [wshobson/agents](https://github.com/wshobson/agents)
+- **Handoff via a written plan artifact** — [Best practices for Claude Code](https://code.claude.com/docs/en/best-practices)
+- **Strong plan structure** (overview, requirements, file-specific steps, phases, dependencies, testing, risks, success criteria) — [affaan-m/everything-claude-code · planner.md](https://github.com/affaan-m/everything-claude-code/blob/main/agents/planner.md)
+- **Plan anti-patterns → the Red-flags check** (measurable acceptance, every requirement maps to a task, dependencies form a DAG) — [Strategic Task Planner (subagents.app)](https://subagents.app/agents/planner)
+- **Preloading skills via the `skills:` field** (full skill body injected at startup) — [Extend Claude with skills](https://code.claude.com/docs/en/skills)
+- **Delegating heavy discovery to a subagent** to keep planning context clean — [subagents docs](https://code.claude.com/docs/en/sub-agents)
+- **Module-scoped insights** (read `<module>/insights/` rather than the whole repo) — project convention in [`/CLAUDE.md`](../../CLAUDE.md) "Read When", combined with the nested-skills pattern from [Extend Claude with skills](https://code.claude.com/docs/en/skills)
 
 ---
 
-## implementer
+## `implementer`
 
-**File:** `implementer.md`
+**What it does.** Implements exactly one task from a Development Plan — backend (Fastify/Drizzle/
+onion) or UI (Next.js/React) — and brings it to green. Runs in parallel with other implementers on
+the **same branch** (no worktree isolation), so staying inside the task's `Owned paths` is what
+keeps the parallel run safe. Its self-check is narrow: write the code and make the module's existing
+tests + typecheck pass; broad review is left to `pr-self-review`.
 
-**Responsibility:** Executes a Development Plan produced by the planner. Loads the skill listed per task before writing code, runs tests after each task, and stops at the plan's scope boundary. Does not perform architectural review, security review, or PR review — those are handled by separate agents.
+**Skill routing.** All relevant skills (backend + UI + core + always) are listed in the `skills:`
+frontmatter and injected at startup, so nothing has to be invoked manually. The body just states
+which set to emphasise per task `Type`.
 
-**Tools:** `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`, `Skill`, `ToolSearch`, `TodoWrite`
+**Based on:**
 
-**Preloaded skills:** none — skills are loaded dynamically via `Skill` tool as each task begins
+- **`description` as a trigger rule** for auto-delegation — [Claude Code subagents docs](https://code.claude.com/docs/en/sub-agents)
+- **Sonnet for implementation** (model tiering) — [wshobson/agents](https://github.com/wshobson/agents)
+- **Per-type skill sets injected via `skills:`** (backend vs UI vs core) — [Extend Claude with skills](https://code.claude.com/docs/en/skills)
+- **Owned paths / forbidden files / contracts-first** for safe parallel work — [Parallel Claude Code Agents: Safe Workflow Guide](https://www.aakashx.com/blog/parallel-claude-code-agents/)
+- **Self-verification with a runnable check** (tests + typecheck, iterate to green) — [Best practices for Claude Code](https://code.claude.com/docs/en/best-practices)
+- **Review in a fresh context, separate from the author** — [Best practices for Claude Code](https://code.claude.com/docs/en/best-practices); kept in the existing `pr-self-review` skill rather than baked into this agent
+- **Single-responsibility agent design** (one task, in scope) — [wshobson/agents](https://github.com/wshobson/agents), [PubNub best practices](https://www.pubnub.com/blog/best-practices-for-claude-code-sub-agents/)
+- **Module-scoped insights read before coding, written back after** — project convention in [`/CLAUDE.md`](../../CLAUDE.md) + the `engineering-insights` skill
 
-**maxTurns:** 40 — sufficient for 5–8 tasks with tests; prevents runaway loops on test failures
-
-**Input:** a Development Plan (output from planner) passed in the user message. If no plan is present, instructs the user to run planner first.
-
-**Output artifact — Implementation Report:**
-
-```
-## Implementation Report — <name>
-### Completed tasks  — table: task | files changed | skill applied | test result | status
-### Skills applied   — one sentence per skill on how the rule was followed
-### Deviations       — any task implemented differently than planned, with reason
-### Blocked          — tasks not completed and why
-### Test results     — raw output lines (pass/fail counts, failures)
-```
-
-**Rules that govern execution:**
-- Skill loaded before code is written, not after
-- No architectural decisions outside the plan
-- No unrelated refactoring or bug fixes
-- No `git add / commit / push` — committing is the user's responsibility
-- Tests must pass before a task is marked completed; failures are fixed, not skipped
-
-**Sources for implementer rules:**
-
-| Rule | Source |
-|------|--------|
-| `maxTurns: 40` limits agentic turns | [Sub-agents docs — maxTurns field](https://code.claude.com/docs/en/subagents): «positive integer; limits turns before subagent stops» |
-| `TodoWrite` for per-task progress tracking | [Tools Reference](https://code.claude.com/docs/en/tools-reference): dedicated tool for task state inside an agentic session |
-| No `AskUserQuestion` — implementer follows the plan | [Sub-agents docs — tools field](https://code.claude.com/docs/en/subagents): tool absent from allowlist = unavailable to agent |
-| No `git commit` in agent body | dev-digest `CLAUDE.md`: «only create commits when requested by the user» |
-| `description:` states what agent does NOT do | `.claude/skills/` convention in this repo: descriptions explicitly exclude adjacent responsibilities |
-| Skills loaded dynamically (not preloaded) | [Sub-agents docs](https://code.claude.com/docs/en/subagents): skills = context injection; load per-task to avoid bloating context with unused rules |
+**Deliberately not used:** `isolation: worktree` (the project runs implementers on the main branch
+by choice, relying on `Owned paths` discipline instead of worktree isolation).
 
 ---
 
-## test-writer
+## `test-writer`
 
-**File:** `test-writer.md`
+**What it does.** Adds or extends unit and integration tests for the DevDigest backend (`server/`)
+and the LLM review engine (`reviewer-core/`). It enforces the project's test split (`*.it.test.ts`
+= real Postgres via testcontainers with transaction-rollback isolation; `*.test.ts` = hermetic unit
+with fake timers and seeded ids), injects a `FakeLlmProvider` at the `LLMProvider` seam for
+reviewer-core tests, and never modifies production `src/` files (only a type export strictly
+required to compile a test is permitted). Forbidden anti-patterns are encoded directly in its body:
+tautological assertions, over-mocking, snapshot tests on dynamic output, and non-deterministic test
+bodies. Self-verifies by running the affected suites and pasting terminal evidence before reporting
+done.
 
-**Responsibility:** Writes tests for `client/` (React Testing Library + vitest/jsdom) and `server/` (Vitest unit + `.it.test.ts` integration). Detects package from file path, loads the correct project skill, writes tests, runs them, and reports raw output. Does not fix application code.
+**Skill routing.** `react-testing-library` supplies RTL and vitest query conventions; `fastify-best-practices`,
+`drizzle-orm-patterns`, and `onion-architecture` anchor the backend test structure to the actual layering;
+`zod` and `typescript-expert` cover schema-level assertions; `security` and `engineering-insights`
+are the always-on set.
 
-**Tools:** `Read`, `Bash`, `Write`, `Glob`, `Grep`, `Skill`, `ToolSearch`
+**Based on:**
 
-**Preloaded skills:** none — loaded dynamically per target context
-
-**maxTurns:** 30 · prompt-level circuit breaker at 20 tool calls
-
-**Input:** a file path, component/module name, or task number from a Development Plan.
-
-**Output artifact — Test Report:**
-```
-## Test Report — <module>
-### Tests written  — table: file | tests added | skill applied | run command | status
-### Test results   — raw vitest/pnpm test output
-### Skipped        — deferred integration tests (.it.test.ts), uncovered edge cases
-```
-
-**Sources:**
-| Rule | Source |
-|------|--------|
-| Write + Bash in allowlist for file-writing agent | [Official sub-agents docs](https://code.claude.com/docs/en/subagents) — tools allowlist |
-| Bash bypass workaround (prompt-level prohibition) | GitHub issue #31292 — `disallowedTools` does not block `echo >`, `sed -i` via Bash |
-| `maxTurns` not reliably enforced → prompt circuit breaker | GitHub issue #41143 — maxTurns enforcement bug |
-| Anti-patterns: over-mocking, weak assertions, watch mode | [Vitest AI testing guide](https://main.vitest.dev/guide/learn/writing-tests-with-ai) |
+- **Subagent design and trigger-rule `description`** — [Claude Code subagents docs](https://code.claude.com/docs/en/sub-agents), [Best practices for Claude Code subagents (PubNub)](https://www.pubnub.com/blog/best-practices-for-claude-code-sub-agents/)
+- **Over-mocking and tautological-test study** — [Are Coding Agents Generating Over-Mocked Tests? (arXiv)](https://arxiv.org/html/2602.00409v1)
+- **Tautological-test postmortem (contract-comment-before-assertion rule)** — [When AI-generated tests pass but miss the bug (dev.to)](https://dev.to/jamesdev4123/when-ai-generated-tests-pass-but-miss-the-bug-a-postmortem-on-tautological-unit-tests-2ajp)
+- **Mocking LLM calls for deterministic tests** — [Unit testing AI agents: mocking LLM calls (CallSphere)](https://callsphere.ai/blog/unit-testing-ai-agents-mocking-llm-calls-deterministic-tests)
+- **Blazing-fast Postgres tests with testcontainers + Vitest** — [Blazing fast Prisma and Postgres tests in Vitest (Codepunkt)](https://codepunkt.de/writing/blazing-fast-prisma-and-postgres-tests-in-vitest/)
+- **Flaky-test prevention in Vitest** — [Flaky tests in Vitest (Mergify)](https://mergify.com/flaky-tests/vitest/)
 
 ---
 
-## architecture-reviewer
+## `architecture-reviewer`
 
-**File:** `architecture-reviewer.md`
+**What it does.** A **read-only** structural auditor (`tools: Read, Glob, Grep` — no `Edit`,
+`Write`, or `Bash`). Given a diff or file set, it reads the project's own authoritative docs first
+(`CLAUDE.md`, `server/CLAUDE.md`, `server/docs/architecture.md`, `reviewer-core/CLAUDE.md`,
+`reviewer-core/docs/pipeline.md`) and then checks seven named rules: inward-only dependencies,
+business logic in routes, DI discipline, no `process.env` outside `LocalSecretsProvider`,
+`reviewer-core` zero-I/O, `groundFindings()` gate, and shared-contract deduplication. Every finding
+must cite the exact rule it violates; uncited generic opinions are suppressed. Write tools are
+deliberately omitted — a reviewer that can write is tempted to fix rather than report, which destroys
+review independence.
 
-**Responsibility:** Read-only architectural review of `server/` (onion-architecture layer boundaries, Drizzle constraints) and `client/` (RSC/client boundary, business logic placement). Returns BLOCKER/MAJOR/NIT findings with mandatory `file:line` evidence. Does not write code, suggest refactors, or perform security review.
+**Scope.** Does NOT review style nits, naming, runtime bugs, test quality, performance, or security
+injection vectors (those belong to `pr-self-review` and the `security` skill). Structural contracts
+only.
 
-**Tools:** `Read`, `Bash`, `Glob`, `Grep`, `ToolSearch`
+**Based on:**
 
-**Preloaded skills:** `onion-architecture`, `frontend-architecture`
-
-**permissionMode:** `plan` — blocks all writes at engine level
-
-**Input:** file/directory path, module name, or pasted `git diff main...HEAD`. For diffs: reviews only `+` lines.
-
-**Output artifact — Architecture Review:**
-```
-## Architecture Review — <scope>
-### Summary        — PASSED / VIOLATIONS FOUND
-### Findings       — table: severity | file:line | rule violated | evidence
-### Out-of-scope   — security/performance observations (not findings)
-### Confidence     — HIGH/MEDIUM/LOW
-```
-
-**Sources:**
-| Rule | Source |
-|------|--------|
-| `permissionMode: plan` enforces read-only at engine level | [Official sub-agents docs — permissionMode](https://code.claude.com/docs/en/subagents) |
-| BLOCKER/MAJOR/NIT taxonomy; file:line evidence required | [Tembo.io subagents guide](https://www.tembo.io/blog/claude-code-subagents) |
-| Fastify layer invariants; Drizzle-in-repo-only rule | [fastify-boilerplate](https://github.com/marcoturi/fastify-boilerplate) |
-| `model: opus` for complex multi-layer analysis | [Official sub-agents docs — model field](https://code.claude.com/docs/en/subagents) |
+- **Subagent design and trigger-rule `description`** — [Claude Code subagents docs](https://code.claude.com/docs/en/sub-agents), [Best practices for Claude Code subagents (PubNub)](https://www.pubnub.com/blog/best-practices-for-claude-code-sub-agents/)
+- **Parallel AI agents for code review** — [9 Parallel AI Agents That Review My Code (HAMY)](https://hamy.xyz/blog/2026-02_code-reviews-claude-subagents)
+- **Architectural liquefaction and the need for automated guardrails** — [Clean Architecture in the Age of AI (dev.to)](https://dev.to/uxter/clean-architecture-in-the-age-of-ai-preventing-architectural-liquefaction-5d8d)
+- **Enforcing Clean Architecture via tooling** — [Enforce Clean Architecture in TypeScript with fresh-onion (dev.to)](https://dev.to/remojansen/enforce-clean-architecture-in-your-typescript-projects-with-fresh-onion-45pi)
+- **Agentic code review patterns** — [Agentic Code Review (Addy Osmani)](https://addyosmani.com/blog/agentic-code-review/)
 
 ---
 
-## plan-verifier
+## `plan-verifier`
 
-**File:** `plan-verifier.md`
+**What it does.** A **read-only** completeness checker (`tools: Read, Glob, Grep, Bash` — no
+`Edit` or `Write`). Given a Development Plan, it walks every requirement and acceptance criterion,
+searches for the concrete implementing artifact (grep → structural glob → read), quotes verbatim
+evidence, and assigns one of four statuses: `done | partial | missing | cannot-verify`. `Bash` is
+used only to run grep/typecheck commands and capture output as evidence — never to modify state.
+After the per-requirement pass it performs an implicit-concerns sweep (error handling, auth,
+idempotency, test coverage, type safety). Output is a traceability matrix table followed by a gate
+verdict.
 
-**Responsibility:** Compares implemented code against every item in a Development Plan. Returns COMPLIANT/PARTIAL/NON-COMPLIANT per task with `file:line` evidence. Detects out-of-plan scope deviations. Zero general advice — only compliance verdicts.
+**Skill routing.** The skill set is intentionally lean: `typescript-expert` to locate TypeScript
+artifacts, `onion-architecture` to know where backend artifacts should live, and
+`frontend-architecture` to locate UI artifacts. No architecture-quality or security skills are
+loaded — those concerns belong to `architecture-reviewer` and `pr-self-review`. The body explicitly
+states this agent's mandate is completeness and traceability only.
 
-**Tools:** `Read`, `Bash`, `Glob`, `Grep`
+**Based on:**
 
-**Preloaded skills:** none — skill loading would introduce review opinions into a compliance check
-
-**permissionMode:** `plan` · **maxTurns:** 10
-
-**Input:** (both required) Development Plan text + `git diff main...HEAD` or branch name. Stops with a clear message if either is missing.
-
-**Output artifact — Plan Compliance Report:**
-```
-## Plan Compliance Report — <plan name>
-### Overall status  — COMPLIANT / PARTIAL / NON-COMPLIANT
-### Task results    — table: # | plan task | status | evidence | notes
-### Missing items   — checklist of non-compliant/partial tasks
-### Scope deviations — files changed but absent from the plan
-### Confidence      — HIGH/MEDIUM/LOW
-```
-
-**Sources:**
-| Rule | Source |
-|------|--------|
-| Plan + git diff input (not file list) | [arxiv 2604.12147](https://arxiv.org/html/2604.12147v1) — compliance evaluation requires diff as bounded evidence |
-| Plan re-injection at end of prompt (anti-drift) | [arxiv 2604.12147](https://arxiv.org/html/2604.12147v1) — «Reminded Plan Setting» reduces context dilution |
-| Hard output schema prevents drift into general advice | [Aviator blog](https://www.aviator.co/blog/ai-code-review-best-practices/) — fixed table schema leaves no slot for opinions |
-| `model: opus` for simultaneous plan + code reasoning | [Official sub-agents docs — model field](https://code.claude.com/docs/en/subagents) |
-| No `Skill` in allowlist — prevents review opinion leakage | Derived from compliance-vs-review distinction |
+- **Spec-driven development with AI** — [Spec-Driven Development with Agentic AI (ArceApps)](https://arceapps.com/blog/spec-driven-development-ai/)
+- **Writing acceptance criteria AI agents can verify** — [Acceptance criteria an AI agent can verify (BrainGrid)](https://www.braingrid.ai/blog/how-to-write-acceptance-criteria-ai-agent-can-verify)
+- **Code search tool selection for AI agents** — [Code search for AI agents — which tool, when (ceaksan.com)](https://ceaksan.com/en/code-search-for-ai-agents-which-tool-when)
+- **LLM behavioral failure modes (hallucination, rubber-stamping)** — [LLM behavioral failure modes (ceaksan.com)](https://ceaksan.com/en/llm-behavioral-failure-modes)
+- **What AI verification still misses** — [AI coding agents can verify some of their work — here's what they still miss (dev.to)](https://dev.to/moonrunnerkc/ai-coding-agents-can-verify-some-of-their-work-now-heres-what-they-still-miss-58mc)
+- **Requirements traceability matrix structure** — [How to create a traceability matrix (Perforce)](https://www.perforce.com/blog/alm/how-create-traceability-matrix)
 
 ---
 
-## doc-writer
+## `doc-writer`
 
-**File:** `doc-writer.md`
+**What it does.** Writes and updates Markdown documentation for the DevDigest codebase. Every
+claim is grounded in source (never invented); every doc is classified into a Diátaxis quadrant
+(tutorial / how-to / reference / explanation) and placed according to the repo's layout decision
+tree (`server/docs/`, `client/docs/`, `docs/adr/`, `docs/plans/`, `<module>/insights/`). ADRs are
+append-only — accepted ones are never edited, only superseded. Every generated file is stamped with
+`<!-- generated from: <source files> -->` on the second line. Mermaid diagrams are selected by
+content type and validated with a post-check (unique node ids, no lowercase `end`, correct arrow
+syntax) before publishing.
 
-**Responsibility:** Reads source code and produces developer documentation with mandatory Mermaid diagrams for any multi-step flow. Writes to the correct `docs/` subdirectory per package. Works in an isolated worktree — the human reviews the diff before merging. Never writes `CLAUDE.md`, `LEARNINGS.md`, or `specs/`.
+**Skill routing.** `mermaid-diagram` drives diagram type selection and syntax; `onion-architecture`
+and `frontend-architecture` are loaded to accurately describe backend and UI module structure in
+reference docs; `typescript-expert` enables accurate reading of TypeScript types and exported
+symbols; `engineering-insights` closes the loop — doc-writing discoveries (undocumented constraints,
+gotchas) are appended back to `<module>/insights/`.
 
-**Tools:** `Read`, `Bash`, `Write`, `Glob`, `Grep`, `Skill`, `ToolSearch`
+**Based on:**
 
-**Preloaded skills:** `mermaid-diagram`
-
-**isolation:** `worktree` · **memory:** `project` · **maxTurns:** 26
-
-**Input:** Development Plan, file/module path, or feature description. Reads source before writing; marks unimplemented features as `[PLANNED — not yet implemented]`.
-
-**Docs directory map:**
-- `server/docs/` → endpoints, modules, repositories
-- `client/docs/` → pages, components, data-fetch patterns
-- `reviewer-core/docs/` → pipeline, grounding gate, scoring
-- `e2e/docs/` → flows, hermetic runner
-- `docs/` (root) → cross-cutting, architecture ADRs
-
-**Output artifact — Documentation Written:**
-```
-## Documentation Written — <feature>
-### Files created/updated — table: file | section | content summary
-### Diagrams included    — table: file | diagram type | what it shows
-```
-
-**Sources:**
-| Rule | Source |
-|------|--------|
-| Write to `docs/` only; never to source | [GitHub Blog — 2,500+ repo analysis](https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/) |
-| `isolation: worktree` sandboxes writes | [Official sub-agents docs — isolation field](https://code.claude.com/docs/en/subagents) |
-| `memory: project` accumulates doc conventions | [Official sub-agents docs — memory field](https://code.claude.com/docs/en/subagents) |
-| Mermaid as standard for agent-generated diagrams | [Awesome Testing — Mermaid + AI](https://www.awesome-testing.com/2025/09/mermaid-diagrams); GitHub-native rendering |
-| System-prompt directory map for section routing | [GitHub Blog](https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/) — explicit path assignments reduce destructive writes |
+- **Diátaxis framework** — [Diátaxis — Start Here](https://diataxis.fr/start-here/)
+- **Automated, grounded documentation generation (DocAgent)** — [DocAgent (arXiv)](https://arxiv.org/html/2504.08725v1)
+- **AI doc generation: when it helps and when it misleads** — [AI can write your docs, but should it? (Mintlify)](https://www.mintlify.com/blog/ai-can-write-your-docs-but-should-it)
+- **Architecture Decision Record conventions** — [Architecture Decision Record (Martin Fowler)](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html)
+- **ADR best practices** — [Master ADRs (AWS)](https://aws.amazon.com/blogs/architecture/master-architecture-decision-records-adrs-best-practices-for-effective-decision-making/)
+- **Avoiding AI writing pitfalls** — [avoid-ai-writing SKILL.md (GitHub)](https://github.com/conorbronsdon/avoid-ai-writing/blob/main/SKILL.md)
 
 ---
 
-## Typical workflow
+## Adding a new agent
 
-```
-researcher  ──▶  answers "what does X do / what do the docs say about Y"
-                 │
-planner     ◀───┘  Development Plan (tasks + skills + architecture notes)
-    │
-    ▼
-implementer ──▶  Implementation Report (code written, tests run)
-    │
-    ├──▶  test-writer          ──▶  Test Report
-    ├──▶  architecture-reviewer ──▶  Architecture Review
-    ├──▶  plan-verifier        ──▶  Plan Compliance Report
-    └──▶  doc-writer           ──▶  docs/ files (worktree diff)
-              │
-              ▼
-    pr-self-review / security-review   (skills, not agents)
-```
-
-Agents do not chain automatically — the user passes output from one as input to the next.
+1. Create `<name>.md` here with frontmatter (`name`, `description`, `model`, `tools`, optional
+   `skills:`).
+2. Write the `description` as a trigger rule — it is the only signal Claude uses to route to the agent.
+3. If you preload skills, make sure none of them set `disable-model-invocation: true` (that blocks
+   preloading).
+4. Add a row to the table above and a section here, with sources if the design is based on external
+   practices.

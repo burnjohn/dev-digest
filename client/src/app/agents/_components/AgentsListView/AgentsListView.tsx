@@ -5,7 +5,14 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
+import {
+  Button,
+  Dropdown,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  Icon,
+} from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
 import { useAgents, useUpdateAgent } from "../../../../lib/hooks/agents";
 import { AgentCard } from "../AgentCard";
@@ -25,7 +32,12 @@ export function AgentsListView() {
   const list = filterAgents(agents ?? [], search);
 
   return (
-    <AppShell crumb={[{ label: t("list.breadcrumbLab") }, { label: t("list.breadcrumb") }]}>
+    <AppShell
+      crumb={[
+        { label: t("list.breadcrumbLab") },
+        { label: t("list.breadcrumb") },
+      ]}
+    >
       {creating && <CreateAgentModal onClose={() => setCreating(false)} />}
       <div style={s.page}>
         <div style={s.header}>
@@ -46,12 +58,21 @@ export function AgentsListView() {
             width={220}
             align="right"
             trigger={
-              <Button kind="primary" size="sm" icon="Plus" iconRight="ChevronDown">
+              <Button
+                kind="primary"
+                size="sm"
+                icon="Plus"
+                iconRight="ChevronDown"
+              >
                 {t("list.addAgent")}
               </Button>
             }
             items={[
-              { label: t("list.createFromScratch"), icon: "Edit", onClick: () => setCreating(true) },
+              {
+                label: t("list.createFromScratch"),
+                icon: "Edit",
+                onClick: () => setCreating(true),
+              },
               { divider: true },
               ...TEMPLATES.map((tp) => ({
                 label: tp,
@@ -70,7 +91,9 @@ export function AgentsListView() {
             <Skeleton height={120} />
           </div>
         )}
-        {isError && <ErrorState body={t("list.loadError")} onRetry={() => refetch()} />}
+        {isError && (
+          <ErrorState body={t("list.loadError")} onRetry={() => refetch()} />
+        )}
         {!isLoading && !isError && list.length === 0 && (
           <EmptyState
             icon="Cpu"
@@ -86,8 +109,11 @@ export function AgentsListView() {
               <AgentCard
                 key={a.id}
                 ag={a}
+                skillCount={a.skill_count}
                 onClick={() => router.push(`/agents/${a.id}?tab=config`)}
-                onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
+                onToggle={(enabled) =>
+                  update.mutate({ id: a.id, patch: { enabled } })
+                }
               />
             ))}
           </div>

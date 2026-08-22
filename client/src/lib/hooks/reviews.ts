@@ -5,7 +5,7 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE } from "../api";
-import { notify } from "../toast";
+import { notify } from "../contexts/toast";
 import type {
   FindingActionKind,
   PrReviewComment,
@@ -53,6 +53,7 @@ export function usePrReviews(prId: string | null | undefined) {
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     enabled: !!prId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 

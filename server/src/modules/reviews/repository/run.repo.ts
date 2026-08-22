@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
@@ -48,45 +48,63 @@ export async function listRunsForPull(
     .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
     .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.prId, prId)))
     .orderBy(desc(t.agentRuns.ranAt));
-  return rows.map(({ run, agentName }) => ({
-    run_id: run.id,
-    agent_id: run.agentId,
-    agent_name: agentName ?? null,
-    provider: run.provider,
-    model: run.model,
-    status: run.status,
-    error: run.error,
-    duration_ms: run.durationMs,
-    tokens_in: run.tokensIn,
-    tokens_out: run.tokensOut,
-    cost_usd: run.costUsd,
-    findings_count: run.findingsCount,
-    grounding: run.grounding,
-    ran_at: run.ranAt ? run.ranAt.toISOString() : null,
-    score: run.score,
-    blockers: run.blockers,
-    cost: run.cost != null ? Number(run.cost) : null,
-    findings_critical: run.findingsCritical,
-    findings_warning: run.findingsWarning,
-    findings_suggestion: run.findingsSuggestion,
-  }));
+
+  // Per-severity counts: findings → reviews (via run_id) → agent_runs
+  const runIds = rows.map((r) => r.run.id).filter(Boolean);
+  const severityMap = new Map<string, { critical: number; warning: number; suggestion: number }>();
+  if (runIds.length > 0) {
+    const sevRows = await db
+      .select({
+        runId: t.reviews.runId,
+        severity: t.findings.severity,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(t.findings)
+      .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+      .where(inArray(t.reviews.runId, runIds))
+      .groupBy(t.reviews.runId, t.findings.severity);
+    for (const row of sevRows) {
+      if (!row.runId) continue;
+      const entry = severityMap.get(row.runId) ?? { critical: 0, warning: 0, suggestion: 0 };
+      if (row.severity === 'CRITICAL') entry.critical = row.count;
+      else if (row.severity === 'WARNING') entry.warning = row.count;
+      else if (row.severity === 'SUGGESTION') entry.suggestion = row.count;
+      severityMap.set(row.runId, entry);
+    }
+  }
+
+  return rows.map(({ run, agentName }) => {
+    const sev = severityMap.get(run.id) ?? { critical: 0, warning: 0, suggestion: 0 };
+    return {
+      run_id: run.id,
+      agent_id: run.agentId,
+      agent_name: agentName ?? null,
+      provider: run.provider,
+      model: run.model,
+      status: run.status,
+      error: run.error,
+      duration_ms: run.durationMs,
+      tokens_in: run.tokensIn,
+      tokens_out: run.tokensOut,
+      cost_usd: run.costUsd,
+      findings_count: run.findingsCount,
+      grounding: run.grounding,
+      ran_at: run.ranAt ? run.ranAt.toISOString() : null,
+      score: run.score,
+      blockers: run.blockers,
+      findings_critical: sev.critical,
+      findings_warning: sev.warning,
+      findings_suggestion: sev.suggestion,
+    };
+  });
 }
 
-/**
- * Delete one agent run (+ its trace via FK cascade) AND the review it produced.
- * Workspace-scoped. `reviews.run_id` has no FK to `agent_runs`, so the review
- * (and its findings, which DO cascade from `reviews`) must be removed explicitly
- * here — otherwise deleting a run from the timeline leaves its findings orphaned
- * in the Review Runs list below.
- */
+/** Delete one agent run (+ its trace via FK cascade). Workspace-scoped. */
 export async function deleteAgentRun(
   db: Db,
   workspaceId: string,
   runId: string,
 ): Promise<boolean> {
-  await db
-    .delete(t.reviews)
-    .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)));
   const rows = await db
     .delete(t.agentRuns)
     .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId)))
@@ -151,7 +169,6 @@ export async function completeAgentRun(
     durationMs: number;
     tokensIn: number;
     tokensOut: number;
-    /** Generation cost in USD; null when un-priced / on failed/cancelled runs. */
     costUsd: number | null;
     findingsCount: number;
     grounding: string;
@@ -159,11 +176,6 @@ export async function completeAgentRun(
     score?: number | null;
     /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
     blockers?: number | null;
-    /** LLM cost in USD; null when unknown or free model. */
-    cost?: number | null;
-    findingsCritical?: number | null;
-    findingsWarning?: number | null;
-    findingsSuggestion?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
   },
@@ -180,10 +192,6 @@ export async function completeAgentRun(
       grounding: values.grounding,
       score: values.score ?? null,
       blockers: values.blockers ?? null,
-      cost: values.cost != null ? String(values.cost) : null,
-      findingsCritical: values.findingsCritical ?? null,
-      findingsWarning: values.findingsWarning ?? null,
-      findingsSuggestion: values.findingsSuggestion ?? null,
       error: values.error ?? null,
     })
     .where(eq(t.agentRuns.id, runId));

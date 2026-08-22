@@ -1,0 +1,11 @@
+{
+  "name": "local/frontend-architecture",
+  "version": "0.1.0",
+  "private": true,
+  "summary": "Code organization decisions for React 19 + Next.js 15 — where files live, feature structure, component splitting, constants/utils/business-logic placement, naming conventions, Server/Client boundary",
+  "skills": {
+    "frontend-architecture": {
+      "path": "SKILL.md"
+    }
+  }
+}

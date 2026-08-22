@@ -1,1 +1,0 @@
-ALTER TABLE "conventions" ADD COLUMN "category" text;

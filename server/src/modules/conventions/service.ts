@@ -1,193 +1,157 @@
-import { z } from 'zod';
-import type { ConventionCandidate, PromoteResult } from '@devdigest/shared';
-import type { Container } from '../../platform/container.js';
-import { findRepoByWorkspaceId } from '../pulls/repository.js';
-import { SkillsService } from '../skills/service.js';
-import { ConventionsRepository } from './repository.js';
-import { toDto } from './helpers.js';
+import { eq } from "drizzle-orm";
+import { stat } from "node:fs/promises";
+import type { Container } from "../../platform/container.js";
+import type { ConventionCandidate, Skill } from "@devdigest/shared";
+import * as t from "../../db/schema.js";
+import { NotFoundError, ValidationError } from "../../platform/errors.js";
+import { ConventionsRepository } from "./repository.js";
+import { extractConventions } from "./extractor.js";
+import { SkillsService } from "../skills/service.js";
+import { resolveFeatureModel } from "../settings/feature-models.js";
+import type { ConventionRow } from "./repository.js";
 
-const CONFIG_FILES = [
-  '.eslintrc.json',
-  '.eslintrc.js',
-  'eslint.config.js',
-  'eslint.config.mjs',
-  'tsconfig.json',
-  '.prettierrc',
-  '.prettierrc.json',
-  'biome.json',
-];
-
-const RawCandidate = z.object({
-  category: z.string(),
-  rule: z.string(),
-  evidence_path: z.string(),
-  evidence_snippet: z.string(),
-  confidence: z.number().min(0).max(1),
-});
-
-const ExtractionResult = z.object({
-  candidates: z.array(RawCandidate),
-});
+function toDto(row: ConventionRow): ConventionCandidate {
+  return {
+    id: row.id,
+    rule: row.rule,
+    evidence_path: row.evidencePath ?? "",
+    evidence_snippet: row.evidenceSnippet ?? "",
+    confidence: row.confidence ?? 0,
+    accepted: row.accepted,
+  };
+}
 
 export class ConventionsService {
   private repo: ConventionsRepository;
   private skills: SkillsService;
 
-  constructor(private readonly container: Container) {
+  constructor(private container: Container) {
     this.repo = new ConventionsRepository(container.db);
     this.skills = new SkillsService(container);
   }
 
-  async extract(workspaceId: string, repoId: string): Promise<ConventionCandidate[]> {
-    const repoRow = await findRepoByWorkspaceId(this.container.db, workspaceId, repoId);
-    if (!repoRow) throw new Error('repo_not_found');
-    const repoRef = { owner: repoRow.owner, name: repoRow.name };
-    // Collect file contents: config files first, then top-ranked source files
-    const fileContents = new Map<string, string>();
+  async list(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<ConventionCandidate[]> {
+    const rows = await this.repo.listByRepo(workspaceId, repoId);
+    return rows.map(toDto);
+  }
 
-    for (const path of CONFIG_FILES) {
-      try {
-        const content = await this.container.git.readFile(repoRef, path);
-        fileContents.set(path, content);
-      } catch {
-        // file doesn't exist in clone — skip
-      }
-    }
+  async extract(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<ConventionCandidate[]> {
+    const [repoRow] = await this.container.db
+      .select()
+      .from(t.repos)
+      .where(eq(t.repos.id, repoId));
 
-    const sampledPaths = await this.container.repoIntel.getConventionSamples(repoId, 12);
-    for (const path of sampledPaths) {
-      if (fileContents.size >= 15) break;
-      try {
-        const content = await this.container.git.readFile(repoRef, path);
-        fileContents.set(path, content.slice(0, 3000)); // cap per file
-      } catch {
-        // skip unreadable files
-      }
-    }
+    if (!repoRow) throw new NotFoundError("Repository not found");
+    if (!repoRow.clonePath)
+      throw new ValidationError("Repository not cloned — clone it first");
 
-    if (fileContents.size === 0) return [];
+    // clonePath is a stored absolute path; it can go stale if the repo was
+    // moved on disk. Verify the directory actually exists so we fail loudly
+    // here instead of silently returning [] when every file read misses.
+    const cloneDirOk = await stat(repoRow.clonePath)
+      .then((s) => s.isDirectory())
+      .catch(() => false);
+    if (!cloneDirOk)
+      throw new ValidationError(
+        "Clone directory is missing — refresh the repository to re-clone it, then scan again",
+      );
 
-    const filesBlock = [...fileContents.entries()]
-      .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\n\`\`\``)
-      .join('\n\n');
-
-    const llm = await this.container.llm('openrouter');
-
-    const result = await llm.completeStructured({
-      model: 'deepseek/deepseek-v4-flash',
-      schemaName: 'convention_candidates',
-      schema: ExtractionResult,
-      messages: [
-        {
-          role: 'user',
-          content: `You are a code convention extractor. Analyze the following repository files and extract coding conventions actually used in this codebase.
-
-For each convention, provide:
-- category: short label (e.g. "Naming", "Imports", "Error handling", "Formatting")
-- rule: one clear directive sentence describing the convention
-- evidence_path: exact file path from the provided files where this convention is visible
-- evidence_snippet: a short code excerpt (max 3 lines) from that file that proves the convention
-- confidence: 0.0–1.0 based on how clearly the evidence demonstrates the convention
-
-Only extract conventions you can directly cite from the provided files. Return 5–15 candidates.
-
-${filesBlock}`,
-        },
-      ],
-      maxTokens: 2000,
-    });
-
-    type RawC = z.infer<typeof RawCandidate>;
-    // Evidence validation: drop candidates whose snippet is not in the file we fetched
-    const validated = result.data.candidates.filter((c: RawC) => {
-      const fileContent = fileContents.get(c.evidence_path);
-      if (!fileContent) return false;
-      return fileContent.includes(c.evidence_snippet.trim().split('\n')[0]?.trim() ?? '');
-    });
-
-    await this.repo.deleteByRepo(workspaceId, repoId);
-    await this.repo.insertBatch(
-      validated.map((c: RawC) => ({
-        workspaceId,
-        repoId,
-        category: c.category,
-        rule: c.rule,
-        evidencePath: c.evidence_path,
-        evidenceSnippet: c.evidence_snippet,
-        confidence: c.confidence,
-      })),
+    const samplePaths = await this.container.repoIntel.getConventionSamples(
+      repoId,
+      12,
     );
 
-    const rows = await this.repo.listByRepo(workspaceId, repoId);
+    // Provider + model are selected per-workspace in Settings (feature_models),
+    // falling back to the registry default for the 'conventions' feature. Never
+    // hardcode the model here — respect the workspace's configured choice.
+    const { provider, model } = await resolveFeatureModel(
+      this.container,
+      workspaceId,
+      "conventions",
+    );
+    const llm = await this.container.llm(provider);
+
+    const candidates = await extractConventions({
+      clonePath: repoRow.clonePath,
+      samplePaths,
+      repoName: repoRow.name,
+      llm,
+      model,
+    });
+
+    const rows = await this.repo.replaceAll(workspaceId, repoId, candidates);
     return rows.map(toDto);
   }
 
-  async list(workspaceId: string, repoId: string): Promise<ConventionCandidate[]> {
-    const rows = await this.repo.listByRepo(workspaceId, repoId);
-    return rows.map(toDto);
-  }
-
-  async accept(workspaceId: string, id: string): Promise<ConventionCandidate> {
-    const row = await this.repo.update(id, { accepted: true });
-    if (!row) throw new Error('not_found');
-    void workspaceId;
-    return toDto(row);
-  }
-
-  async reject(workspaceId: string, id: string): Promise<ConventionCandidate> {
-    const row = await this.repo.update(id, { accepted: false });
-    if (!row) throw new Error('not_found');
-    void workspaceId;
-    return toDto(row);
-  }
-
-  async update(
+  async accept(
     workspaceId: string,
     id: string,
-    patch: { rule?: string; category?: string },
-  ): Promise<ConventionCandidate> {
-    const row = await this.repo.update(id, patch);
-    if (!row) throw new Error('not_found');
-    void workspaceId;
-    return toDto(row);
+  ): Promise<ConventionCandidate | undefined> {
+    const row = await this.repo.accept(workspaceId, id);
+    return row ? toDto(row) : undefined;
   }
 
-  async promote(workspaceId: string, repoId: string, repoUrl: string, nameOverride?: string, descriptionOverride?: string): Promise<PromoteResult> {
-    const all = await this.list(workspaceId, repoId);
-    const accepted = all.filter((c) => c.accepted);
-    if (accepted.length === 0) throw new Error('no_accepted_candidates');
+  async reject(workspaceId: string, id: string): Promise<boolean> {
+    return this.repo.reject(workspaceId, id);
+  }
 
-    // Group by category
-    const byCategory = new Map<string, typeof accepted>();
-    for (const c of accepted) {
-      const cat = c.category ?? 'General';
-      if (!byCategory.has(cat)) byCategory.set(cat, []);
-      byCategory.get(cat)!.push(c);
-    }
+  async updateRule(
+    workspaceId: string,
+    id: string,
+    rule: string,
+  ): Promise<ConventionCandidate | undefined> {
+    const row = await this.repo.updateRule(workspaceId, id, rule);
+    return row ? toDto(row) : undefined;
+  }
 
-    const sections = [...byCategory.entries()]
-      .map(([cat, candidates]) => {
-        const rules = candidates
-          .map((c) => {
-            const fileUrl = `${repoUrl}/blob/main/${c.evidence_path}`;
-            return `### ${c.rule}\n[Evidence: \`${c.evidence_path}\`](${fileUrl})\n\`\`\`\n${c.evidence_snippet}\n\`\`\``;
-          })
-          .join('\n\n');
-        return `## ${cat}\n\n${rules}`;
-      })
-      .join('\n\n');
+  /**
+   * Створює скіл з усіх accepted конвенцій.
+   */
+  async createSkillFromAccepted(
+    workspaceId: string,
+    repoId: string,
+    skillName: string,
+    skillDescription: string,
+  ): Promise<Skill> {
+    const [repoRow] = await this.container.db
+      .select()
+      .from(t.repos)
+      .where(eq(t.repos.id, repoId));
 
-    const body = `# Repo Conventions\n\nAuto-extracted from repository source files.\n\n${sections}`;
+    const accepted = await this.repo.listAccepted(workspaceId, repoId);
+    if (accepted.length === 0)
+      throw new ValidationError("No accepted conventions to create skill from");
 
-    const skill = await this.skills.create(workspaceId, {
-      name: nameOverride ?? 'repo-conventions',
-      description: descriptionOverride ?? 'Coding conventions extracted from this repository.',
-      type: 'convention',
-      source: 'extracted',
+    const repoName = repoRow?.name ?? "repo";
+
+    const sections = accepted.map((c) => {
+      const snippetBlock = c.evidenceSnippet
+        ? `\nDetected in \`${c.evidencePath}\`:\n\`\`\`\n${c.evidenceSnippet}\n\`\`\``
+        : "";
+      return `## ${c.rule}${snippetBlock}`;
+    });
+
+    const body = [
+      `# ${skillName}`,
+      "",
+      `House conventions for \`${repoName}\`. Flag changes that violate any rule below and cite the offending \`file:line\`.`,
+      "",
+      ...sections,
+    ].join("\n\n");
+
+    return this.skills.create(workspaceId, {
+      name: skillName,
+      description: skillDescription,
+      type: "convention",
+      source: "extracted",
       body,
       enabled: true,
     });
-
-    return { skill_id: skill.id };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
@@ -51,5 +51,28 @@ describe("FindingsPanel (smoke)", () => {
   it("shows the empty state when nothing matches", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+
+  it("filters by severity when a pill is clicked", () => {
+    const findings: FindingRecord[] = [
+      { ...FINDINGS[0]! },
+      {
+        ...FINDINGS[0]!,
+        id: "f2",
+        severity: "WARNING",
+        title: "Warn finding",
+      },
+    ];
+    renderWithIntl(<FindingsPanel findings={findings} prId="pr1" />);
+    // Both visible initially
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+    expect(screen.getByText("Warn finding")).toBeInTheDocument();
+    // Click CRITICAL pill
+    fireEvent.click(screen.getByRole("button", { name: /critical/i }));
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+    expect(screen.queryByText("Warn finding")).not.toBeInTheDocument();
+    // Click again → reset
+    fireEvent.click(screen.getByRole("button", { name: /critical/i }));
+    expect(screen.getByText("Warn finding")).toBeInTheDocument();
   });
 });

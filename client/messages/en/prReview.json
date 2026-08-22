@@ -29,7 +29,10 @@
   "panel": {
     "hideLowConfidence": "Hide low confidence",
     "noMatchTitle": "No findings match",
-    "noMatchBody": "Adjust the filters above, or run a review to generate findings."
+    "noMatchBody": "Adjust the filters above, or run a review to generate findings.",
+    "severityCRITICAL": "Critical",
+    "severityWARNING": "Warning",
+    "severitySUGGESTION": "Suggestion"
   },
   "runReview": {
     "runAll": "Run all enabled agents",
@@ -91,9 +94,9 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
-      "findings": "Findings",
       "updated": "Updated"
     },
     "filesCount": "{count} files",
@@ -107,5 +110,16 @@
     "goToReview": "Jump to this run’s findings below",
     "openTrace": "Open run trace & logs",
     "deleteRun": "Delete run"
+  },
+  "overview": {
+    "descriptionLabel": "Description"
+  },
+  "intent": {
+    "sectionLabel": "Intent",
+    "recompute": "Recompute",
+    "recomputeAriaLabel": "Recompute PR intent",
+    "inScopeLabel": "In scope",
+    "outOfScopeLabel": "Out of scope",
+    "error": "Could not load intent. Click Recompute to try again."
   }
 }

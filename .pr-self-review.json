@@ -1,0 +1,11 @@
+{
+  "verdict": "PASS",
+  "diffHash": "0722b857e7a4edd55b5e3afaa6a3dd39ca7e4ba36b980de037d8639ed383c86c",
+  "base": "origin/main",
+  "headSha": "3b442b6856b80961636d3f8c55a925b4c3f522ae",
+  "criticalCount": 0,
+  "highCount": 0,
+  "suppressedCount": 0,
+  "ranAt": "2026-06-18T09:12:37Z",
+  "findings": []
+}

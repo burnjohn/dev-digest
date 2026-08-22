@@ -4,7 +4,7 @@ import type {
   PrDetail,
   IssueMeta,
   PrReviewComment,
-} from './contracts/platform.js';
+} from './contracts/platform';
 
 /**
  * Adapter interfaces. ALL external calls go behind these interfaces.

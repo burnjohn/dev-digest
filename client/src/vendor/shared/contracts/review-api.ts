@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import { Finding, Verdict } from './findings';
+import { Intent, SmartDiff } from './brief';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core

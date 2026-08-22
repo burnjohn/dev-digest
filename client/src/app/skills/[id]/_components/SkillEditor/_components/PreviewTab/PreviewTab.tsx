@@ -1,24 +1,56 @@
+/* PreviewTab — renders skill.body as markdown (read-only). */
 "use client";
+
 import React from "react";
+import { useTranslations } from "next-intl";
 import type { Skill } from "@devdigest/shared";
-import { Markdown } from "@devdigest/ui";
 
 export function PreviewTab({ skill }: { skill: Skill }) {
+  const t = useTranslations("skills");
+
   return (
-    <div style={{ maxWidth: 720 }}>
-      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-        Rendered as the reviewing agent receives it
-      </p>
-      <div
+    <div style={{ padding: 28, maxWidth: 720 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+          Preview
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          Rendered as the reviewing agent receives it.
+        </p>
+        {skill.source !== "manual" && (
+          <span
+            style={{
+              display: "inline-block",
+              marginTop: 8,
+              fontSize: 11,
+              background: "var(--warn-bg)",
+              color: "var(--warn)",
+              padding: "2px 8px",
+              borderRadius: 4,
+              fontWeight: 600,
+            }}
+          >
+            {t("preview.untrustedBadge")}
+          </span>
+        )}
+      </div>
+      <pre
         style={{
-          background: "var(--bg-surface)",
+          background: "var(--bg-elevated)",
           border: "1px solid var(--border)",
           borderRadius: 8,
-          padding: "16px 20px",
+          padding: 20,
+          fontFamily: "monospace",
+          fontSize: 13,
+          lineHeight: 1.6,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          color: "var(--text-primary)",
+          margin: 0,
         }}
       >
-        <Markdown>{skill.body}</Markdown>
-      </div>
+        {skill.body}
+      </pre>
     </div>
   );
 }

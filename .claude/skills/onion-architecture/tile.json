@@ -1,0 +1,11 @@
+{
+  "name": "local/onion-architecture",
+  "version": "0.1.0",
+  "private": true,
+  "summary": "Onion Architecture enforcement for Fastify 5 + Drizzle ORM + Zod backend modules — layer rules, dependency direction, validation stack, DI container, repository pattern",
+  "skills": {
+    "onion-architecture": {
+      "path": "SKILL.md"
+    }
+  }
+}

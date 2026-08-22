@@ -1,42 +1,36 @@
-import React from "react";
-import { formatCost } from "@/lib/cost";
+import type { CSSProperties } from "react";
+
+const s = {
+  compact: {
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    fontVariantNumeric: "tabular-nums",
+  } satisfies CSSProperties,
+  muted: {
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+};
 
 /**
- * Per-run generation cost, shown on the PR list (compact) and the Agent-runs
- * timeline (with token totals). Missing cost renders "—" (never "$0.00") so an
- * un-priced / failed / pre-tracking run reads differently from a genuine $0.
+ * Displays an LLM run cost in one of two layouts:
  *
- * - `compact`    → "$0.014"            (PR list COST column)
- * - `withTokens` → "9,119 tok · $0.0013" (timeline row, next to the timestamp)
+ *   compact — "$0.014"   (for PR list column)
+ *
+ * Rules: null / zero cost renders "–" (no data), not "$0.00".
  */
-type Props =
-  | { variant: "compact"; cost: number | null | undefined }
-  | {
-      variant: "withTokens";
-      cost: number | null | undefined;
-      tokensIn: number | null | undefined;
-      tokensOut: number | null | undefined;
-    };
-
-const mutedStyle: React.CSSProperties = { color: "var(--text-muted)" };
-
-export function RunCostBadge(props: Props) {
-  if (props.variant === "compact") {
-    const hasCost = props.cost != null;
-    return (
-      <span className="tnum" style={hasCost ? undefined : mutedStyle}>
-        {formatCost(props.cost)}
-      </span>
-    );
+export function RunCostBadge({
+  cost,
+  variant = "compact",
+}: {
+  cost: number | null | undefined;
+  variant?: "compact";
+}) {
+  if (cost == null || cost === 0) {
+    return <span style={s.muted}>–</span>;
   }
-
-  const total = (props.tokensIn ?? 0) + (props.tokensOut ?? 0);
-  // No tokens AND no cost → nothing meaningful to show (running/failed run).
-  if (total === 0 && props.cost == null) return <span style={mutedStyle}>—</span>;
-
   return (
-    <span className="tnum" style={mutedStyle}>
-      {total.toLocaleString()} tok · {formatCost(props.cost)}
+    <span style={s.compact} className="tnum">
+      ${cost.toFixed(3)}
     </span>
   );
 }

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs PR self review before every push.
+# To bypass in an emergency: git push --no-verify
+# To install: git config core.hooksPath .githooks
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$ROOT/scripts/pr-self-review.sh"

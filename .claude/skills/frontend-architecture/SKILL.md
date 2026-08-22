@@ -1,50 +1,137 @@
 ---
 name: frontend-architecture
-description: "Frontend code architecture and organization for React and Next.js — decides WHERE code lives and HOW it is structured. Use when deciding where to put a component/file, splitting a large component, choosing a folder structure (flat / type-based / feature-based), placing business logic, constants, utils, helpers, or custom hooks, naming files, or organizing a Next.js App Router app (route groups, private folders, server actions, lib). NOT for runtime performance (use vercel-react-best-practices), React anti-patterns/hooks rules (use react-best-practices), or Next.js RSC/data-fetching mechanics (use next-best-practices)."
-version: "1.0.0"
+description: >
+  Code organization and architecture decisions for React 19 + Next.js 15 App Router (TypeScript).
+  WHERE code lives, not HOW to write it. Covers: project folder structure, feature-based organization,
+  component splitting rules, constants/utils/helpers/services placement, business logic separation,
+  naming conventions, state colocation, and Next.js Server/Client Component boundary decisions.
+  TRIGGER when: "where to put", "folder structure", "project structure", "how to organize",
+  "where does X live", "code organization", "feature folder", "colocation", "business logic",
+  "utils vs helpers", "constants", "component splitting", "Server Component or Client Component",
+  "Server Action or Route Handler", "where do I place".
+  Does NOT cover: React hooks API, component implementation style, Next.js caching/metadata features,
+  state management APIs (use react-best-practices, next-best-practices, or typescript-expert for those).
 ---
 
-# Frontend Architecture & Code Organization
+# Frontend Architecture
 
-Decide **where code lives** and **how it is structured** in React / Next.js apps. This skill answers
-"which file/folder does this belong in?" — not how to make it fast or which React API to call.
+> **WHERE code lives, not HOW to write it.**
 
-For provenance and full source links, see [README.md](README.md).
+This skill covers structural and organizational decisions for React 19 + Next.js 15 App Router projects. It answers "where does this go?" — not "how do I implement it?". For component patterns and hooks API, see `react-best-practices`. For Next.js feature usage (caching, metadata, image optimization), see `next-best-practices`.
 
-## When this skill applies (vs. neighbors)
+## When to invoke this skill
 
-| Question | Skill |
-|----------|-------|
-| Where does this component/hook/constant/util go? How do I split this file? | **this skill** |
-| Is this hook usage / state pattern an anti-pattern? | `react-best-practices` |
-| How do I make this render faster / cut bundle size? | `vercel-react-best-practices` |
-| Server vs client component, data fetching, metadata, route handler mechanics | `next-best-practices` |
+- Setting up a new project or feature folder
+- Deciding where to put a new component, hook, utility, or constant
+- Choosing between Server Component and Client Component
+- Choosing between Server Action and Route Handler
+- Refactoring messy or unorganized code
+- Debating feature-based vs type-based organization
+- Unsure where business logic belongs
 
-When a task mixes concerns, use them together — this skill decides placement, the others decide implementation.
+## Related skills
 
-## Core principles
+| Skill | What it covers (NOT this skill) |
+|---|---|
+| `react-best-practices` | Component APIs, hooks patterns, performance, anti-patterns |
+| `next-best-practices` | RSC data fetching, caching, metadata, image optimization |
+| `typescript-expert` | Type-level programming, generic patterns, type utilities |
 
-1. **There is no single correct structure.** Scale it to project size: flat → type-based → feature-based. Don't spend more than a few minutes choosing up front; restructure once real code reveals the seams.
-2. **Colocate by default.** Keep files used together stored together; promote code upward (to shared/global) only when a *second* consumer actually appears. Premature globalization is as costly as premature abstraction.
-3. **One reason to change per unit.** A component, hook, or module should have a single responsibility. If you describe it with "and", or you must edit A to change B, split it.
-4. **Layer by concern, not by habit.** UI rendering → component; React state/effects/data-fetching → hook; framework-agnostic rules → plain function; backend I/O → service. Only layer when real logic exists — don't wrap a trivial fetch in three files.
-5. **Shallow over deep.** Cap nesting at ~3–4 levels. Prefer a longer component name over another folder. Use path aliases (`@/…`) instead of `../../../`.
-6. **Be consistent, then enforce.** Naming and structure conventions matter less in their specifics than in being applied uniformly. Pick one, lint it.
+## Reading paths
 
-## Decision framework
+- **New project setup** → [folder-structure](rules/folder-structure.md) → [feature-organization](rules/feature-organization.md) → [naming-conventions](rules/naming-conventions.md)
+- **"Where do I put this?"** → [component-splitting](rules/component-splitting.md) → [constants-utils](rules/constants-utils.md) → [business-logic](rules/business-logic.md)
+- **Next.js decisions** → [nextjs-specifics](rules/nextjs-specifics.md) → [feature-organization](rules/feature-organization.md)
+- **State confusion** → [state-placement](rules/state-placement.md) → [business-logic](rules/business-logic.md)
+- **Naming question** → [naming-conventions](rules/naming-conventions.md)
 
-Apply in order when placing or restructuring code:
+---
 
-1. **Is it used by more than one feature/route?** No → colocate next to its only consumer. Yes → move to shared (`components/ui`, `lib`, `hooks`, `constants`) at the lowest common level.
-2. **Is it routable (Next.js)?** Only `page`/`route`/`layout` files should be routes. Everything else colocated under `app/` goes in a private `_folder` or a non-route file.
-3. **What kind of code is it?** Map to its layer (principle 4) before picking a folder.
-4. **Is the file getting large (>~200 lines) or doing >1 thing?** Extract: constants → `*.constants.ts`, helpers → `*.utils.ts`, stateful logic → custom hook, sub-UI → child component.
-5. **Could this folder grow past ~15–20 files?** Subdivide now (`components/ui` vs `components/form`, or switch to feature folders).
+## Quick Decision Trees
 
-## Reference files — read the one that matches the task
+### Where does this component live?
 
-- **Folder & file structure, colocation, naming, constants/utils/helpers placement** → [folder-structure.md](folder-structure.md)
-- **Splitting components (SRP/composition), business-logic layering, extracting custom hooks** → [component-organization.md](component-organization.md)
-- **Next.js App Router organization (route groups, private folders, `src/`, feature-driven, where `lib`/server actions live)** → [nextjs-organization.md](nextjs-organization.md)
+```
+Is it used in only one feature?
+├── YES → put it inside features/<name>/components/
+│         (or colocated in the route segment if Next.js page)
+└── NO → Is it a generic UI primitive (Button, Modal, Input)?
+         ├── YES → components/ui/
+         └── NO (domain logic but shared) → components/ or shared/components/
+```
 
-Each reference file is self-contained and includes concrete examples. Load only the one relevant to the current task.
+### Where does this function/utility live?
+
+```
+Is it a pure function with no React dependency?
+├── YES → Does it belong to one feature only?
+│         ├── YES → features/<name>/utils.ts
+│         └── NO (2+ features use it) → shared/utils/ or lib/
+└── NO (uses React) → Is it a hook?
+                      ├── YES → features/<name>/hooks/ or shared/hooks/
+                      └── NO → rethink: move React logic out
+```
+
+### Where do constants live?
+
+```
+Used in one feature only?
+├── YES → features/<name>/constants.ts (or colocated in the file that uses them)
+└── NO → shared/constants/<domain>.constants.ts
+```
+
+### Server Component or Client Component?
+
+```
+Start with Server Component (default).
+Add "use client" only if the component needs:
+├── useState / useReducer
+├── useEffect / useLayoutEffect
+├── Browser APIs (window, document, localStorage)
+├── Event handlers that trigger state changes
+├── Third-party client-only libraries
+└── Context consumers (that aren't server-compatible)
+
+Rule: push "use client" as DEEP in the tree as possible.
+```
+
+### Server Action or Route Handler?
+
+```
+Who calls this endpoint?
+├── Your own UI (forms, buttons) → Server Action in app/lib/actions.ts
+└── External system / third-party / webhook → Route Handler (route.ts)
+    Also Route Handler for:
+    ├── Streaming responses
+    ├── Large file uploads
+    └── Public REST API
+```
+
+---
+
+## Core Principles
+
+1. **Colocation first** — keep code near where it's used; move to shared only when 2+ places need it
+2. **Zero business logic in JSX** — components render, hooks/services compute
+3. **Feature boundaries are real** — features don't import from each other directly
+4. **Server by default** — in Next.js, default to Server Component; add `"use client"` last resort
+5. **One source of truth for naming** — PascalCase components, camelCase utils, UPPER_SNAKE_CASE constants, kebab-case folders
+
+---
+
+## Rules Reference
+
+| File | What it covers |
+|---|---|
+| [rules/folder-structure.md](rules/folder-structure.md) | Canonical directory tree, org strategies, src/ vs root |
+| [rules/feature-organization.md](rules/feature-organization.md) | features/ dir anatomy, boundary rules, FSD overview |
+| [rules/component-splitting.md](rules/component-splitting.md) | When to split, SRP test, composition patterns |
+| [rules/constants-utils.md](rules/constants-utils.md) | constants.ts, utils/, helpers/, services/ — what goes where |
+| [rules/business-logic.md](rules/business-logic.md) | 3-layer model, hooks, API layer, DTOs |
+| [rules/naming-conventions.md](rules/naming-conventions.md) | File/folder/export naming rules |
+| [rules/state-placement.md](rules/state-placement.md) | Colocation, lifting state, Zustand scoping |
+| [rules/nextjs-specifics.md](rules/nextjs-specifics.md) | Server/Client boundary, Server Actions, Route Handlers, route groups |
+
+## Sources
+
+All 51 research URLs → [README.md](README.md)

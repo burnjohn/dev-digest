@@ -22,21 +22,39 @@ export const NAV: NavGroup[] = [
   {
     section: "WORKSPACE",
     items: [
-      { key: "pulls", label: "Pull Requests", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
-      { key: "conventions", label: "Conventions", icon: "Sparkles", href: "/repos/:repoId/conventions", gKey: "c" },
+      {
+        key: "pulls",
+        label: "Pull Requests",
+        icon: "GitPullRequest",
+        href: "/repos/:repoId/pulls",
+        gKey: "p",
+      },
     ],
   },
   {
     section: "SKILLS LAB",
     items: [
-      { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
-      { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
-    ],
-  },
-  {
-    section: "SKILLS LAB",
-    items: [
-      { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
+      {
+        key: "skills",
+        label: "Skills",
+        icon: "Sparkles",
+        href: "/skills",
+        gKey: "s",
+      },
+      {
+        key: "agents",
+        label: "Agents",
+        icon: "Cpu",
+        href: "/agents",
+        gKey: "a",
+      },
+      {
+        key: "conventions",
+        label: "Conventions",
+        icon: "ListChecks",
+        href: "/conventions",
+        gKey: "v",
+      },
     ],
   },
 ];
@@ -67,13 +85,17 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "g p", label: "Go to Pull Requests", group: "Navigation" },
   { keys: "g a", label: "Go to Agents", group: "Navigation" },
   { keys: "g s", label: "Go to Skills", group: "Navigation" },
+  { keys: "g v", label: "Go to Conventions", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },
   { keys: "d", label: "Dismiss finding", group: "Findings" },
 ];
 
 /** Resolve an :repoId-templated href against the active repo id. */
-export function resolveHref(href: string, repoId: string | null | undefined): string {
+export function resolveHref(
+  href: string,
+  repoId: string | null | undefined,
+): string {
   if (!href.includes(":repoId")) return href;
   return href.replace(":repoId", repoId ?? "_");
 }

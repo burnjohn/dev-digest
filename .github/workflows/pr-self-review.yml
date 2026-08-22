@@ -1,0 +1,33 @@
+name: PR Self Review
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pr-self-review:
+    name: PR Self Review (quality gate)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run PR Self Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bash scripts/pr-self-review.sh
+
+      - name: Upload review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review-report
+          path: .pr-review-last-report.yaml
+          if-no-files-found: ignore

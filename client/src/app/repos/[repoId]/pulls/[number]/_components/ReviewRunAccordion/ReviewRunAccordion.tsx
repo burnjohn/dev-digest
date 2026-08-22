@@ -7,7 +7,8 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import { Severity, type ReviewRecord, type Verdict } from "@devdigest/shared";
+import { SeverityChip } from "@/components/SeverityChip/SeverityChip";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
@@ -62,7 +63,10 @@ export function ReviewRunAccordion({
   }, [ownsTarget]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
-  const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
+  const blockers = findings.filter((f) => f.severity === Severity.enum.CRITICAL && !f.dismissed_at).length;
+  const criticalCount = findings.filter((f) => f.severity === Severity.enum.CRITICAL).length;
+  const warningCount = findings.filter((f) => f.severity === Severity.enum.WARNING).length;
+  const suggestionCount = findings.filter((f) => f.severity === Severity.enum.SUGGESTION).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
 
   return (
@@ -102,10 +106,16 @@ export function ReviewRunAccordion({
             {review.verdict.replace("_", " ")}
           </Badge>
         )}
-        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          {findings.length} finding{findings.length === 1 ? "" : "s"}
-          {blockers > 0 ? ` · ${blockers} blocker${blockers === 1 ? "" : "s"}` : ""}
-        </span>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+          {criticalCount > 0 && <SeverityChip sev={Severity.enum.CRITICAL} count={criticalCount} />}
+          {warningCount > 0 && <SeverityChip sev={Severity.enum.WARNING} count={warningCount} />}
+          {suggestionCount > 0 && <SeverityChip sev={Severity.enum.SUGGESTION} count={suggestionCount} />}
+          {blockers > 0 && (
+            <span style={{ fontSize: 12, color: "var(--text-muted)", paddingBottom: 2 }}>
+              · {blockers} blocker{blockers !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
         <span style={{ flex: 1 }} />
         {review.score != null && (
           <Badge mono color="var(--text-secondary)">

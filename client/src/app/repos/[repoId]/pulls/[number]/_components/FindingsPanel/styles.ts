@@ -24,4 +24,23 @@ export const s = {
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
   list: { display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  sevPills: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap" as const,
+  } satisfies CSSProperties,
+  sevPill: (active: boolean, color: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 10px",
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: active ? 600 : 400,
+    color: active ? color : "var(--text-secondary)",
+    background: active ? `color-mix(in srgb, ${color} 15%, transparent)` : "transparent",
+    border: `1px solid ${active ? color : "var(--border)"}`,
+    cursor: "pointer",
+  }),
 } as const;

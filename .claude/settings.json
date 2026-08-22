@@ -2,11 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash(git push*)",
         "hooks": [
           {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/skills/pr-self-review/scripts/check-gate.sh"
+            "type": "prompt",
+            "prompt": "Before executing this git push command, invoke the pr-self-review skill. Run: git diff $(git merge-base origin/main HEAD)...HEAD --name-only --diff-filter=AM to get changed files. Filter out vendor/, node_modules/, migrations/, *.md, *.json, e2e/. Route remaining files to buckets: UI Frontend (client/**/*.ts,tsx,css), Backend/Domain (server/**, reviewer-core/**), Tests (*.test.ts,tsx). Spawn one sub-agent per non-empty bucket, applying the skills assigned to each bucket per the pr-self-review skill. Also run: diff -r client/src/vendor/shared/contracts/ server/src/vendor/shared/contracts/ and add a CRITICAL finding if any differences exist. Collect all findings, deduplicate by file:line, sort by severity. Output the PR Self-Review Report in the format defined in the pr-self-review skill. If any CRITICAL findings exist: print 🚫 BLOCKER and DO NOT execute the git push — tell the user to fix CRITICAL issues first. If no CRITICAL findings: print ✅ PASS and proceed with git push."
           }
         ]
       }

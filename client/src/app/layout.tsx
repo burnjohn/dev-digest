@@ -3,8 +3,8 @@ import { Suspense } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
-import { Providers } from "../lib/providers";
-import { themeNoFlashScript } from "../lib/theme";
+import { Providers } from "../lib/contexts/providers";
+import { themeNoFlashScript } from "../lib/contexts/theme";
 
 export const metadata: Metadata = {
   title: "DevDigest",

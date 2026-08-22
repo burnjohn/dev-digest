@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { Verdict, Finding } from './findings.js';
-import { EvalRun, EvalOwnerKind, Conformance } from './knowledge.js';
+import { Verdict, Finding } from './findings';
+import { EvalRun, EvalOwnerKind, Conformance } from './knowledge';
 
 /**
  * A4 — Eval / CI / Compose / Conformance API contracts (L06).

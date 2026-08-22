@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -11,8 +11,8 @@ import { isConfigChange } from './helpers.js';
  * agent side: link/reorder/list for an agent). Workspace-scoped throughout.
  */
 
-import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
-export type { AgentRow, AgentVersionRow };
+import type { AgentRow } from '../../db/rows.js';
+export type { AgentRow };
 
 export interface InsertAgent {
   workspaceId: string;
@@ -166,26 +166,6 @@ export class AgentsRepository {
       .onConflictDoNothing();
   }
 
-  // ---- agent_versions (immutable config snapshots) ------------------------
-
-  /** All config snapshots for an agent, newest version first. */
-  async listVersions(agentId: string): Promise<AgentVersionRow[]> {
-    return this.db
-      .select()
-      .from(t.agentVersions)
-      .where(eq(t.agentVersions.agentId, agentId))
-      .orderBy(desc(t.agentVersions.version));
-  }
-
-  /** A single config snapshot, or undefined if that version was never recorded. */
-  async getVersion(agentId: string, version: number): Promise<AgentVersionRow | undefined> {
-    const [row] = await this.db
-      .select()
-      .from(t.agentVersions)
-      .where(and(eq(t.agentVersions.agentId, agentId), eq(t.agentVersions.version, version)));
-    return row;
-  }
-
   // ---- agent_skills link table (A2 owns the agent side) -------------------
 
   /** Skills linked to an agent, in `order` ascending. */
@@ -232,5 +212,30 @@ export class AgentsRepository {
     await this.db
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  }
+
+  /** Number of skills linked to a single agent. */
+  async skillCount(agentId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count(t.agentSkills.skillId) })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agentId));
+    return row?.n ?? 0;
+  }
+
+  /**
+   * Map of agentId → skill count for all agents in a workspace.
+   * Used by AgentsService.list() to attach skill_count without N+1 queries.
+   */
+  async skillCountsForWorkspace(workspaceId: string): Promise<Map<string, number>> {
+    const agents = await this.list(workspaceId);
+    if (agents.length === 0) return new Map();
+    const agentIds = agents.map((a) => a.id);
+    const rows = await this.db
+      .select({ agentId: t.agentSkills.agentId, n: count(t.agentSkills.skillId) })
+      .from(t.agentSkills)
+      .where(inArray(t.agentSkills.agentId, agentIds))
+      .groupBy(t.agentSkills.agentId);
+    return new Map(rows.map((r) => [r.agentId, r.n]));
   }
 }

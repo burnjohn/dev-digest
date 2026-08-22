@@ -4,12 +4,12 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
+import { Toggle, EmptyState, SEV, Icon } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION } from "./constants";
-import { visibleFindings, countBySeverity } from "./helpers";
+import { KEY_TO_ACTION, SEVERITY_FILTERS } from "./constants";
+import { visibleFindings } from "./helpers";
 import { s } from "./styles";
 
 export function FindingsPanel({
@@ -17,38 +17,33 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
-  targetFindingId = null,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
-  /** Finding to focus (scroll to + expand) on mount/param change. */
-  targetFindingId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
-  const [sevFilter, setSevFilter] = React.useState<Severity | "all">("all");
+  const [activeSeverity, setActiveSeverity] = React.useState<Severity | null>(
+    null,
+  );
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const counts = React.useMemo(() => countBySeverity(findings), [findings]);
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow, sevFilter), [findings, hideLow, sevFilter]);
+  const counts = React.useMemo(
+    () => ({
+      CRITICAL: findings.filter((f) => f.severity === "CRITICAL").length,
+      WARNING: findings.filter((f) => f.severity === "WARNING").length,
+      SUGGESTION: findings.filter((f) => f.severity === "SUGGESTION").length,
+    }),
+    [findings],
+  );
 
-  // Focus a specific finding (from a findings popover / deep-link): move the
-  // keyboard focus index to it and scroll its card into view.
-  React.useEffect(() => {
-    if (!targetFindingId) return;
-    const idx = shown.findIndex((f) => f.id === targetFindingId);
-    if (idx < 0) return;
-    setFocusIdx(idx);
-    const id = window.setTimeout(() => {
-      document
-        .querySelector(`[data-finding-id="${targetFindingId}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 60);
-    return () => window.clearTimeout(id);
-  }, [targetFindingId, shown]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, activeSeverity),
+    [findings, hideLow, activeSeverity],
+  );
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -58,7 +53,11 @@ export function FindingsPanel({
       if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
       else if (KEY_TO_ACTION[e.key] && shown[focusIdx]) {
-        action.mutate({ findingId: shown[focusIdx]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+        action.mutate({
+          findingId: shown[focusIdx]!.id,
+          action: KEY_TO_ACTION[e.key]!,
+          prId,
+        });
       }
     };
     window.addEventListener("keydown", handler);
@@ -68,55 +67,52 @@ export function FindingsPanel({
   return (
     <div>
       <div style={s.toolbar}>
-        {(["all", "CRITICAL", "WARNING", "SUGGESTION"] as const).map((key) => {
-          const count = key === "all" ? findings.length : counts[key];
-          const colors: Record<string, string> = {
-            CRITICAL: "var(--crit)",
-            WARNING: "var(--warn)",
-            SUGGESTION: "var(--ok)",
-          };
-          const active = sevFilter === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => { setSevFilter(key); setFocusIdx(0); }}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 8px",
-                borderRadius: 5,
-                border: `1px solid ${active ? (colors[key] ?? "var(--border)") : "var(--border)"}`,
-                background: active ? (key === "all" ? "var(--bg-hover)" : `color-mix(in srgb, ${colors[key]} 15%, transparent)`) : "transparent",
-                color: active ? (colors[key] ?? "var(--text-primary)") : "var(--text-muted)",
-                cursor: "pointer",
-              }}
-            >
-              {key === "all" ? `ALL · ${count}` : `${key} · ${count}`}
-            </button>
-          );
-        })}
+        <div style={s.sevPills}>
+          {SEVERITY_FILTERS.map(({ sev }) => {
+            const n = counts[sev];
+            if (!n) return null;
+            const meta = SEV[sev];
+            const SIcon = Icon[meta.icon];
+            const active = activeSeverity === sev;
+            return (
+              <button
+                key={sev}
+                type="button"
+                style={s.sevPill(active, meta.c)}
+                onClick={() => setActiveSeverity(active ? null : sev)}
+              >
+                <SIcon size={12} />
+                {n} {t(`panel.severity${sev}`)}
+              </button>
+            );
+          })}
+        </div>
         <div style={s.divider} />
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
           <Toggle on={hideLow} onChange={setHideLow} size={16} />
         </div>
       </div>
-
       <div style={s.list}>
         {shown.length === 0 ? (
-          <EmptyState icon="Filter" title={t("panel.noMatchTitle")} body={t("panel.noMatchBody")} />
+          <EmptyState
+            icon="Filter"
+            title={t("panel.noMatchTitle")}
+            body={t("panel.noMatchBody")}
+          />
         ) : (
           shown.map((f, i) => (
             <FindingCard
               key={f.id}
               f={f}
               focused={i === focusIdx}
-              defaultExpanded={i === 0 || f.id === targetFindingId}
+              defaultExpanded={i === 0}
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
-              onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onAction={(act) =>
+                action.mutate({ findingId: f.id, action: act, prId })
+              }
             />
           ))
         )}

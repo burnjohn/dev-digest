@@ -1,12 +1,10 @@
 "use client";
 
 import React from "react";
-import ReactDOM from "react-dom";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
-import { RunCostBadge } from "../../../_components/RunCostBadge/RunCostBadge";
-import { usePrReviews } from "../../../../../../../lib/hooks/reviews";
+import { Severity, type RunSummary, type PrCommit } from "@devdigest/shared";
+import { SeverityChip } from "@/components/SeverityChip/SeverityChip";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -19,104 +17,6 @@ import { usePrReviews } from "../../../../../../../lib/hooks/reviews";
  * is derived from the denormalized blocker/finding counts on the run row, so it
  * matches the CI gate (deterministic) rather than the model's verdict.
  */
-
-const SEV = {
-  CRITICAL:   { symbol: "⊘", color: "var(--crit)" },
-  WARNING:    { symbol: "△", color: "var(--warn)" },
-  SUGGESTION: { symbol: "♦", color: "var(--ok)" },
-} as const;
-
-function SeverityPopup({
-  prId,
-  runId,
-  anchorRect,
-  onClose,
-}: {
-  prId: string;
-  runId: string;
-  anchorRect: DOMRect;
-  onClose: () => void;
-}) {
-  const { data: reviews } = usePrReviews(prId);
-  const ref = React.useRef<HTMLDivElement>(null);
-  const findings: FindingRecord[] = (reviews ?? []).find((r) => r.run_id === runId)?.findings ?? [];
-
-  React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const top = anchorRect.bottom + window.scrollY + 6;
-  const left = Math.min(anchorRect.left + window.scrollX, window.innerWidth - 416);
-
-  return ReactDOM.createPortal(
-    <div
-      ref={ref}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        position: "absolute", top, left, zIndex: 9999,
-        width: 400, maxHeight: 300, overflowY: "auto",
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-      }}
-    >
-      <div style={{ padding: "8px 12px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
-        {findings.length} FINDINGS
-      </div>
-      {findings.length === 0 && (
-        <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-muted)" }}>No findings</div>
-      )}
-      {findings.map((f) => {
-        const sev = SEV[f.severity];
-        return (
-          <div key={f.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8 }}>
-            <span style={{ color: sev.color, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{sev.symbol}</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2 }}>{f.title}</div>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{f.rationale}</div>
-              <div className="mono" style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{f.file}:{f.start_line}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>,
-    document.body,
-  );
-}
-
-function SeverityChips({ run, prId }: { run: RunSummary; prId?: string }) {
-  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
-  const ref = React.useRef<HTMLSpanElement>(null);
-  const hasSeverity = run.findings_critical != null || run.findings_warning != null || run.findings_suggestion != null;
-
-  if (!hasSeverity) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{run.findings_count ?? 0} finding(s)</span>;
-
-  const toggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setAnchorRect((prev) => prev ? null : ref.current?.getBoundingClientRect() ?? null);
-  };
-
-  return (
-    <>
-      <span ref={ref} onClick={toggle} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: prId ? "pointer" : "default" }}>
-        {(run.findings_critical ?? 0) > 0 && <span style={{ color: "var(--crit)", fontWeight: 600, fontSize: 12 }}>⊘{run.findings_critical}</span>}
-        {(run.findings_warning ?? 0) > 0 && <span style={{ color: "var(--warn)", fontWeight: 600, fontSize: 12 }}>△{run.findings_warning}</span>}
-        {(run.findings_suggestion ?? 0) > 0 && <span style={{ color: "var(--ok)", fontWeight: 600, fontSize: 12 }}>♦{run.findings_suggestion}</span>}
-        {(run.findings_critical ?? 0) === 0 && (run.findings_warning ?? 0) === 0 && (run.findings_suggestion ?? 0) === 0 && (
-          <span style={{ color: "var(--ok)", fontSize: 12 }}>✓ clean</span>
-        )}
-      </span>
-      {anchorRect && prId && (
-        <SeverityPopup prId={prId} runId={run.run_id} anchorRect={anchorRect} onClose={() => setAnchorRect(null)} />
-      )}
-    </>
-  );
-}
 
 type Outcome = { key: string; color: string; bg: string; icon: IconName };
 
@@ -188,14 +88,12 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
-  prId,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
-  prId?: string;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -251,6 +149,7 @@ export function RunHistory({
 
         const r = item.run;
         const o = outcomeOf(r);
+        const tok = (r.tokens_in ?? 0) + (r.tokens_out ?? 0);
         const settled = r.status === "done";
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
@@ -292,15 +191,26 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <SeverityChips run={r} prId={prId} />
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+                  {(r.findings_critical ?? 0) > 0 && (
+                    <SeverityChip sev={Severity.enum.CRITICAL} count={r.findings_critical!} />
+                  )}
+                  {(r.findings_warning ?? 0) > 0 && (
+                    <SeverityChip sev={Severity.enum.WARNING} count={r.findings_warning!} />
+                  )}
+                  {(r.findings_suggestion ?? 0) > 0 && (
+                    <SeverityChip sev={Severity.enum.SUGGESTION} count={r.findings_suggestion!} />
+                  )}
                 </div>
               )}
             </div>
-            {settled && <RunCostBadge cost={r.cost} />}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {tok > 0 && (
+                <span className="mono">
+                  {tok} tok{r.cost_usd != null ? ` · $${r.cost_usd.toFixed(3)}` : ""}
+                </span>
+              )}
             </div>
             <button
               type="button"
