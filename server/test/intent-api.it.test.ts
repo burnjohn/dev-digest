@@ -17,6 +17,8 @@ import { seed } from '../src/db/seed.js';
 import { MockGitClient, MockLLMProvider } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { ReviewService } from '../src/modules/reviews/service.js';
+import { upsertIntent } from '../src/modules/reviews/repository/pull.repo.js';
+import type { ClassifiedIntent } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -70,6 +72,17 @@ async function setupRepoAndPr(db: PgFixture['handle']['db'], workspaceId: string
 function structuredCalls(llm: MockLLMProvider) {
   return llm.calls.filter((c) => c.method === 'completeStructured');
 }
+
+/** The shape `fallbackIntent()` in intent-classifier.ts produces (REQ-7):
+ *  low confidence, no sources, `model: null` when persisted — used here to
+ *  pre-seed a row directly via `upsertIntent`, bypassing classification. */
+const FALLBACK_INTENT: ClassifiedIntent = {
+  intent: 'Fallback intent from title + file names.',
+  in_scope: [],
+  out_of_scope: [],
+  confidence: 'low',
+  sources: [],
+};
 
 d('PR intent: getOrClassifyIntent + GET/POST /pulls/:id/intent (Testcontainers pg)', () => {
   let pg: PgFixture;
@@ -185,6 +198,80 @@ d('PR intent: getOrClassifyIntent + GET/POST /pulls/:id/intent (Testcontainers p
     });
     expect(forced.statusCode).toBe(200);
     expect(structuredCalls(llm)).toHaveLength(2);
+
+    await app.close();
+  });
+
+  // ---------------------------------------------------------------------
+  // W-A: the `isStaleFallback` retry-window branch (service.ts ~line 248) —
+  // a persisted `model: null` row is a cache MISS only once `generatedAt`
+  // is older than INTENT_RETRY_WINDOW_MS (15 min), never on every call.
+  // ---------------------------------------------------------------------
+
+  it('W-A: a stale REQ-7 fallback row (model: null, 16min old) is re-classified even without force', async () => {
+    const llm = intentLlm();
+    const app = await appWith(llm);
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    await upsertIntent(pg.handle.db, pr.id, FALLBACK_INTENT, {
+      model: null,
+      generatedAt: new Date(Date.now() - 16 * 60_000),
+    });
+
+    const service = new ReviewService(app.container);
+    const result = await service.getOrClassifyIntent(workspaceId, pr.id);
+
+    // Exactly one call spent re-classifying the stale fallback.
+    expect(structuredCalls(llm)).toHaveLength(1);
+    expect(result.intent).toBe(INTENT_FIXTURE.intent);
+
+    await app.close();
+  });
+
+  it('W-A: a fresh REQ-7 fallback row (model: null, generatedAt now) is still a cache hit — zero model calls', async () => {
+    const llm = intentLlm();
+    const app = await appWith(llm);
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    await upsertIntent(pg.handle.db, pr.id, FALLBACK_INTENT, {
+      model: null,
+      generatedAt: new Date(),
+    });
+
+    const service = new ReviewService(app.container);
+    const result = await service.getOrClassifyIntent(workspaceId, pr.id);
+
+    expect(structuredCalls(llm)).toHaveLength(0);
+    expect(result.model).toBeNull();
+    expect(result.intent).toBe(FALLBACK_INTENT.intent);
+
+    await app.close();
+  });
+
+  // ---------------------------------------------------------------------
+  // W-B: `persistedModel = fallback ? null : model.model` (service.ts ~line
+  // 278) — a REQ-7 fallback (the model call itself rejects) must persist
+  // `model: null`, never the resolved-but-unused model id.
+  // ---------------------------------------------------------------------
+
+  it('W-B: when completeStructured rejects, the REQ-7 fallback persists model: null in the DB row and the returned detail', async () => {
+    // No fixture supplied: MockLLMProvider.completeStructured's default `{}`
+    // fixture fails IntentClassification.safeParse (required fields absent),
+    // so the call REJECTS — the same failure mode as an unresolvable
+    // provider or a malformed response (intent-classifier.ts's REQ-7 catch).
+    const rejectingLlm = new MockLLMProvider('openrouter');
+    const app = await appWith(rejectingLlm);
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const service = new ReviewService(app.container);
+
+    const result = await service.getOrClassifyIntent(workspaceId, pr.id);
+
+    expect(structuredCalls(rejectingLlm)).toHaveLength(1);
+    expect(result.model).toBeNull();
+
+    const rows = await pg.handle.db.select().from(t.prIntent).where(eq(t.prIntent.prId, pr.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.model).toBeNull();
 
     await app.close();
   });

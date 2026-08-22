@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type {
+  DiffHunk,
   FeatureModelChoice,
   GitClient,
   GitHubClient,
@@ -40,6 +41,32 @@ function malformedDiff(): UnifiedDiff {
     raw: '',
     files: [{ path: 'a.ts', additions: 1, deletions: 0, hunks: undefined as never }],
   };
+}
+
+/**
+ * A diff with exactly `FILE_LIST_MAX_FILES` (200, per `intent-sources.ts`)
+ * small files — under the FILE COUNT cap, so `renderFileList` truncates only
+ * because the rendered text crosses `FILE_LIST_MAX_CHARS` (8000): 200 files x
+ * ~49 chars/file (a path line + one hunk-header line) is ~10,000 rendered
+ * chars, comfortably over the 8000 budget. Routine for a PR of ~35-50+
+ * changed files per the comment on `clampConfidence`.
+ */
+function bigFileListDiff(): UnifiedDiff {
+  const files: UnifiedDiff['files'] = [];
+  for (let i = 0; i < 200; i++) {
+    const idx = String(i).padStart(3, '0');
+    const path = `src/pkg/mod/file${idx}.ts`;
+    const hunk: DiffHunk = {
+      file: path,
+      oldStart: 10,
+      oldLines: 3,
+      newStart: 10,
+      newLines: 4,
+      newLineNumbers: [10, 11, 12, 13],
+    };
+    files.push({ path, additions: 3, deletions: 1, hunks: [hunk] });
+  }
+  return { raw: '', files };
 }
 
 interface StubOptions {
@@ -178,17 +205,90 @@ describe('classifyIntent', () => {
     expect(result.intent.confidence).toBe('medium');
   });
 
-  it('REQ-6: the clamp never raises — a low model confidence stays low even when every source is used', async () => {
+  it('REQ-6: the clamp never raises — a low model confidence stays low even when every source lands "used"', async () => {
     const deps = makeDeps({
       fixture: { intent: 'x', in_scope: [], out_of_scope: [], confidence: 'low' },
     });
+    // Strengthen the fixture so pr_body, linked_issue AND plan_or_spec (plus
+    // file_list) all land `used` — not just pr_body with the other three
+    // `missing`. Only this arrangement can catch a "boost to high once every
+    // source is used" mutant: with 3 `missing` sources, `sources.every(s =>
+    // s.status === 'used')` is already false before any mutation, so such a
+    // mutant would leave `modelConfidence` untouched and the assertion below
+    // would pass vacuously either way.
+    deps.git = {
+      ...deps.git,
+      readFile: async (_repo: RepoRef, path: string): Promise<string> =>
+        path === 'docs/plan.md' ? '# Plan\n\nRollout details for the change.' : '',
+    };
     const result = await classifyIntent(deps, {
       repoRef: REPO_REF,
-      pull: { title: 'Add rate limiting', body: 'A real, substantial description of the change.' },
+      pull: {
+        title: 'Add rate limiting',
+        body: 'A real, substantial description of the change. Closes #42. See docs/plan.md for the design.',
+      },
+      diff: {
+        raw: '',
+        files: [
+          {
+            path: 'src/middleware/ratelimit.ts',
+            additions: 4,
+            deletions: 0,
+            hunks: [
+              {
+                file: 'src/middleware/ratelimit.ts',
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 4,
+                newLineNumbers: [1, 2, 3, 4],
+              },
+            ],
+          },
+        ],
+      },
+      model: MODEL,
+    });
+    // Anti-vacuity: prove the "full evidence" premise the test name claims —
+    // every gathered source really did land `used` — before trusting the
+    // confidence assertion that depends on it.
+    expect(result.intent.sources.every((s) => s.status === 'used')).toBe(true);
+    expect(result.intent.confidence).toBe('low');
+  });
+
+  it('REQ-6: a high model answer is clamped to low when the PR has no real signal (no body, no linked issue, no plan/spec)', async () => {
+    const deps = makeDeps({
+      fixture: { intent: 'x', in_scope: [], out_of_scope: [], confidence: 'high' },
+    });
+    const result = await classifyIntent(deps, {
+      repoRef: REPO_REF,
+      pull: { title: 'Add rate limiting', body: null },
       diff: emptyDiff(),
       model: MODEL,
     });
     expect(result.intent.confidence).toBe('low');
+  });
+
+  it('W2: a huge changed-file list (file_list truncated) does NOT degrade an otherwise well-supported high confidence', async () => {
+    const deps = makeDeps({
+      fixture: { intent: 'x', in_scope: [], out_of_scope: [], confidence: 'high' },
+    });
+    const result = await classifyIntent(deps, {
+      repoRef: REPO_REF,
+      pull: {
+        title: 'Add correlation ID logging',
+        body: 'A real, substantial description of the change, covering rationale and rollout plan.',
+      },
+      diff: bigFileListDiff(),
+      model: MODEL,
+    });
+    // The mutation this guards against (W2 revert) is silent unless we prove
+    // the file list actually WAS truncated — otherwise a broken fixture that
+    // never crosses FILE_LIST_MAX_CHARS would make this pass vacuously.
+    expect(result.intent.sources).toContainEqual(
+      expect.objectContaining({ kind: 'file_list', status: 'truncated' }),
+    );
+    expect(result.intent.confidence).toBe('high');
   });
 
   it('REQ-13: logs a composition record before the call with provider/model/token estimate and per-source kind+status+chars, and no document text', async () => {
