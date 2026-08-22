@@ -2,103 +2,21 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1780354425323,
-      "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1780846544941,
-      "tag": "0001_add_agent_run_error",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1780851211507,
-      "tag": "0002_warm_moonstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1780867068517,
-      "tag": "0003_minor_overlord",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1781133010463,
-      "tag": "0004_needy_grey_gargoyle",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1781137843682,
-      "tag": "0005_gray_peter_parker",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1781198466212,
-      "tag": "0006_sharp_mordo",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1781272151157,
-      "tag": "0007_minor_mad_thinker",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1781383504315,
-      "tag": "0008_striped_lady_deathstrike",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1781464392464,
-      "tag": "0009_complex_runaways",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1785449879689,
-      "tag": "0010_sudden_rhodey",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1785610953328,
-      "tag": "0011_overconfident_ulik",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1785955369316,
-      "tag": "0012_oval_the_hand",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1786207706663,
-      "tag": "0013_cloudy_exiles",
-      "breakpoints": true
-    }
+    { "idx": 0,  "version": "7", "when": 1780354425323, "tag": "0000_init",                       "breakpoints": true },
+    { "idx": 1,  "version": "7", "when": 1780846544941, "tag": "0001_add_agent_run_error",         "breakpoints": true },
+    { "idx": 2,  "version": "7", "when": 1780851211507, "tag": "0002_warm_moonstone",              "breakpoints": true },
+    { "idx": 3,  "version": "7", "when": 1780867068517, "tag": "0003_minor_overlord",              "breakpoints": true },
+    { "idx": 4,  "version": "7", "when": 1781133010463, "tag": "0004_needy_grey_gargoyle",         "breakpoints": true },
+    { "idx": 5,  "version": "7", "when": 1781137843682, "tag": "0005_gray_peter_parker",           "breakpoints": true },
+    { "idx": 6,  "version": "7", "when": 1781198466212, "tag": "0006_sharp_mordo",                 "breakpoints": true },
+    { "idx": 7,  "version": "7", "when": 1781272151157, "tag": "0007_minor_mad_thinker",           "breakpoints": true },
+    { "idx": 8,  "version": "7", "when": 1781383504315, "tag": "0008_striped_lady_deathstrike",    "breakpoints": true },
+    { "idx": 9,  "version": "7", "when": 1781464392464, "tag": "0009_complex_runaways",            "breakpoints": true },
+    { "idx": 10, "version": "7", "when": 1785449879689, "tag": "0010_sudden_rhodey",               "breakpoints": true },
+    { "idx": 11, "version": "7", "when": 1785610953328, "tag": "0011_overconfident_ulik",          "breakpoints": true },
+    { "idx": 12, "version": "7", "when": 1785955369316, "tag": "0012_oval_the_hand",               "breakpoints": true },
+    { "idx": 13, "version": "7", "when": 1786207706663, "tag": "0013_cloudy_exiles",               "breakpoints": true },
+    { "idx": 14, "version": "7", "when": 1781473551344, "tag": "0014_solid_baron_zemo",            "breakpoints": true },
+    { "idx": 15, "version": "7", "when": 1781741443959, "tag": "0015_far_stryfe",                  "breakpoints": true }
   ]
 }

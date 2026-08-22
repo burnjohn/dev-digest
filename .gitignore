@@ -23,3 +23,6 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+
+# pr-self-review local gate state (per-dev, regenerated each run)
+.pr-self-review.json

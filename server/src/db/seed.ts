@@ -6,6 +6,7 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 
 /** Default provider/model for the built-in reviewer agents. */
@@ -218,6 +219,250 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- skill catalog ----
+  const skillCatalog = [
+    {
+      name: 'pr-quality-rubric',
+      description: 'Structured rubric for evaluating overall PR quality — correctness, testing, docs.',
+      type: 'rubric' as const,
+      source: 'manual' as const,
+      body: `# PR Quality Rubric
+
+Evaluate the PR against these dimensions and flag any dimension that scores below threshold.
+
+## Correctness (weight: 40%)
+- Logic errors, off-by-one, wrong comparisons, operator precedence.
+- Missing null/undefined guards at system boundaries.
+- Race conditions in async code.
+
+## Testing (weight: 30%)
+- Changed code has corresponding tests.
+- Tests exercise the failure path, not just the happy path.
+- No mock-only tests that hide real failures.
+
+## Documentation (weight: 15%)
+- Public API surface has JSDoc or inline comments for non-obvious behavior.
+- CHANGELOG / migration guide updated for breaking changes.
+
+## Code clarity (weight: 15%)
+- Variable and function names are unambiguous.
+- Functions are at a single level of abstraction.
+- Magic numbers are named constants.`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'no-then-chains',
+      description: 'Flag .then()/.catch() chains; prefer async/await for readability.',
+      type: 'convention' as const,
+      source: 'manual' as const,
+      body: `# No Promise.then() Chains
+
+Flag any .then()/.catch() chain that can be replaced by async/await.
+
+## Rule
+- WARN on .then() chains longer than 1 hop.
+- WARN on .catch() handlers that suppress errors without logging.
+- CRITICAL on .then() inside a .then() (nested promise chains).
+
+## Good
+\`\`\`ts
+const data = await fetchUser(id);
+const enriched = await enrich(data);
+\`\`\`
+
+## Bad
+\`\`\`ts
+fetchUser(id).then(data => enrich(data)).then(enriched => save(enriched));
+\`\`\``,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'secret-leakage-gate',
+      description: 'Detect hardcoded secrets, API keys, and credentials committed to source.',
+      type: 'security' as const,
+      source: 'manual' as const,
+      body: `# Secret Leakage Gate
+
+Scan every changed file for hardcoded credentials.
+
+## Patterns to flag as CRITICAL
+- String literals matching: sk_live_, sk_test_, AKIA, ghp_, ghs_, xoxb-, xoxp-
+- Assignments like password = "...", secret = "...", api_key = "..."
+- Base64-encoded blobs of 20+ chars in string literals
+- PEM headers (-----BEGIN PRIVATE KEY-----)
+
+## Patterns to flag as WARNING
+- Hard-coded localhost URLs with embedded credentials
+- .env files accidentally staged
+
+## Exception
+Test fixtures with clearly fake keys (e.g. test_key_abc123) are INFO only.`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'lethal-trifecta',
+      description: 'Flags the deadly combo: deserialization + privilege escalation + command execution.',
+      type: 'security' as const,
+      source: 'manual' as const,
+      body: `# Lethal Trifecta Gate
+
+Flag any code path that combines all three:
+1. Deserialization of untrusted input (JSON.parse, eval, vm.runInNewContext)
+2. Privilege escalation (sudo, setuid, os.exec with elevated context)
+3. Dynamic command construction from that input
+
+## Severity
+CRITICAL when all three are present in a traceable data flow.
+WARNING when two are present and the third is plausible.
+
+## Examples of CRITICAL
+- JSON.parse(userInput) fed into exec()
+- YAML.load(req.body) with constructor gadget in scope`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'test-coverage-nudge',
+      description: 'Nudge reviewers to flag changed code without corresponding test changes.',
+      type: 'rubric' as const,
+      source: 'manual' as const,
+      body: `# Test Coverage Nudge
+
+For every non-trivial source file changed in the PR, verify a corresponding test file was also touched.
+
+## Rule
+- WARN when a src/ file is changed but no test/ or *.test.* file was touched.
+- INFO when the changed code is configuration-only (no logic branches).
+- Exempt: migrations, generated files, type-only changes.`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'uncovered-branches',
+      description: 'Flag conditional branches with no corresponding test assertions.',
+      type: 'rubric' as const,
+      source: 'manual' as const,
+      body: `# Uncovered Branch Detector
+
+Review each conditional in the diff and check whether the test suite exercises both sides.
+
+## CRITICAL
+- Error handler catch block with no test that triggers the error path.
+- Guard clause (early return) with no test for the guard condition.
+
+## WARNING
+- Ternary with no test for the false branch.
+- Default parameter with no test that omits the argument.
+
+## How to check
+Look for describe/it/test blocks in the diff for corresponding assertions.
+If no test file exists for a changed source file, escalate to WARNING.`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'edge-case-coverage',
+      description: 'Check for missing edge-case tests: empty, null, zero, max boundary.',
+      type: 'rubric' as const,
+      source: 'manual' as const,
+      body: `# Edge Case Coverage Checker
+
+Look for common missing edge cases in the test diff.
+
+## Empty / zero / null
+- Array inputs: is there a test with [] input?
+- String inputs: is there a test with '' input?
+- Numeric inputs: is there a test with 0 and negative values?
+
+## Boundary
+- Off-by-one: n-1, n, n+1 around known limits.
+- Pagination: first page, last page, page beyond end.
+
+## Async / concurrency
+- Parallel mutations without a test that races two operations.
+- Timeout / retry: is there a test that simulates the timeout path?`,
+      enabled: true,
+      version: 1,
+    },
+    {
+      name: 'mock-overuse-gate',
+      description: 'Detect excessive mocking that makes tests meaningless.',
+      type: 'custom' as const,
+      source: 'manual' as const,
+      body: `# Mock Overuse Gate
+
+Flag tests where mocking undermines the test's validity.
+
+## CRITICAL
+- The module under test is itself mocked.
+- Every dependency is mocked, leaving no real code path exercised.
+- A mock is set up but never asserted upon when the test's purpose is exactly that interaction.
+
+## WARNING
+- Database mocked with a static return — the real DB would reject the input.
+- jest.spyOn used to silence real I/O without restoring it (test pollution).`,
+      enabled: false,
+      version: 1,
+    },
+  ];
+
+  // Seed skills idempotently
+  const skillIds: Record<string, string> = {};
+  for (const sk of skillCatalog) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, sk.name)));
+    if (!existing) {
+      const [row] = await db.insert(t.skills).values({ workspaceId, ...sk }).returning();
+      skillIds[sk.name] = row!.id;
+      // Seed initial version snapshot
+      await db.insert(t.skillVersions).values({ skillId: row!.id, version: 1, body: sk.body }).onConflictDoNothing();
+    } else {
+      skillIds[sk.name] = existing.id;
+    }
+  }
+
+  // ---- Link skills to existing agents ----
+  // Find Security Reviewer and Performance Reviewer agents
+  const [secAgent] = await db.select().from(t.agents).where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Security Reviewer')));
+  const [perfAgent] = await db.select().from(t.agents).where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Performance Reviewer')));
+
+  if (secAgent && skillIds['secret-leakage-gate']) {
+    await db.insert(t.agentSkills).values({ agentId: secAgent.id, skillId: skillIds['secret-leakage-gate']!, order: 0 }).onConflictDoNothing();
+    await db.insert(t.agentSkills).values({ agentId: secAgent.id, skillId: skillIds['lethal-trifecta']!, order: 1 }).onConflictDoNothing();
+  }
+  if (perfAgent && skillIds['pr-quality-rubric']) {
+    await db.insert(t.agentSkills).values({ agentId: perfAgent.id, skillId: skillIds['pr-quality-rubric']!, order: 0 }).onConflictDoNothing();
+    await db.insert(t.agentSkills).values({ agentId: perfAgent.id, skillId: skillIds['test-coverage-nudge']!, order: 1 }).onConflictDoNothing();
+  }
+
+  // ---- Test Quality Reviewer + linked skills ----
+  const [testAgent] = await db.select().from(t.agents).where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Test Quality Reviewer')));
+  if (!testAgent) {
+    const [tqRow] = await db.insert(t.agents).values({
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description: 'Reviews PRs for test coverage gaps, mock overuse, and flaky patterns.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    }).returning();
+    // Link 3 skills (4th will be imported live in demo)
+    const tqSkillsToLink = ['uncovered-branches', 'edge-case-coverage', 'mock-overuse-gate'];
+    for (const [i, name] of tqSkillsToLink.entries()) {
+      if (skillIds[name]) {
+        await db.insert(t.agentSkills).values({ agentId: tqRow!.id, skillId: skillIds[name]!, order: i }).onConflictDoNothing();
+      }
+    }
   }
 
   return { workspaceId, userId };

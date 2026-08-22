@@ -28,6 +28,57 @@
     "notFound": {
       "title": "Skill not found",
       "body": "It may have been deleted."
+    },
+    "editor": {
+      "tabs": {
+        "config": "Config",
+        "preview": "Preview",
+        "versions": "Versions",
+        "stats": "Stats"
+      },
+      "config": {
+        "title": "Configuration",
+        "enabled": "Enabled",
+        "name": "Name",
+        "namePlaceholder": "pr-quality-rubric",
+        "description": "Description",
+        "descriptionHint": "Write as a directive — what this skill instructs the agent to do.",
+        "type": "Type",
+        "body": "Skill body",
+        "bodyHint": "Saving a changed body creates a new immutable version.",
+        "unsaved": "unsaved",
+        "tokens": "~{count} tokens",
+        "versionMessage": "Version message (optional)",
+        "versionMessagePlaceholder": "What changed in this version?",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Saved (v{version})",
+        "savedToast": "Skill saved (v{version})",
+        "cancel": "Cancel"
+      },
+      "preview": {
+        "caption": "Rendered as the reviewing agent receives it"
+      },
+      "versions": {
+        "title": "Version history",
+        "subtitle": "{count} versions",
+        "current": "Current",
+        "diff": "Diff",
+        "restore": "Restore",
+        "restoreConfirm": "Restore v{version}? This creates a new version with the old body.",
+        "noneYet": "No version history yet.",
+        "reproducibilityNote": "Every save snapshots the body so eval runs stay reproducible."
+      },
+      "stats": {
+        "usedBy": "Used by",
+        "usedByUnit": "agents",
+        "versions": "Versions",
+        "findings30d": "Findings (30d)",
+        "agentsUsing": "AGENTS USING THIS SKILL",
+        "findingsByCategory": "FINDINGS BY CATEGORY",
+        "noAgents": "No agents linked yet.",
+        "noFindings": "No findings in the last 30 days."
+      }
     }
   },
   "drawer": {

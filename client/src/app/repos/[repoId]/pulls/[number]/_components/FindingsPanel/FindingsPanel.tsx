@@ -17,11 +17,14 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  targetFindingId = null,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Finding to focus (scroll to + expand) on mount/param change. */
+  targetFindingId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
@@ -31,6 +34,21 @@ export function FindingsPanel({
 
   const counts = React.useMemo(() => countBySeverity(findings), [findings]);
   const shown = React.useMemo(() => visibleFindings(findings, hideLow, sevFilter), [findings, hideLow, sevFilter]);
+
+  // Focus a specific finding (from a findings popover / deep-link): move the
+  // keyboard focus index to it and scroll its card into view.
+  React.useEffect(() => {
+    if (!targetFindingId) return;
+    const idx = shown.findIndex((f) => f.id === targetFindingId);
+    if (idx < 0) return;
+    setFocusIdx(idx);
+    const id = window.setTimeout(() => {
+      document
+        .querySelector(`[data-finding-id="${targetFindingId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    return () => window.clearTimeout(id);
+  }, [targetFindingId, shown]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -94,7 +112,7 @@ export function FindingsPanel({
               key={f.id}
               f={f}
               focused={i === focusIdx}
-              defaultExpanded={i === 0}
+              defaultExpanded={i === 0 || f.id === targetFindingId}
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}

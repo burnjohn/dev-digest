@@ -1,5 +1,6 @@
 /* PR list — /repos/:repoId/pulls. Ported from screen_dashboard.jsx; fetches
-   GET /repos/:id/pulls (F1). Filters/sort live in query (?status&sort). */
+   GET /repos/:id/pulls (F1). Status & sort persist in the URL (?status&sort);
+   the free-text search stays local. Filter/sort logic lives in ./filter. */
 "use client";
 
 import React from "react";
@@ -20,9 +21,7 @@ import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
 import { s } from "./styles";
 import { PRRow } from "./_components/PRRow";
 import { FilterBar } from "./_components/FilterBar";
-
-/** Open PRs carry a derived review status; everything else is merged/closed. */
-const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
+import { filterAndSortPulls, prListCounts } from "./filter";
 
 export default function PullsPage() {
   const t = useTranslations("prReview");
@@ -35,30 +34,25 @@ export default function PullsPage() {
   const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId);
   const refresh = useRefreshRepo();
 
-  // Default to "needs review" — the most actionable filter on open.
-  const status = search.get("status") ?? "needs_review";
-  const setStatus = (k: string) => {
+  // Status & sort persist in the URL (shareable) via one helper; "needs review"
+  // is the default on open — the most actionable filter.
+  const setParam = (key: string, value: string) => {
     const sp = new URLSearchParams(search.toString());
-    sp.set("status", k); // always explicit so "all" sticks over the needs_review default
+    sp.set(key, value); // always explicit so non-default values stick
     router.replace(`/repos/${repoId}/pulls?${sp.toString()}`);
   };
+  const status = search.get("status") ?? "needs_review";
+  const setStatus = (k: string) => setParam("status", k);
+  const sort = search.get("sort") ?? "newest";
+  const setSort = (k: string) => setParam("sort", k);
 
+  // Free-text search stays local — not worth a URL write per keystroke.
   const [query, setQuery] = React.useState("");
-  const [sort, setSort] = React.useState("newest");
 
-  const q = query.trim().toLowerCase();
-  const filtered = (pulls ?? [])
-    .filter((p) => status === "all" || p.status === status)
-    .filter((p) => !q || p.title.toLowerCase().includes(q) || String(p.number).includes(q))
-    .slice()
-    .sort((a, b) => {
-      const ta = Date.parse(a.updated_at ?? "") || 0;
-      const tb = Date.parse(b.updated_at ?? "") || 0;
-      return sort === "oldest" ? ta - tb : tb - ta;
-    });
+  const list = pulls ?? [];
+  const filtered = filterAndSortPulls(list, { status, query, sort });
+  const { openCount, needsReviewCount } = prListCounts(list);
   const repoName = activeRepo?.full_name ?? repoId;
-  const openCount = (pulls ?? []).filter((p) => OPEN_STATUSES.has(p.status)).length;
-  const needsReviewCount = (pulls ?? []).filter((p) => p.status === "needs_review").length;
 
   // Stale/unknown :repoId → friendly empty state instead of a 404 error.
   if (repoNotFound) {
@@ -127,7 +121,14 @@ export default function PullsPage() {
             }
           />
         ) : (
-          filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
+          filtered.map((pr) => (
+            <PRRow
+              key={pr.number}
+              pr={pr}
+              repoId={repoId}
+              repoFullName={activeRepo?.full_name ?? null}
+            />
+          ))
         )}
       </div>
     </AppShell>

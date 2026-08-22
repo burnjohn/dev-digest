@@ -31,6 +31,7 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  targetFindingId = null,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -41,8 +42,12 @@ export function ReviewRunAccordion({
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** A finding to focus — if it belongs to this run, open so it can be scrolled
+   *  to + expanded by the FindingsPanel. */
+  targetFindingId?: string | null;
 }) {
-  const [open, setOpen] = React.useState(defaultOpen);
+  const ownsTarget = !!targetFindingId && review.findings.some((f) => f.id === targetFindingId);
+  const [open, setOpen] = React.useState(defaultOpen || ownsTarget);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (review.run_id && review.run_id === targetRunId) {
@@ -51,6 +56,10 @@ export function ReviewRunAccordion({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
+  // Opening from a finding deep-link (this run owns the target finding).
+  React.useEffect(() => {
+    if (ownsTarget) setOpen(true);
+  }, [ownsTarget]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
@@ -152,6 +161,7 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            targetFindingId={targetFindingId}
           />
         </div>
       )}

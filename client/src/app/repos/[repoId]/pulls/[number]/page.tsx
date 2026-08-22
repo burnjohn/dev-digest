@@ -57,7 +57,10 @@ export default function PRDetailPage() {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
 
-  const tab = search.get("tab") ?? "overview";
+  // A `finding` param (e.g. clicked from a findings popover) implies the Agent-
+  // runs tab, where that finding lives in its review.
+  const focusFindingId = search.get("finding");
+  const tab = search.get("tab") ?? (focusFindingId ? "findings" : "overview");
   const traceRunId = search.get("trace");
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
@@ -139,6 +142,7 @@ export default function PRDetailPage() {
         {tab === "findings" && (
           <FindingsTab
             prId={prId}
+            prNumber={pr.number}
             liveRunIds={liveRunIds}
             reviewRunning={reviewRunning}
             lethalTrifecta={lethalTrifecta}
@@ -147,6 +151,8 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            focusFindingId={focusFindingId}
+            onFocusFinding={(id) => setParam("finding", id)}
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {

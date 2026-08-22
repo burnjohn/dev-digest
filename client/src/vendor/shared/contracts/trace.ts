@@ -61,6 +61,8 @@ export const RunStats = z.object({
   duration_ms: z.number().int(),
   tokens_in: z.number().int(),
   tokens_out: z.number().int(),
+  /** Generation cost in USD; null when un-priced (UI shows "—", not "$0"). */
+  cost_usd: z.number().nullable(),
   findings: z.number().int(),
   grounding: z.string(),
   cost: z.number().nullable().optional(),
@@ -102,6 +104,8 @@ export const RunSummary = z.object({
   duration_ms: z.number().int().nullable(),
   tokens_in: z.number().int().nullable(),
   tokens_out: z.number().int().nullable(),
+  /** Generation cost in USD; null when un-priced (UI shows "—", not "$0"). */
+  cost_usd: z.number().nullable(),
   findings_count: z.number().int().nullable(),
   findings_critical: z.number().int().nullable().optional(),
   findings_warning: z.number().int().nullable().optional(),

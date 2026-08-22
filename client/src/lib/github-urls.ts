@@ -18,6 +18,17 @@ export function githubPrUrl(repoFullName: string, number: number): string {
 }
 
 /**
+ * https://github.com/{owner}/{repo}/pull/{number}/files
+ * The PR's "Files changed" tab — where a finding's file lives in the context of
+ * THIS pull request (vs. `githubBlobUrl`, which opens the standalone file blob).
+ * Per-file diff anchors need a sha256(path) hash we don't compute here, so this
+ * lands on the Files tab rather than scrolling to the exact file.
+ */
+export function githubPrFilesUrl(repoFullName: string, number: number): string {
+  return `${HOST}/${repoFullName}/pull/${number}/files`;
+}
+
+/**
  * https://github.com/{owner}/{repo}/blob/{sha}/{file}#L{start}[-L{end}]
  * `sha` pins the link to the PR's head so line numbers stay accurate.
  */

@@ -23,6 +23,7 @@
     "@vscode/ripgrep": "^1.15.9",
     "dependency-cruiser": "^17.4.3",
     "dotenv": "^16.4.7",
+    "fflate": "^0.8.2",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
     "fastify-sse-v2": "^4.2.1",
