@@ -182,10 +182,17 @@ and fails CI without ever being visible locally.
 
 ```bash
 for f in $(cut -f2- /tmp/changed.tsv | grep -E '^server/.*\.test\.ts$' | grep -v '\.it\.test\.ts$'); do
-  grep -qE "test/helpers/pg|testcontainers" "$f" 2>/dev/null \
+  grep -qE "helpers/pg|testcontainers" "$f" 2>/dev/null \
     && echo "H4: $f is DB-backed but not named *.it.test.ts"
 done
 ```
+
+**Match `helpers/pg`, not `test/helpers/pg` — this was a real bug.** Tests live *inside*
+`server/test/`, so they import the fixture relatively as `./helpers/pg.js`; the
+absolute-looking form never matches and the check silently cannot fire. Found 2026-08-22,
+when H5 reported five hits including two pre-existing files that import that helper on
+line 2. H4 is the dangerous half: a CRITICAL rule that can never fire reads as "clean" on
+every run.
 
 ### H5 — `.it.test.ts` with no DB dependency · WARNING
 
@@ -194,10 +201,12 @@ it is skipped whenever Docker is absent — so it silently stops running.
 
 ```bash
 for f in $(cut -f2- /tmp/changed.tsv | grep -E '^server/.*\.it\.test\.ts$'); do
-  grep -qE "test/helpers/pg|testcontainers" "$f" 2>/dev/null \
+  grep -qE "helpers/pg|testcontainers" "$f" 2>/dev/null \
     || echo "H5: $f is in the Docker lane but imports no DB helper"
 done
 ```
+
+Same pattern correction as H4 above — see the note there.
 
 ### H6 — secret literal in the diff · CRITICAL, `kind: secret_leak`
 
