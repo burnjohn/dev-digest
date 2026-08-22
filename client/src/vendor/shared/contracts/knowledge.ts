@@ -149,19 +149,6 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
-export const SkillVersion = z.object({
-  skill_id: z.string(),
-  version: z.number().int(),
-  body: z.string(),
-  created_at: z.string(),
-});
-export type SkillVersion = z.infer<typeof SkillVersion>;
-
-export const SkillStats = z.object({
-  agents_using: z.number().int(),
-});
-export type SkillStats = z.infer<typeof SkillStats>;
-
 export const CommunitySkill = z.object({
   name: z.string(),
   repo: z.string(),
