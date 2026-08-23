@@ -131,7 +131,7 @@ below), not something to do inline while capturing a new insight.
 Nothing forces this skill to fire on its own — description-based
 auto-triggering is unreliable, especially for the "write at the end"
 trigger. The durable backstop is the explicit instruction in each package's
-`CLAUDE.md` (read before work, update after). This skill is the format and
+`AGENTS.md` (read before work, update after). This skill is the format and
 rulebook for *how* to do that read/write correctly once triggered — manually
 via `/engineering-insights`, or whenever the agent notices something
 insight-worthy mid-session.

@@ -1,4 +1,4 @@
-# CLAUDE.md — e2e (`@devdigest/e2e`)
+# AGENTS.md — e2e (`@devdigest/e2e`)
 
 Deterministic browser e2e for the full stack, driven by the `agent-browser`
 CLI (CDP) against JSON flow specs — no LLM calls involved. Full picture:

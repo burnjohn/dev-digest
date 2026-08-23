@@ -1,4 +1,4 @@
-# CLAUDE.md — client (`@devdigest/web`)
+# AGENTS.md — client (`@devdigest/web`)
 
 Next.js 15 (App Router) + React 19 web app — "the studio". Talks to
 `server` over REST via TanStack Query. Port 3000. Full picture:

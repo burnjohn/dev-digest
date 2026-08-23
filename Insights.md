@@ -2,7 +2,7 @@
 
 Project-wide gotchas and decisions worth knowing before touching more than
 one package. Package-specific insights live in each package's own
-`Insights.md` (linked from that package's `CLAUDE.md`). Section structure
+`Insights.md` (linked from that package's `AGENTS.md`). Section structure
 and recording rules: see the `engineering-insights` skill
 (`.claude/skills/engineering-insights/SKILL.md`).
 

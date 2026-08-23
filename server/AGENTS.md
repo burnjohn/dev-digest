@@ -1,4 +1,4 @@
-# CLAUDE.md — server (`@devdigest/api`)
+# AGENTS.md — server (`@devdigest/api`)
 
 Fastify API + Drizzle/Postgres (pgvector). Owns the DB schema, GitHub import,
 `repo-intel` indexing, and orchestrates `reviewer-core` for actual review

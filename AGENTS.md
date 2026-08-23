@@ -1,4 +1,4 @@
-# CLAUDE.md — DevDigest (root)
+# AGENTS.md — DevDigest (root)
 
 DevDigest is a local-first AI pull-request review tool, built as a course
 starter template: one working slice today (add a repo → import a PR → run an
@@ -11,12 +11,12 @@ shared via tsconfig path aliases, not published modules:
 
 | Package | Path | What it is | Docs |
 |---|---|---|---|
-| `@devdigest/api` | [server/](server/) | Fastify API + Drizzle/Postgres (pgvector) | [server/CLAUDE.md](server/CLAUDE.md) |
-| `@devdigest/web` | [client/](client/) | Next.js 15 web app (the studio) | [client/CLAUDE.md](client/CLAUDE.md) |
-| `@devdigest/reviewer-core` | [reviewer-core/](reviewer-core/) | Pure review engine: diff → prompt → LLM → grounded findings | [reviewer-core/CLAUDE.md](reviewer-core/CLAUDE.md) |
-| `@devdigest/e2e` | [e2e/](e2e/) | Deterministic browser e2e (agent-browser, no LLM) | [e2e/CLAUDE.md](e2e/CLAUDE.md) |
+| `@devdigest/api` | [server/](server/) | Fastify API + Drizzle/Postgres (pgvector) | [server/AGENTS.md](server/AGENTS.md) |
+| `@devdigest/web` | [client/](client/) | Next.js 15 web app (the studio) | [client/AGENTS.md](client/AGENTS.md) |
+| `@devdigest/reviewer-core` | [reviewer-core/](reviewer-core/) | Pure review engine: diff → prompt → LLM → grounded findings | [reviewer-core/AGENTS.md](reviewer-core/AGENTS.md) |
+| `@devdigest/e2e` | [e2e/](e2e/) | Deterministic browser e2e (agent-browser, no LLM) | [e2e/AGENTS.md](e2e/AGENTS.md) |
 
-Before working inside a package, read that package's own `CLAUDE.md` — it
+Before working inside a package, read that package's own `AGENTS.md` — it
 carries the commands and conventions specific to that package.
 
 ## Root docs map
@@ -38,8 +38,8 @@ docker compose down       # stop Postgres (dev.sh only stops the dev servers)
 
 ## Conventions
 
-- Don't duplicate content across `CLAUDE.md` files and `README.md`/`docs/`. `CLAUDE.md` links out and gives agent-operational essentials (commands, gotchas); prose/architecture belongs in `README.md`/`docs/`.
-- Package boundaries are real: `server` and `client` use pnpm, `reviewer-core` and `e2e` use npm deliberately (see [reviewer-core/CLAUDE.md](reviewer-core/CLAUDE.md)). Don't add a root lockfile or workspace config that blurs this.
+- Don't duplicate content across `AGENTS.md` files and `README.md`/`docs/`. `AGENTS.md` links out and gives agent-operational essentials (commands, gotchas); prose/architecture belongs in `README.md`/`docs/`.
+- Package boundaries are real: `server` and `client` use pnpm, `reviewer-core` and `e2e` use npm deliberately (see [reviewer-core/AGENTS.md](reviewer-core/AGENTS.md)). Don't add a root lockfile or workspace config that blurs this.
 - Before working in a package, read that package's `Insights.md` (plus this
   file's, if the change is cross-cutting) and treat it as high-confidence
   guidance. At the end of a substantive session, if something non-obvious

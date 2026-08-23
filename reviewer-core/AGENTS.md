@@ -1,4 +1,4 @@
-# CLAUDE.md — reviewer-core (`@devdigest/reviewer-core`)
+# AGENTS.md — reviewer-core (`@devdigest/reviewer-core`)
 
 Pure review engine: diff + repo map → prompt → LLM → grounded, structured
 findings. No DB/GitHub/FS access — the only side effect is an injected
