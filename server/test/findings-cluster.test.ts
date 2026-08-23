@@ -53,6 +53,7 @@ describe('clusterFindings', () => {
     const clusters = clusterFindings([a, b]);
 
     expect(clusters).toHaveLength(1);
+    expect(clusters[0]!.file).toBe('src/x.ts');
     expect(clusters[0]!.start_line).toBe(10);
     expect(clusters[0]!.end_line).toBe(18);
     expect(clusters[0]!.findings).toHaveLength(2);

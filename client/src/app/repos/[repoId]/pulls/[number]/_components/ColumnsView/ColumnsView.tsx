@@ -1,8 +1,8 @@
 /* ColumnsView — SPEC-07 T11 (G5). One card per run of the current
    multi-agent group: CircularScore, agent name, RunCostBadge, a status badge
-   (`outcomeOf`, promoted to `@/lib/run-outcome` so RunHistory and this view
-   share one derivation, AC-26), this run's findings (title + `file:line` +
-   severity icon via `SEV`), and a "View trace" action. Re-renders on
+   (`outcomeOf` via `./helpers`, shared with RunHistory, AC-26), this run's
+   findings (title + `file:line` + severity icon via `SEV`), and a "View
+   trace" action. Re-renders on
    `usePrRuns`'s existing 4s poll while any run in the group is `running`
    (AC-27) — the caller (`MultiAgentReviewTab`) already reuses that hook's
    data as-is; this component starts no poll of its own. */

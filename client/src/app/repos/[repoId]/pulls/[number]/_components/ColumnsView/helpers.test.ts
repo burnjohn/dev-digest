@@ -79,6 +79,8 @@ describe("deriveLiveColumns", () => {
       run({ run_id: "run-clean", status: "done", findings_count: 0, blockers: 0, score: 95 }),
       run({ run_id: "run-rejected", status: "done", findings_count: 1, blockers: 1, score: 20 }),
       run({ run_id: "run-failed", status: "failed", error: "timeout after 60s" }),
+      run({ run_id: "run-cancelled", status: "cancelled" }),
+      run({ run_id: "run-reviewed", status: "done", findings_count: 1, blockers: 0 }),
     ];
     // Reviews given in an order that doesn't match `runs` — the join must be
     // by run_id, never by array position.
@@ -89,8 +91,15 @@ describe("deriveLiveColumns", () => {
 
     const columns = deriveLiveColumns(runs, reviews);
 
-    expect(columns).toHaveLength(4);
-    expect(columns.map((c) => c.run.run_id)).toEqual(["run-running", "run-clean", "run-rejected", "run-failed"]);
+    expect(columns).toHaveLength(6);
+    expect(columns.map((c) => c.run.run_id)).toEqual([
+      "run-running",
+      "run-clean",
+      "run-rejected",
+      "run-failed",
+      "run-cancelled",
+      "run-reviewed",
+    ]);
 
     const running = columns[0]!;
     expect(running.outcome.key).toBe("running");
@@ -111,6 +120,14 @@ describe("deriveLiveColumns", () => {
     expect(failed.outcome.key).toBe("error");
     expect(failed.settled).toBe(false);
     expect(failed.findings).toEqual([]);
+
+    const cancelled = columns[4]!;
+    expect(cancelled.outcome.key).toBe("cancelled");
+    expect(cancelled.settled).toBe(false);
+
+    const reviewed = columns[5]!;
+    expect(reviewed.outcome.key).toBe("reviewed");
+    expect(reviewed.settled).toBe(true);
   });
 
   it("a run with no matching review yet safely defaults to an empty findings array", () => {
