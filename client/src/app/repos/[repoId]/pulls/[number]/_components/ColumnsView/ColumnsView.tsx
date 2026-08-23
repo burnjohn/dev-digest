@@ -14,7 +14,7 @@ import { Badge, Button, CircularScore, Icon, SEV } from "@devdigest/ui";
 import { RunCostBadge } from "@/components/run-cost-badge";
 import { FindingsTooltip, SEVERITY_DISPLAY_ORDER } from "@/components/findings-tooltip";
 import { severityCounts } from "@/lib/findings";
-import { outcomeOf } from "@/lib/run-outcome";
+import { deriveLiveColumns } from "./helpers";
 import { s } from "./styles";
 import type { ReviewRecord, RunSummary } from "@devdigest/shared";
 
@@ -30,19 +30,11 @@ interface ColumnsViewProps {
 export function ColumnsView({ runs, reviews, onOpenTrace }: ColumnsViewProps) {
   const t = useTranslations("prReview");
 
-  const reviewByRunId = React.useMemo(
-    () => new Map(reviews.filter((r) => r.run_id).map((r) => [r.run_id as string, r])),
-    [reviews],
-  );
+  const columns = React.useMemo(() => deriveLiveColumns(runs, reviews), [runs, reviews]);
 
   return (
     <div style={s.grid}>
-      {runs.map((run) => {
-        const o = outcomeOf(run);
-        const settled = run.status === "done";
-        const review = reviewByRunId.get(run.run_id);
-        const findings = review?.findings ?? [];
-
+      {columns.map(({ run, outcome: o, settled, findings }) => {
         return (
           <div key={run.run_id} style={s.column}>
             <div style={s.columnHeader}>
