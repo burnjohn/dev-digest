@@ -116,6 +116,7 @@ export function PrDetailHeader({
           { key: "overview", label: "Overview", icon: "FileText" },
           { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: findingsCount || undefined },
           { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
+          { key: "smart-diff", label: "Smart Diff", icon: "Layers" },
         ]}
       />
     </div>

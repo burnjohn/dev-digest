@@ -187,6 +187,210 @@ export async function seed(
     ]);
   }
 
+  // ---- PR #999 — Smart Diff demo (large PR with all three roles) ----
+  let [pr999] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 999)));
+  if (!pr999) {
+    [pr999] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 999,
+        title: "feat: migrate billing engine to Stripe Billing v3",
+        author: "alex.petrov",
+        branch: "feat/stripe-billing-v3",
+        base: "main",
+        headSha: "deadbeef1234",
+        additions: 834,
+        deletions: 271,
+        filesCount: 13,
+        status: "needs_review",
+        body: "Migrates our billing engine to Stripe Billing v3 API. Replaces deprecated charge endpoints, adds idempotency keys, and updates the webhook handler to verify signatures properly.",
+      })
+      .returning();
+
+    // pr_files — mix of core / wiring / boilerplate for Smart Diff demo
+    await db.insert(t.prFiles).values([
+      // CORE — business logic
+      {
+        prId: pr999!.id,
+        path: "src/payments/stripe-webhook-handler.ts",
+        additions: 142,
+        deletions: 38,
+        patch: `@@ -1,8 +1,12 @@\n import Stripe from 'stripe';\n-import { verifySignature } from './legacy';\n+import { constructEvent } from './webhook-utils';\n+import { idempotencyKey } from '../lib/idempotency';\n \n-export async function handleWebhook(req, res) {\n-  const sig = req.headers['stripe-signature'];\n-  const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_SECRET);\n+export async function handleWebhook(req: Request, res: Response) {\n+  const sig = req.headers['stripe-signature'] as string;\n+  if (!sig) return res.status(400).send('Missing signature');\n+  const event = constructEvent(req.body, sig);\n+  const key = idempotencyKey(event.id);\n   switch (event.type) {\n     case 'invoice.payment_succeeded':\n+      await processInvoice(event.data.object, key);\n       break;\n   }\n }`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/payments/invoice-service.ts",
+        additions: 98,
+        deletions: 45,
+        patch: `@@ -14,10 +14,18 @@\n export class InvoiceService {\n-  async charge(customerId: string, amount: number) {\n-    return stripe.charges.create({ amount, currency: 'usd', customer: customerId });\n+  async charge(customerId: string, amount: number, key: string) {\n+    return stripe.paymentIntents.create({\n+      amount,\n+      currency: 'usd',\n+      customer: customerId,\n+      idempotency_key: key,\n+    });\n   }\n-  async refund(chargeId: string) {\n-    return stripe.refunds.create({ charge: chargeId });\n+  async refund(paymentIntentId: string, reason: string) {\n+    return stripe.refunds.create({\n+      payment_intent: paymentIntentId,\n+      reason,\n+    });\n   }\n }`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/payments/subscription-manager.ts",
+        additions: 87,
+        deletions: 22,
+        patch: `@@ -5,6 +5,14 @@\n export class SubscriptionManager {\n   async create(customerId: string, priceId: string) {\n-    return stripe.subscriptions.create({ customer: customerId, items: [{ price: priceId }] });\n+    return stripe.subscriptions.create({\n+      customer: customerId,\n+      items: [{ price: priceId }],\n+      payment_behavior: 'default_incomplete',\n+      expand: ['latest_invoice.payment_intent'],\n+    });\n   }\n }`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/payments/refund-handler.ts",
+        additions: 64,
+        deletions: 11,
+        patch: `@@ -1,5 +1,9 @@\n+import { logger } from '../lib/logger';\n \n export async function processRefund(orderId: string) {\n   const order = await db.orders.findOne(orderId);\n-  await stripe.refunds.create({ charge: order.chargeId });\n+  if (!order) throw new Error(\`Order \${orderId} not found\`);\n+  logger.info({ orderId }, 'processing refund');\n+  await stripe.refunds.create({ payment_intent: order.paymentIntentId });\n }`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/auth/webhook-signature-validator.ts",
+        additions: 53,
+        deletions: 0,
+        patch: `@@ -0,0 +1,53 @@\n+import Stripe from 'stripe';\n+\n+export function constructEvent(payload: Buffer, sig: string) {\n+  const secret = process.env.STRIPE_WEBHOOK_SECRET;\n+  if (!secret) throw new Error('STRIPE_WEBHOOK_SECRET not set');\n+  return Stripe.webhooks.constructEvent(payload, sig, secret);\n+}`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/notifications/payment-email-sender.ts",
+        additions: 72,
+        deletions: 18,
+        patch: `@@ -8,7 +8,12 @@\n export async function sendPaymentConfirmation(email: string, amount: number) {\n-  await mailer.send({ to: email, subject: 'Payment received', body: \`You paid \${amount}\` });\n+  await mailer.send({\n+    to: email,\n+    subject: 'Payment received',\n+    template: 'payment-confirmation',\n+    data: { amount: formatCurrency(amount) },\n+  });\n }`,
+      },
+      // WIRING — config, routes, index
+      {
+        prId: pr999!.id,
+        path: "src/index.ts",
+        additions: 5,
+        deletions: 2,
+        patch: `@@ -3,4 +3,7 @@\n import { webhookRouter } from './routes/webhook';\n+import { billingRouter } from './routes/billing';\n \n app.use('/webhooks', webhookRouter);\n+app.use('/billing', billingRouter);\n`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/routes/billing.ts",
+        additions: 31,
+        deletions: 8,
+        patch: `@@ -1,6 +1,12 @@\n import { Router } from 'express';\n+import { InvoiceService } from '../payments/invoice-service';\n \n const router = Router();\n-router.post('/charge', legacyCharge);\n+router.post('/charge', async (req, res) => {\n+  const svc = new InvoiceService();\n+  const result = await svc.charge(req.body.customerId, req.body.amount, req.body.key);\n+  res.json(result);\n+});\n export default router;`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/config.ts",
+        additions: 8,
+        deletions: 3,
+        patch: `@@ -10,5 +10,10 @@\n export const config = {\n   stripe: {\n-    secretKey: process.env.STRIPE_SECRET_KEY,\n+    secretKey: process.env.STRIPE_SECRET_KEY ?? '',\n+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',\n+    apiVersion: '2023-10-16' as const,\n   },\n };`,
+      },
+      // BOILERPLATE — lock file + snapshots
+      {
+        prId: pr999!.id,
+        path: "pnpm-lock.yaml",
+        additions: 312,
+        deletions: 149,
+        patch: `@@ -1,6 +1,8 @@\n lockfileVersion: '6.0'\n \n settings:\n   autoInstallPeers: true\n+  excludeLinksFromLockfile: false\n \n+stripe@^14.0.0:\n+  resolution: {integrity: sha512-abc123}\n+  engines: {node: '>=12'}\n`,
+      },
+      {
+        prId: pr999!.id,
+        path: "src/__snapshots__/invoice.test.ts.snap",
+        additions: 47,
+        deletions: 28,
+        patch: `@@ -1,10 +1,15 @@\n // Jest Snapshot v1, https://goo.gl/fbAQLP\n \n-exports[\`InvoiceService charge 1\`] = \`\n+exports[\`InvoiceService charge with idempotency 1\`] = \`\n Object {\n-  "id": "ch_test",\n-  "object": "charge",\n+  "id": "pi_test",\n+  "object": "payment_intent",\n+  "status": "succeeded",\n }\n \`;\n`,
+      },
+      {
+        prId: pr999!.id,
+        path: "dist/payments.min.js",
+        additions: 1,
+        deletions: 1,
+        patch: `@@ -1 +1 @@\n-!function(e){/* minified v2.1.0 */}(window);\n+!function(e){/* minified v2.2.0 */}(window);\n`,
+      },
+    ]);
+
+    await db.insert(t.prCommits).values([
+      {
+        prId: pr999!.id,
+        sha: "deadbeef1234",
+        message: "feat: migrate to Stripe Billing v3 payment intents",
+        author: "alex.petrov",
+      },
+      {
+        prId: pr999!.id,
+        sha: "cafe5678abcd",
+        message: "fix: add idempotency keys to all charge operations",
+        author: "alex.petrov",
+      },
+      {
+        prId: pr999!.id,
+        sha: "f00d9012efab",
+        message: "chore: update pnpm-lock for stripe v14",
+        author: "alex.petrov",
+      },
+    ]);
+
+    // Pre-seeded review + findings so badges appear immediately in Smart Diff
+    const [review999] = await db
+      .insert(t.reviews)
+      .values({
+        workspaceId,
+        prId: pr999!.id,
+        kind: "review",
+        verdict: "request_changes",
+        summary:
+          "Webhook handler now correctly validates Stripe signatures, but the webhook secret is read without a fallback guard — if the env var is missing the server will crash silently. Also, the refund handler still references the old chargeId field.",
+        score: 58,
+        model: "seed",
+      })
+      .returning();
+
+    await db.insert(t.findings).values([
+      {
+        reviewId: review999!.id,
+        file: "src/payments/stripe-webhook-handler.ts",
+        startLine: 8,
+        endLine: 9,
+        severity: "CRITICAL",
+        category: "security",
+        title: "Stripe signature not verified before event construction",
+        rationale: "The signature header is forwarded but constructEvent can throw — the error is not caught, exposing an unhandled rejection.",
+        suggestion: "Wrap constructEvent in try/catch and return 400 on failure.",
+        confidence: 0.95,
+      },
+      {
+        reviewId: review999!.id,
+        file: "src/payments/stripe-webhook-handler.ts",
+        startLine: 14,
+        endLine: 14,
+        severity: "WARNING",
+        category: "bug",
+        title: "Invoice processing not awaited in all switch branches",
+        rationale: "Only invoice.payment_succeeded is handled — other event types fall through silently.",
+        suggestion: "Add a default case that logs unhandled event types.",
+        confidence: 0.82,
+      },
+      {
+        reviewId: review999!.id,
+        file: "src/payments/invoice-service.ts",
+        startLine: 17,
+        endLine: 22,
+        severity: "WARNING",
+        category: "perf",
+        title: "PaymentIntent expand causes N extra API calls",
+        rationale: "Expanding latest_invoice.payment_intent fetches nested objects — expensive for bulk operations.",
+        suggestion: "Only expand when the caller explicitly needs the payment intent.",
+        confidence: 0.78,
+      },
+      {
+        reviewId: review999!.id,
+        file: "src/payments/refund-handler.ts",
+        startLine: 7,
+        endLine: 7,
+        severity: "CRITICAL",
+        category: "bug",
+        title: "References deprecated order.chargeId field",
+        rationale: "order.chargeId was removed in the Stripe v3 migration — this will throw at runtime.",
+        suggestion: "Change to order.paymentIntentId which is set by the new InvoiceService.",
+        confidence: 0.97,
+      },
+    ]);
+  }
+
   // ---- built-in agents (the two starter presets) ----
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
     {
