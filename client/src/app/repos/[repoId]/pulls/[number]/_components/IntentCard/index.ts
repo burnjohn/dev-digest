@@ -1,0 +1,1 @@
+export { IntentCard } from "./IntentCard";

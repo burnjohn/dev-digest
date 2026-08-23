@@ -5,7 +5,8 @@
 import React from "react";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type Line } from "../helpers";
-import { s, lineRowFor, lineSignFor } from "../styles";
+import { type DiffAnnotationApi } from "../annotations";
+import { s, lineRowFor, lineSignFor, annotationChip, annotationChipSlot, severityColor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
 
@@ -14,11 +15,13 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  annotations,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  annotations?: DiffAnnotationApi;
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
@@ -34,6 +37,14 @@ export function CodeLine({
   const sign = ln.kind === "add" ? "+" : ln.kind === "del" ? "−" : "";
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
+  // REQ-14: matched by `finding.start_line === Line.newNo` — only lines that
+  // carry a new-file line number (add/ctx) can host an annotation. REQ-15
+  // (rewritten): every finding on the line gets its own chip, already
+  // ordered severity descending then id ascending by the caller.
+  const lineAnnotations = annotations && ln.newNo != null ? annotations.forLine(path, ln.newNo) : [];
+  // The left-bar accent stands for the whole line, so it takes the
+  // highest-severity chip — the first entry, given the caller's total order.
+  const accentSeverity = lineAnnotations[0]?.severity;
 
   return (
     <div
@@ -41,7 +52,7 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind)}>
+      <div style={lineRowFor(ln.kind, accentSeverity ? severityColor(accentSeverity) : undefined)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button
@@ -62,6 +73,22 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {lineAnnotations.length > 0 && (
+          <span style={annotationChipSlot}>
+            {lineAnnotations.map((annotation) => (
+              <button
+                key={annotation.key}
+                type="button"
+                style={annotationChip(annotation.severity)}
+                aria-label={annotation.title}
+                title={annotation.title}
+                onClick={annotation.onClick}
+              >
+                {annotation.label}
+              </button>
+            ))}
+          </span>
+        )}
       </div>
 
       {commenting &&

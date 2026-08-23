@@ -58,7 +58,22 @@
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "sectionLabel": "REVIEWER-ORDERED DIFF",
+    "orderSmart": "Smart order",
+    "orderOriginal": "Original order",
+    "groupTitleCore": "Core logic",
+    "groupSubtitleCore": "The substance of the change — review closely",
+    "groupTitleWiring": "Wiring",
+    "groupSubtitleWiring": "Hooks the core into the app",
+    "groupTitleBoilerplate": "Boilerplate",
+    "groupSubtitleBoilerplate": "Generated / mechanical — skim",
+    "severityCritical": "blocker",
+    "severityWarning": "warning",
+    "severitySuggestion": "suggestion",
+    "largeFileBadge": "Large file",
+    "chipAriaLabel": "{severity} · {count} finding(s) on this line",
+    "notOnVisibleLine": "{count} finding(s) not on a visible line"
   },
   "list": {
     "breadcrumb": "Pull Requests",
@@ -118,5 +133,17 @@
       "ariaWarning": "{count, plural, one {# warning finding} other {# warning findings}}",
       "ariaSuggestion": "{count, plural, one {# suggestion finding} other {# suggestion findings}}"
     }
+  },
+  "overview": {
+    "description": "Description"
+  },
+  "intent": {
+    "title": "Intent",
+    "recompute": "Recompute",
+    "errorBody": "Couldn’t classify this PR’s intent.",
+    "retry": "Retry",
+    "confidence": "{level, select, low {low confidence} medium {medium confidence} high {high confidence} other {{level} confidence}}",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope"
   }
 }

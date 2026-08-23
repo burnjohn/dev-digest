@@ -135,4 +135,50 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
+
+  describe('threads ReviewInput.intent into the prompt (T3)', () => {
+    const clean = { verdict: 'approve', summary: 'looks good', score: 100, findings: [] };
+
+    it('single-pass: forwards intent into the assembled prompt and the run trace', async () => {
+      const llm = new MockLLMProvider('openai', { structured: clean });
+      const diff = await new MockGitClient().diff();
+
+      const outcome = await reviewPullRequest({
+        systemPrompt: 'security reviewer',
+        model: 'gpt-4.1',
+        diff,
+        llm,
+        intent: 'Focus on the auth middleware refactor.',
+      });
+
+      expect(outcome.mode).toBe('single-pass');
+      expect(outcome.assembly.intent).toBe('Focus on the auth middleware refactor.');
+      expect(outcome.assembly.user).toContain('## Declared intent');
+    });
+
+    it('map-reduce: forwards intent into every per-file LLM call, not just the trace default', async () => {
+      const llm = new MockLLMProvider('openai', { structured: clean });
+      const twoFileDiffRaw =
+        'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,3 @@\n line1\n+added a\n line2\n' +
+        'diff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1,2 +1,3 @@\n line1\n+added b\n line2\n';
+      const diff = await new MockGitClient({ diff: twoFileDiffRaw }).diff();
+
+      const outcome = await reviewPullRequest({
+        systemPrompt: 'security reviewer',
+        model: 'gpt-4.1',
+        diff,
+        llm,
+        strategy: 'map-reduce',
+        intent: 'Focus on file a only.',
+      });
+
+      expect(outcome.mode).toBe('map-reduce');
+      expect(llm.calls).toHaveLength(2);
+      for (const call of llm.calls) {
+        const req = call.req as { messages: { role: string; content: string }[] };
+        const user = req.messages.find((m) => m.role === 'user')!.content;
+        expect(user).toContain('## Declared intent');
+      }
+    });
+  });
 });

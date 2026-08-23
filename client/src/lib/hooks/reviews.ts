@@ -8,11 +8,13 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrIntentDetail,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
   RunEvent,
   RunSummary,
+  SmartDiffResponse,
 } from "@devdigest/shared";
 
 // ---- Active (in-flight) runs — server-side source of truth ----
@@ -56,16 +58,43 @@ export function usePrReviews(prId: string | null | undefined) {
   });
 }
 
+// ---- Smart Diff (deterministic, zero-token — server computes on read, caches nothing) ----
+/**
+ * `GET /pulls/:id/smart-diff` — the PR's changed files partitioned into
+ * core/wiring/boilerplate groups, with findings attached per line.
+ *
+ * Deliberately NO `refetchInterval` (REQ-22): `usePrActiveRuns` already tracks
+ * in-flight runs server-side and `onRunDone` (page.tsx, T9) fires an
+ * invalidation on settle, so polling here would spend DB round-trips to learn
+ * nothing between those two signals.
+ *
+ * The response is recomputed on every request and persisted nowhere on the
+ * server (plan §5.7) — so staleness can ONLY come from THIS cache entry.
+ * Finding ids are run-scoped: a re-run that reports the same issue mints a
+ * NEW id, so every mutation below that can change the finding set MUST
+ * invalidate this key or a badge can silently keep pointing at a superseded
+ * finding (REQ-25). Do not add `staleTime` here — that is the exact bug.
+ */
+export function useSmartDiff(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId],
+    queryFn: () => api.get<SmartDiffResponse>(`/pulls/${prId}/smart-diff`),
+    enabled: !!prId,
+  });
+}
+
 /** Delete one run from the PR's run history (+ its trace). */
 export function useDeleteRun(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.del<{ ok: boolean }>(`/runs/${runId}`),
     // Deleting a run also deletes the review it produced (server-side), so drop
-    // both the timeline and the Review Runs list from cache.
+    // both the timeline and the Review Runs list from cache. Also invalidate
+    // Smart Diff (§5.7): ids from the deleted run must not linger in its badges.
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -82,7 +111,12 @@ export function useDeleteReview(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reviewId: string) => api.del<{ ok: boolean }>(`/reviews/${reviewId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews", prId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      // §5.7: ids belonging to the deleted review must not survive a stale
+      // Smart Diff badge.
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+    },
   });
 }
 
@@ -114,6 +148,42 @@ export function useCreatePrComment(prId: string | null | undefined) {
   });
 }
 
+// ---- PR intent (why the PR was opened) — get-or-create, cache-first server-side ----
+/**
+ * Get-or-create the PR's intent classification.
+ *
+ * Deliberately a POST inside a `queryFn`, not a GET — do not "fix" this to a GET.
+ * `POST /pulls/:id/intent` is get-or-create and cache-first ON THE SERVER
+ * (REQ-8/REQ-10 of docs/plans/03-intent-layer.md §5.2): a row already exists →
+ * it is returned with zero model calls; no row → exactly one classification.
+ * `GET /pulls/:id/intent` is purely read-only and 404s when no row exists, so a
+ * `GET` here would render an empty card forever for every PR that has never
+ * been reviewed — the exact bug this plan exists to fix. Mounting the card is
+ * what makes the intent exist. `staleTime: Infinity` + no refetch-on-focus keep
+ * a refocus from re-POSTing once the card has its answer for this session.
+ */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.post<PrIntentDetail>(`/pulls/${prId}/intent`, {}),
+    enabled: !!prId,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Force a fresh classification (the re-classify button, and only the button —
+    no auto-refresh exists). Writes straight into the `usePrIntent` cache entry. */
+export function useReclassifyIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<PrIntentDetail>(`/pulls/${prId}/intent`, { force: true }),
+    onSuccess: (data) => {
+      qc.setQueryData(["pr-intent", prId], data);
+    },
+  });
+}
+
 // ---- Run a review (all enabled agents or a specific agent) ----
 export interface RunReviewInput {
   prId: string;
@@ -131,6 +201,9 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      // §5.7 REQ-25 path 1: a re-run can flip the deduped winner for an
+      // existing issue to a NEW finding id — refetch so the badge follows it.
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -155,7 +228,13 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId) {
+        qc.invalidateQueries({ queryKey: ["reviews", prId] });
+        // §5.7 REQ-25 path 3: dismiss must be able to make a badge disappear
+        // (Smart Diff only carries non-dismissed findings); accept shares
+        // this same mutation, so it is covered too.
+        qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+      }
     },
   });
 }

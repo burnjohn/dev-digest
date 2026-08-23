@@ -12,6 +12,7 @@ import {
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
+import type { IntentSource } from '../../vendor/shared/contracts/intent.js';
 
 // ============================================================ Review & findings
 
@@ -74,6 +75,15 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // ---- added for the intent-layer classifier (docs/plans/03-intent-layer.md, T2) ----
+  // Additive only — no column dropped/renamed, so `drizzle-kit generate` stays
+  // non-interactive (server/INSIGHTS.md, 2026-08-17).
+  confidence: text('confidence', { enum: ['low', 'medium', 'high'] }).notNull().default('low'),
+  sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Nullable: a row written before this feature existed (or a deterministic
+   *  fallback classification) may carry no model. */
+  model: text('model'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const prBrief = pgTable('pr_brief', {

@@ -19,7 +19,17 @@ export interface Tokenizer {
 
 /** Heuristic fallback used before/instead of a real encoder. */
 export function approxTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return approxTokensForLength(text.length);
+}
+
+/**
+ * Same heuristic when only the LENGTH is known and the text is not (or must not
+ * be) held — e.g. prompt-composition logging, which records char counts for
+ * sources whose bodies it deliberately never keeps. Callers must not
+ * reconstruct a filler string just to reach `approxTokens`.
+ */
+export function approxTokensForLength(chars: number): number {
+  return Math.ceil(chars / 4);
 }
 
 export class TiktokenTokenizer implements Tokenizer {

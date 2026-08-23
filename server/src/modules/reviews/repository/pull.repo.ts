@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { Intent } from '@devdigest/shared';
+import type { ClassifiedIntent } from '@devdigest/shared';
 import type { PullRow } from '../../../db/rows.js';
 
 // ---- PR lookup (workspace-scoped) -----------------------------------------
@@ -34,6 +34,34 @@ export async function getPrFiles(
 }
 
 /**
+ * Smart Diff (`docs/plans/04-smart-diff.md` §5.1/T6) — just the four columns
+ * the classifier needs from the cached `pr_files` row. A partial `select`, so
+ * the return shape is a plain row projection, never a query builder. Mapping
+ * this into T2's `ClassifiableFile` shape is the SERVICE's job (R2), not this
+ * repository's — R3 may not import anything under `modules/**`, including a
+ * sibling `smart-diff/` module file.
+ */
+export interface PrFileForSmartDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+  /** `null` when GitHub omitted the patch (too large, or binary). */
+  patch: string | null;
+}
+
+export async function filesForPull(db: Db, prId: string): Promise<PrFileForSmartDiff[]> {
+  return db
+    .select({
+      path: t.prFiles.path,
+      additions: t.prFiles.additions,
+      deletions: t.prFiles.deletions,
+      patch: t.prFiles.patch,
+    })
+    .from(t.prFiles)
+    .where(eq(t.prFiles.prId, prId));
+}
+
+/**
  * Record the commit a review just ran against, so the PR list can derive
  * `reviewed` vs `needs_review` (head moved since the last review) vs `stale`.
  */
@@ -46,23 +74,62 @@ export async function markReviewed(db: Db, prId: string, sha: string): Promise<v
 
 // ---- intent ---------------------------------------------------------------
 
-export async function upsertIntent(db: Db, prId: string, intent: Intent): Promise<void> {
-  await db
-    .insert(t.prIntent)
-    .values({
-      prId,
-      intent: intent.intent,
-      inScope: intent.in_scope,
-      outOfScope: intent.out_of_scope,
-    })
-    .onConflictDoUpdate({
-      target: t.prIntent.prId,
-      set: { intent: intent.intent, inScope: intent.in_scope, outOfScope: intent.out_of_scope },
-    });
+/**
+ * Persistence metadata for a classified intent — which provider/model
+ * produced it, and when. `model` is nullable: a row written before this
+ * feature existed, or a deterministic REQ-7 fallback classification, may
+ * carry no model. `generatedAt` defaults to "now" so a caller re-classifying
+ * (`force: true`) doesn't have to remember to bump it on every call site.
+ */
+export interface IntentMeta {
+  model: string | null;
+  generatedAt?: Date;
 }
 
-export async function getIntent(db: Db, prId: string): Promise<Intent | undefined> {
+/**
+ * `getIntent`'s return shape: the existing `ClassifiedIntent` contract type
+ * plus the persistence metadata the wire's `PrIntentDetail` needs. Assembling
+ * the full `PrIntentDetail` — adding `pr_id`, converting `generatedAt` to an
+ * ISO string for the wire — is the SERVICE's job (see T6 in
+ * docs/plans/03-intent-layer.md), not the repository's.
+ */
+export interface StoredIntent extends ClassifiedIntent {
+  model: string | null;
+  generatedAt: Date;
+}
+
+export async function upsertIntent(
+  db: Db,
+  prId: string,
+  intent: ClassifiedIntent,
+  meta: IntentMeta,
+): Promise<void> {
+  const values = {
+    prId,
+    intent: intent.intent,
+    inScope: intent.in_scope,
+    outOfScope: intent.out_of_scope,
+    confidence: intent.confidence,
+    sources: intent.sources,
+    model: meta.model,
+    generatedAt: meta.generatedAt ?? new Date(),
+  };
+  await db.insert(t.prIntent).values(values).onConflictDoUpdate({
+    target: t.prIntent.prId,
+    set: values,
+  });
+}
+
+export async function getIntent(db: Db, prId: string): Promise<StoredIntent | undefined> {
   const [row] = await db.select().from(t.prIntent).where(eq(t.prIntent.prId, prId));
   if (!row) return undefined;
-  return { intent: row.intent, in_scope: row.inScope, out_of_scope: row.outOfScope };
+  return {
+    intent: row.intent,
+    in_scope: row.inScope,
+    out_of_scope: row.outOfScope,
+    confidence: row.confidence,
+    sources: row.sources,
+    model: row.model,
+    generatedAt: row.generatedAt,
+  };
 }

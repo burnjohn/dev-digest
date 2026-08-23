@@ -15,6 +15,9 @@ import {
   Settings,
   Repo,
   PrDetail,
+  IntentSourceStatus,
+  IntentClassification,
+  ClassifiedIntent,
 } from '@devdigest/shared';
 
 /**
@@ -109,12 +112,38 @@ describe('AI contracts parse fixtures', () => {
       groups: [
         {
           role: 'core',
-          files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
+          file_count: 1,
+          files: [
+            {
+              path: 'a.ts',
+              additions: 84,
+              deletions: 0,
+              changed_lines: 84,
+              large: false,
+              has_patch: true,
+              // core + has findings → opens expanded. Boilerplate is always false.
+              default_open: true,
+              findings: [
+                { id: 'f1', line: 28, severity: 'SUGGESTION' },
+                { id: 'f2', line: 52, severity: 'WARNING' },
+              ],
+              finding_lines: [28, 52],
+            },
+          ],
         },
       ],
+      total_files: 1,
+      total_lines: 84,
+      unmatched_finding_count: 0,
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+    // `default_open` is a FILE flag — the group must carry no collapse state.
+    expect(d.groups[0]!.files[0]!.default_open).toBe(true);
+    expect(d.groups[0]).not.toHaveProperty('default_open');
+    // `pseudocode_summary` is an unbuilt placeholder: absent parses fine.
+    expect(d.groups[0]!.files[0]!.pseudocode_summary).toBeUndefined();
+    expect(d.groups[0]!.files[0]!.findings.map((f) => f.id)).toEqual(['f1', 'f2']);
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
@@ -206,5 +235,67 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * Coverage for the intent contracts (server/src/vendor/shared/contracts/intent.ts,
+ * plan 03-intent-layer.md T1). REQ-5's five-value status vocabulary and REQ-6's
+ * "no sources field, no .default()" constraints on `IntentClassification` are
+ * both structural — pinned here so a later edit can't silently erode them.
+ */
+describe('intent contracts', () => {
+  it('IntentSourceStatus enumerates exactly the five REQ-5 values, and rejects anything else', () => {
+    for (const status of ['used', 'truncated', 'skipped', 'missing', 'unreachable']) {
+      expect(IntentSourceStatus.safeParse(status).success).toBe(true);
+    }
+    expect(IntentSourceStatus.safeParse('read').success).toBe(false);
+  });
+
+  it('IntentClassification requires confidence (no silent default)', () => {
+    const withoutConfidence = IntentClassification.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+    });
+    expect(withoutConfidence.success).toBe(false);
+
+    const complete = IntentClassification.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'medium',
+    });
+    expect(complete.success).toBe(true);
+  });
+
+  it('IntentClassification has no sources field — a model-supplied sources array is stripped, not persisted', () => {
+    const parsed = IntentClassification.parse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+      sources: [{ kind: 'pr_body', ref: 'body', status: 'used', chars: 10 }],
+    });
+    expect('sources' in parsed).toBe(false);
+  });
+
+  it('ClassifiedIntent requires a sources array (not optional)', () => {
+    const withoutSources = ClassifiedIntent.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+    });
+    expect(withoutSources.success).toBe(false);
+
+    const withSources = ClassifiedIntent.safeParse({
+      intent: 'x',
+      in_scope: [],
+      out_of_scope: [],
+      confidence: 'low',
+      sources: [],
+    });
+    expect(withSources.success).toBe(true);
   });
 });

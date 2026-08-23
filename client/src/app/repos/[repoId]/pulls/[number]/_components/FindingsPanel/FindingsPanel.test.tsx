@@ -1,16 +1,29 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 
+// `mutate` is shared across renders via vi.hoisted (not re-created per call
+// like an inline `() => vi.fn()` factory would) — T14's REQ-33 test needs to
+// assert on the SAME mock the a/d shortcut ends up calling after the panel's
+// keydown effect has re-attached across the deep-link's re-renders.
+const { mutate } = vi.hoisted(() => ({ mutate: vi.fn() }));
 vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+  useFindingAction: () => ({ mutate, isPending: false }),
 }));
 
 import { FindingsPanel } from "./FindingsPanel";
+import { TargetFindingContext, type TargetFindingSignal } from "../target-finding-context";
 
 afterEach(cleanup);
+beforeEach(() => mutate.mockClear());
+
+// jsdom has no scrollIntoView; the REQ-18 highlight effect guards its own
+// call, but stub it anyway so a regression there fails loudly here.
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 const FINDINGS: FindingRecord[] = [
   {
@@ -47,11 +60,40 @@ const MIXED: FindingRecord[] = [
   mk({ id: "s1", severity: "SUGGESTION", title: "Rename for clarity", confidence: 0.8 }),
 ];
 
+// Deliberately NOT in severity order: `visibleFindings` sorts CRITICAL <
+// WARNING < SUGGESTION, so `shown` = [c1, w1, s1] while `findings` stays
+// [s1, c1, w1]. Target "w1" then sits at `shown` index 1 but `findings`
+// index 2 — the exact split T14's red flags warn about, so a focus index
+// computed against `findings` instead of `shown` would land on the wrong card.
+const REORDERED: FindingRecord[] = [
+  mk({ id: "s1", severity: "SUGGESTION", title: "Rename for clarity", confidence: 0.8 }),
+  mk({ id: "c1", severity: "CRITICAL", title: "Hardcoded secret", confidence: 0.95 }),
+  mk({ id: "w1", severity: "WARNING", title: "Unused variable", confidence: 0.9 }),
+];
+
+/** The card's root element carries `data-finding-id` (FindingCard.tsx). */
+function cardFor(title: string): HTMLElement {
+  const el = screen.getByText(title).closest("[data-finding-id]");
+  if (!el) throw new Error(`no card root found for "${title}"`);
+  return el as HTMLElement;
+}
+
 function renderWithIntl(ui: React.ReactElement) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
       {ui}
     </NextIntlClientProvider>,
+  );
+}
+
+/** REQ-18 tree: FindingsPanel under a controllable `TargetFindingContext`. */
+function panelTree(findings: FindingRecord[], target: TargetFindingSignal | null) {
+  return (
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+      <TargetFindingContext.Provider value={target}>
+        <FindingsPanel findings={findings} prId="pr1" />
+      </TargetFindingContext.Provider>
+    </NextIntlClientProvider>
   );
 }
 
@@ -105,5 +147,104 @@ describe("FindingsPanel severity chips", () => {
     expect(screen.getByText("Unused variable")).toBeInTheDocument();
     expect(screen.queryByText("Shadowed name")).not.toBeInTheDocument();
     expect(screen.queryByText("Hardcoded secret")).not.toBeInTheDocument();
+  });
+});
+
+describe("FindingsPanel + TargetFindingContext (REQ-18)", () => {
+  it("clears an active severity filter that would hide the deep-link target", () => {
+    const { rerender } = render(panelTree(MIXED, null));
+    // Pre-filter to CRITICAL, which hides the WARNING target we're about to name.
+    fireEvent.click(screen.getByRole("button", { name: /1 critical finding/i }));
+    expect(screen.queryByText("Unused variable")).not.toBeInTheDocument();
+
+    rerender(panelTree(MIXED, { id: "w1", n: 1 }));
+
+    // The filter is CLEARED (not bypassed): the target is visible again.
+    expect(screen.getByText("Unused variable")).toBeInTheDocument();
+
+    // REQ-33: the keyboard cursor followed the target to its post-clear
+    // position in `shown`, not left behind at whatever card 0 was. Read
+    // `borderTopColor` (the `focused` ring, s.card in FindingCard/styles.ts)
+    // rather than `boxShadow` — the target is ALSO the REQ-18 highlight
+    // target here, and its ~2s highlight overlay overwrites `boxShadow`
+    // (FindingCard.tsx's `showHighlight` branch) without touching border color.
+    expect(cardFor("Unused variable")).toHaveStyle({ borderTopColor: "var(--warn)" });
+    expect(cardFor("Hardcoded secret")).toHaveStyle({ borderTopColor: "var(--border)" });
+  });
+
+  it("clears Hide low confidence when the target is a low-confidence finding", () => {
+    const { rerender } = render(panelTree(MIXED, null));
+    fireEvent.click(screen.getByRole("switch"));
+    expect(screen.queryByText("Shadowed name")).not.toBeInTheDocument();
+
+    // w2 is the 0.5-confidence WARNING dropped by "Hide low confidence".
+    rerender(panelTree(MIXED, { id: "w2", n: 1 }));
+
+    expect(screen.getByText("Shadowed name")).toBeInTheDocument();
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("leaves an unrelated panel's filters untouched when the target belongs to a different set of findings", () => {
+    const { rerender } = render(panelTree(MIXED, null));
+    fireEvent.click(screen.getByRole("button", { name: /1 critical finding/i }));
+    expect(screen.queryByText("Unused variable")).not.toBeInTheDocument();
+
+    // "elsewhere" isn't among THIS panel's findings — the filter must stay put.
+    rerender(panelTree(MIXED, { id: "elsewhere", n: 1 }));
+
+    expect(screen.queryByText("Unused variable")).not.toBeInTheDocument();
+    expect(screen.getByText("Hardcoded secret")).toBeInTheDocument();
+
+    // REQ-33 guard: a context-wide target that belongs to a DIFFERENT panel
+    // must not suppress THIS panel's own "first card opens" default — using
+    // the raw context `target` (rather than this panel's resolved
+    // `targetFinding`) for `defaultExpanded` would close every card here.
+    expect(within(cardFor("Hardcoded secret")).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+  });
+});
+
+describe("FindingsPanel + TargetFindingContext (REQ-33)", () => {
+  it("puts the focus ring on the target, not on card 0, when the target is not first in `shown`", () => {
+    // REORDERED sorts to shown = [c1, w1, s1]; target "w1" is shown-index 1.
+    render(panelTree(REORDERED, { id: "w1", n: 1 }));
+
+    // `borderTopColor`, not `boxShadow` — the target's own REQ-18 highlight
+    // overlay overwrites `boxShadow` (see the note in the REQ-18 test above).
+    expect(cardFor("Unused variable")).toHaveStyle({ borderTopColor: "var(--warn)" });
+    // Card 0 (Hardcoded secret, CRITICAL) must NOT carry the ring instead.
+    expect(cardFor("Hardcoded secret")).toHaveStyle({ borderTopColor: "var(--border)" });
+  });
+
+  it("expands only the target card, not card 0, when a target is present", () => {
+    render(panelTree(REORDERED, { id: "w1", n: 1 }));
+
+    // The target is open (its Accept/Dismiss actions are rendered).
+    expect(within(cardFor("Unused variable")).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    // Card 0 is NOT expanded just because it's first.
+    expect(within(cardFor("Hardcoded secret")).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+
+  it("fires the a/d shortcut on the deep-link TARGET's finding, not on card 0 — the destructive-action bug", () => {
+    render(panelTree(REORDERED, { id: "w1", n: 1 }));
+
+    // Sanity: card 0 is genuinely a different finding than the target.
+    expect(cardFor("Hardcoded secret")).not.toBe(cardFor("Unused variable"));
+
+    fireEvent.keyDown(window, { key: "a" });
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate).toHaveBeenCalledWith({ findingId: "w1", action: "accept", prId: "pr1" });
+  });
+
+  it("with no target, behaviour is unchanged: card 0 is focused and expanded", () => {
+    renderWithIntl(<FindingsPanel findings={REORDERED} prId="pr1" />);
+
+    // Card 0 of `shown` (sorted) is the CRITICAL finding.
+    expect(cardFor("Hardcoded secret")).toHaveStyle({ borderTopColor: "var(--crit)" });
+    expect(within(cardFor("Hardcoded secret")).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(within(cardFor("Unused variable")).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "a" });
+    expect(mutate).toHaveBeenCalledWith({ findingId: "c1", action: "accept", prId: "pr1" });
   });
 });

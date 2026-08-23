@@ -21,6 +21,7 @@ import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } 
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
+import { useTabScrollMemory } from "./_lib/use-tab-scroll-memory";
 import type { FindingRecord } from "@devdigest/shared";
 
 export default function PRDetailPage() {
@@ -37,7 +38,10 @@ export default function PRDetailPage() {
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
 
   const isLoading = pullsLoading || (prId != null && detailLoading);
-  const { data: reviews, refetch: refetchReviews } = usePrReviews(prId);
+  // REQ-35: `isSuccess`, never `isLoading` — a query that is retrying after a
+  // failure is neither loading nor successful, and that failed-retry case is
+  // the deterministic half of the cold-cache deep-link bug (§12 T16).
+  const { data: reviews, isSuccess: reviewsLoaded, refetch: refetchReviews } = usePrReviews(prId);
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
   // navigation AND reload, and self-clears via polling when runs finish.
@@ -56,16 +60,52 @@ export default function PRDetailPage() {
   const invalidateRunHistory = () => {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
+  // REQ-21/REQ-25: a run that just settled can flip a Smart Diff badge's id
+  // (a re-run's dedup winner) or add a fresh one — `useRunReview` already
+  // invalidates on START, but only a SETTLED run has findings to show.
+  const invalidateSmartDiff = () => {
+    if (prId) qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+  };
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  // Smart Diff mode (REQ-13) and the deep-linked finding (REQ-18/19/26) both
+  // live in the URL, alongside `tab` and `trace` — no local state duplicates them.
+  const order = search.get("order") === "smart" ? "smart" : null;
+  const findingParam = search.get("finding");
+  // Called on every render regardless of loading/error state below (hooks
+  // rules), and it must be — a scroll offset can be recorded before the PR
+  // finishes loading. REQ-24: restores the Files-changed scroll position
+  // across a tab switch; see docs/plans/04-smart-diff.md §5.6.
+  const tabScrollSentinelRef = useTabScrollMemory(tab);
+  // Sets any number of params in ONE `router.replace` — REQ-17 needs `tab`
+  // and `finding` to land together, or the second call reads a stale
+  // `search` (built off the pre-navigation URL) and drops the first.
+  const setParams = (updates: Record<string, string | null>) => {
     const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
-    router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
+    for (const [key, val] of Object.entries(updates)) {
+      if (val == null) sp.delete(key);
+      else sp.set(key, val);
+    }
+    router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`, {
+      scroll: false,
+    });
   };
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
   const setTab = (t: string) => setParam("tab", t);
+  // REQ-17: a Smart Diff chip click is one navigation to both params at once.
+  const openFinding = (id: string) => setParams({ tab: "findings", finding: id });
+  // REQ-18/19/26: FindingsTab reports what it actually resolved `?finding=`
+  // to. `null` clears the param (REQ-19). The SAME id is a no-op — writing
+  // it back would re-trigger FindingsTab's resolution effect and loop
+  // (§9 risk 9). A DIFFERENT id is REQ-26's key-upgrade rewrite.
+  const onTargetResolved = (resolvedId: string | null) => {
+    if (resolvedId == null) {
+      setParam("finding", null);
+    } else if (resolvedId !== findingParam) {
+      setParam("finding", resolvedId);
+    }
+  };
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
@@ -133,8 +173,11 @@ export default function PRDetailPage() {
         onRunsStarted={() => invalidateActiveRuns()}
       />
 
-      <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+      <div
+        ref={tabScrollSentinelRef}
+        style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}
+      >
+        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -143,6 +186,7 @@ export default function PRDetailPage() {
             reviewRunning={reviewRunning}
             lethalTrifecta={lethalTrifecta}
             runs={runs}
+            runsLoaded={reviewsLoaded}
             prRuns={prRuns}
             prCommits={pr.commits}
             repoFullName={repoFullName}
@@ -156,8 +200,11 @@ export default function PRDetailPage() {
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
+              invalidateSmartDiff();
               refetchReviews();
             }}
+            targetFindingId={findingParam}
+            onTargetResolved={onTargetResolved}
           />
         )}
 
@@ -172,6 +219,9 @@ export default function PRDetailPage() {
             // usePullDetail has no refetchInterval, so a stale diff would sit there
             // until a hard reload — give the user the retry themselves.
             onRetry={() => refetch()}
+            order={order}
+            onOrderChange={(o) => setParam("order", o)}
+            onOpenFinding={openFinding}
           />
         )}
       </div>
