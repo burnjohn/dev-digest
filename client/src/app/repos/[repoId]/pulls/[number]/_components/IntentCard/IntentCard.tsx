@@ -15,8 +15,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
-import type { IntentConfidence } from "@devdigest/shared";
+import type { IntentConfidence, PrCommit } from "@devdigest/shared";
 import { usePrIntent, useReclassifyIntent } from "@/lib/hooks/reviews";
+import { isIntentStale } from "./helpers";
 import { s } from "./styles";
 
 const CONFIDENCE_COLOR: Record<IntentConfidence, string> = {
@@ -25,7 +26,17 @@ const CONFIDENCE_COLOR: Record<IntentConfidence, string> = {
   high: "var(--ok)",
 };
 
-export function IntentCard({ prId }: { prId: string | null }) {
+interface IntentCardProps {
+  prId: string | null;
+  /** Current head of the PR branch. Optional on purpose — the card must still
+      render (minus the staleness strip) for a caller that has no PrDetail. */
+  headSha?: string | null;
+  /** Supplies the head commit's timestamp; see helpers.ts for why the join
+      lives on the client and what it cannot prove. */
+  prCommits?: PrCommit[];
+}
+
+export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
   const t = useTranslations("prReview");
   const { data: intent, isLoading, isError, refetch } = usePrIntent(prId);
   const reclassify = useReclassifyIntent(prId);
@@ -59,6 +70,11 @@ export function IntentCard({ prId }: { prId: string | null }) {
     );
   }
 
+  // Recomputed every render, never held in state: `reclassify` writes straight
+  // into the query cache (useReclassifyIntent), so the strip must disappear on
+  // that same render rather than one effect later.
+  const stale = isIntentStale(intent.generated_at, headSha, prCommits);
+
   return (
     <section>
       <SectionLabel
@@ -77,6 +93,12 @@ export function IntentCard({ prId }: { prId: string | null }) {
       >
         {t("intent.title")}
       </SectionLabel>
+      {stale && (
+        <div role="status" style={s.staleNotice}>
+          <Icon.AlertTriangle size={14} style={s.staleNoticeIcon} />
+          <span>{t("intent.stale")}</span>
+        </div>
+      )}
       <div style={s.card}>
         <div style={s.summaryRow}>
           {/* The contract's summary field is `intent`, not `summary` — labeled

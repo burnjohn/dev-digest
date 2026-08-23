@@ -23,11 +23,27 @@ import React from "react";
  * that is `<main>` in `vendor/ui/shell/AppFrame.tsx` (client/INSIGHTS.md,
  * 2026-08-17) — falling back to `document.scrollingElement`.
  *
- * A `Map<tab, scrollTop>` is kept in a ref (not state — this must never
- * trigger a render) and is updated on every real scroll event, rAF-throttled.
- * On every `activeTab` change the remembered offset for the new tab is
- * written back in a `useLayoutEffect`, i.e. before paint, so there is no
- * visible jump-to-top-then-snap-back.
+ * The offset is captured in the RENDER PHASE, not from a `scroll` listener
+ * (docs/plans/04-smart-diff.md "REQ-24 / REQ-36 / REQ-37 — status correction,
+ * 2026-08-22"). A prior design recorded the outgoing tab's `scrollTop` from a
+ * `scroll` listener, rAF-throttled, with a suppression window meant to ignore
+ * the browser's own clamp of the outgoing tab's now-shorter content. That
+ * design was wrong because `scroll` events are ASYNCHRONOUS — verified in
+ * Chrome — so the clamp's event lands after any suppression window has
+ * already closed and overwrites the real offset with 0 (measured: 2400 →
+ * switch away → switch back → 0, while every jsdom test passed). Instead:
+ * on the render where `activeTab` changes, read `containerRef.current.scrollTop`
+ * synchronously, in the component body, before React commits. At that moment
+ * the DOM still holds the OUTGOING tab's taller content, so the value read is
+ * the true pre-clamp offset — with no dependence on event timing at all.
+ *
+ * Because the offsets map is no longer updated continuously, the restore
+ * (a `useLayoutEffect`, so it lands before paint) must fire only when the
+ * position is actually stale for the current tab — `restoredForRef` holds
+ * the tab it last positioned, so a layout-effect re-run caused by the
+ * sentinel unmounting and remounting (see REQ-36 below) cannot stomp a
+ * scroll position the user is currently sitting in with a second, redundant
+ * restore.
  *
  * REQ-36: `page.tsx` renders the sentinel only inside its success branch, so
  * the FIRST commit (the `isLoading` skeleton) has no sentinel at all. The
@@ -37,8 +53,8 @@ import React from "react";
  * on that first commit (silently falling back to `document.scrollingElement`,
  * which never scrolls in this shell) and then cache that wrong answer
  * forever behind the `if (!containerRef.current)` guard. Routing the
- * sentinel through `useState` gives both effects below a real dependency —
- * `sentinelEl` — so they re-run and resolve the REAL ancestor once the
+ * sentinel through `useState` gives the effect below a real dependency —
+ * `sentinelEl` — so it re-runs and resolves the REAL ancestor once the
  * sentinel actually mounts, however many renders later that is.
  */
 export function useTabScrollMemory(activeTab: string): React.RefCallback<HTMLDivElement> {
@@ -48,87 +64,35 @@ export function useTabScrollMemory(activeTab: string): React.RefCallback<HTMLDiv
   }, []);
   const containerRef = React.useRef<HTMLElement | null>(null);
   const offsetsRef = React.useRef<Map<string, number>>(new Map());
-  const activeTabRef = React.useRef(activeTab);
+  const prevTabRef = React.useRef(activeTab);
+  // Which tab the restore effect last positioned the container for — the
+  // guard that keeps a sentinel remount (REQ-36) from re-running the restore
+  // and snapping back to a stale/zero offset while the user hasn't switched.
+  const restoredForRef = React.useRef<string | null>(null);
 
-  // REQ-37: a tab switch triggers TWO scrollTop writes the listener must
-  // never record — the browser clamping the outgoing tab's now-unmounted
-  // content, and this hook's own restore below. Both land in the same
-  // rAF-coalesced listener callback, and rAF callbacks run BEFORE React
-  // flushes passive effects — so if the listener recorded them, it would
-  // write the post-restore value under `activeTabRef`'s stale (OUTGOING)
-  // tab, destroying the offset the user actually left. `switchingRef` is
-  // raised HERE, synchronously during render, because render runs before
-  // the DOM mutation that causes the clamp — an effect would run too late,
-  // after the clamp has already fired. It is lowered only once the restore
-  // below has been written, synchronously (not via `setTimeout`/rAF, whose
-  // ordering against the already-scheduled scroll rAF is not guaranteed).
-  const switchingRef = React.useRef(false);
-  if (activeTabRef.current !== activeTab) {
-    switchingRef.current = true;
+  // Render-phase capture (REQ-24): while `activeTab` is changing, the DOM
+  // still shows the OUTGOING tab's content — read is a snapshot, not an
+  // event, so it cannot be beaten by an async clamp. This is a read plus two
+  // ref writes; it must never touch the DOM.
+  if (prevTabRef.current !== activeTab) {
+    if (containerRef.current) {
+      offsetsRef.current.set(prevTabRef.current, containerRef.current.scrollTop);
+    }
+    prevTabRef.current = activeTab;
   }
 
-  // Restore the remembered offset for the new tab, before paint. Only cache
-  // a container resolved from a REAL ancestor walk — i.e. once the sentinel
-  // has actually mounted — never from `sentinelEl === null`.
+  // Restore the remembered offset for the new tab, before paint — but only
+  // once per tab change, never on every re-run this effect happens to see.
   React.useLayoutEffect(() => {
     if (!containerRef.current && sentinelEl) {
       containerRef.current = findScrollContainer(sentinelEl);
     }
     const container = containerRef.current;
-    if (container) {
-      container.scrollTop = offsetsRef.current.get(activeTab) ?? 0;
-    }
-    switchingRef.current = false;
-  }, [activeTab, sentinelEl]);
-
-  // Keep the "current tab" ref current for the scroll listener's closure —
-  // a plain effect is enough since only FUTURE scroll events need it.
-  React.useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
-
-  // Remember where the user is, continuously and rAF-throttled, so the value
-  // is already correct by the time the user switches tabs — reading it only
-  // "on the way out" is too late once the outgoing tab's content has already
-  // been unmounted in the same commit (its scrollHeight has already changed).
-  // Depends on `sentinelEl` (not `[]`) so it re-attaches once the real
-  // container appears, instead of binding once — possibly to nothing usable
-  // — at mount time.
-  React.useEffect(() => {
-    if (!containerRef.current && sentinelEl) {
-      containerRef.current = findScrollContainer(sentinelEl);
-    }
-    const container = containerRef.current;
     if (!container) return;
-
-    // `pending` (not `rafId`) is the in-flight guard: a synchronous rAF stub —
-    // real browsers never do this, but a test double legitimately might, to
-    // stay deterministic without fake timers — runs its callback before
-    // `requestAnimationFrame`'s own return value is assigned to `rafId`, so a
-    // guard keyed on `rafId` gets clobbered back to non-null immediately
-    // after the callback resets it and misses every scroll after the first.
-    let rafId: number | null = null;
-    let pending = false;
-    const onScroll = () => {
-      // REQ-37: while a tab switch is in flight, neither the browser's
-      // clamp nor this hook's own restore should ever schedule an rAF —
-      // see the `switchingRef` comment above `useLayoutEffect`.
-      if (pending || switchingRef.current) return;
-      pending = true;
-      rafId = window.requestAnimationFrame(() => {
-        pending = false;
-        rafId = null;
-        if (containerRef.current) {
-          offsetsRef.current.set(activeTabRef.current, containerRef.current.scrollTop);
-        }
-      });
-    };
-    container.addEventListener("scroll", onScroll);
-    return () => {
-      container.removeEventListener("scroll", onScroll);
-      if (rafId != null) window.cancelAnimationFrame(rafId);
-    };
-  }, [sentinelEl]);
+    if (restoredForRef.current === activeTab) return;
+    container.scrollTop = offsetsRef.current.get(activeTab) ?? 0;
+    restoredForRef.current = activeTab;
+  }, [activeTab, sentinelEl]);
 
   return sentinelRef;
 }

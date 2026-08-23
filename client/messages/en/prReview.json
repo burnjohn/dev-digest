@@ -140,6 +140,7 @@
   "intent": {
     "title": "Intent",
     "recompute": "Recompute",
+    "stale": "Computed before the latest commit — recompute to refresh it.",
     "errorBody": "Couldn’t classify this PR’s intent.",
     "retry": "Retry",
     "confidence": "{level, select, low {low confidence} medium {medium confidence} high {high confidence} other {{level} confidence}}",

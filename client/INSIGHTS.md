@@ -6,6 +6,16 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-22 — Capture a scroll position in the RENDER phase; `scroll` events are async and always lose the race
+`_lib/use-tab-scroll-memory.ts` shipped three separate fixes for "the Files-changed offset is lost on
+tab switch" while a `scroll` listener still owned the capture — all three failed in Chrome with a
+green jsdom lane, because the browser's `scrollTop` clamp (fired when the shorter tab's content
+mounts) reports **asynchronously**, after any suppression window a hook can hold open. The durable
+answer is to read `container.scrollTop` synchronously in the component body on the render where the
+tab changes: React renders before it commits, so the DOM still holds the outgoing content and the
+value is the true pre-clamp one. Supersedes the rAF-guard entry below for this file — there is no
+rAF and no listener left in it.
+
 ### 2026-08-22 — an rAF throttle guard keyed on the `requestAnimationFrame` RETURN VALUE deadlocks under a sync stub
 `if (rafId != null) return; rafId = requestAnimationFrame(cb)` is correct in a browser, where rAF is
 always async — but a test double that invokes `cb` synchronously (the natural way to make an

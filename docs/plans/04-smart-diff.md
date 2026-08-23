@@ -2332,3 +2332,16 @@ of reading it at the one moment it is reliable.
 
 Deferred by the owner: ship the PR first, fix after. `server/specs/smart-diff.md` records the same
 limitation so the spec does not claim behaviour the code does not have.
+
+**Closed 2026-08-22** — by exactly the design proposed above, dispatched as an inline task block
+(no plan task; see `docs/plans/README.md` §"Where a task block comes from"). The scroll listener,
+the rAF throttle and the `switchingRef` suppression window are all deleted;
+`_lib/use-tab-scroll-memory.ts` now reads `containerRef.current.scrollTop` during the render that
+changes `activeTab`, and a `restoredForRef` guard keeps the `useLayoutEffect` restore from firing on
+a re-run the tab did not cause. The suite gained a case that simulates the async clamp (a layout
+effect mutates `scrollTop`, a `setTimeout` dispatches the `scroll` event after `rerender()` returns)
+and a case asserting no `scroll` listener is registered at all; the first is falsifiable by the one
+mutation that matters — moving the read into the layout effect reads the clamped value and turns it
+red, verified. REQ-24, REQ-36 and REQ-37 are all satisfied by this single mechanism, and REQ-37's
+failure mode no longer has anything to act on. `server/specs/smart-diff.md` records the design and
+the one caveat that survives: jsdom cannot clamp, so a green client lane is not browser evidence.

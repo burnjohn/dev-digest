@@ -177,7 +177,14 @@ export default function PRDetailPage() {
         ref={tabScrollSentinelRef}
         style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}
       >
-        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
+        {tab === "overview" && (
+          <OverviewTab
+            prId={prId}
+            prBody={pr.body}
+            headSha={pr.head_sha}
+            prCommits={pr.commits}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab

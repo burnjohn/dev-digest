@@ -94,4 +94,22 @@ export const s = {
     fontSize: 13,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
+  /** Warning strip above the card when the head commit is newer than the
+      intent. Same shape as DiffTab's `notice` so the two read as one system.
+      No `border*` here at all: `s.summary` below already sets
+      `borderLeftColor`, and mixing a shorthand into this file is the exact
+      rerender-warning trap documented above and in client/INSIGHTS.md. */
+  staleNotice: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "var(--warn)",
+    background: "var(--warn-bg)",
+    padding: "8px 12px",
+    borderRadius: 6,
+    marginBottom: 10,
+  } satisfies CSSProperties,
+  staleNoticeIcon: { flexShrink: 0 } satisfies CSSProperties,
 } as const;

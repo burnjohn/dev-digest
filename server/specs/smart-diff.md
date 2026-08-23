@@ -235,23 +235,26 @@ invalidations, not polling.
 
 ## Known limitations
 
-**Files-changed scroll restoration does not work in a browser.** The PR page's tab bodies unmount on
-every switch, so `_lib/use-tab-scroll-memory.ts` keeps a per-tab offset map and restores it on the
-way back. Its unit tests pass, and it is wired correctly — but measured in Chrome the position is
-still lost: scroll Files changed to 2400, switch to Agent runs, switch back, and you land at 0.
+**Files-changed scroll restoration is captured in the render phase, and jsdom cannot prove it.** The
+PR page's tab bodies unmount on every switch, so `_lib/use-tab-scroll-memory.ts` keeps a per-tab
+offset map and restores it on the way back. How the offset is *captured* is the whole design: the
+hook reads `container.scrollTop` synchronously in the **render phase of the tab-change render**, not
+from a `scroll` listener. React renders before it commits, so at that moment the DOM still holds the
+outgoing tab's taller content and the value is the true pre-clamp one.
 
-Two causes were found and fixed (the hook latched onto `document.scrollingElement` because its
-sentinel is absent on the first commit; a tab switch then overwrote the outgoing tab's entry). A
-third remains: **`scroll` events are asynchronous**, so the clamp the browser applies when the
-shorter tab mounts is reported after the suppression window has already closed, and the outgoing
-tab's offset is destroyed anyway.
+That is not a stylistic choice. Three defects were shipped on top of a listener-based design before
+the common cause was found: **`scroll` events are asynchronous**, so the clamp the browser applies
+when the shorter tab mounts is reported *after* any suppression window the hook can hold open, and
+the outgoing tab's offset is destroyed anyway (measured in Chrome: 2400 → switch away → switch back
+→ 0, with every jsdom test green). A render-phase read depends on no event ordering at all. Do not
+reintroduce a `scroll` listener here — `use-tab-scroll-memory.test.tsx` asserts that none is
+registered.
 
-The design that removes the whole class of bug is to stop listening for scroll events and instead
-read `container.scrollTop` in the render phase of the tab-change render — React renders before it
-commits, so at that moment the DOM still holds the outgoing tab's taller content and the value is
-the true pre-clamp one. That rewrite is not done yet. Until it lands, treat this behaviour as
-aspirational: jsdom cannot reproduce the failure, because there is no clamping and no async event
-dispatch there, so a green test lane is not evidence here.
+**The caveat that survives the fix:** jsdom neither clamps `scrollTop` nor dispatches asynchronously,
+so a green client lane is not by itself browser evidence for this behaviour. The suite simulates both
+(a layout effect for the clamp, a `setTimeout` for the event) and that case is falsifiable — moving
+the read into the layout effect turns it red — but a real regression here is still measured in a
+browser: scroll Files changed to ~2400, switch to Agent runs, switch back, expect ~2400.
 
 
 - **`split_suggestion.proposed_splits` always ships `[]`.** Only `too_big` and
