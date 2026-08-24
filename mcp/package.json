@@ -1,0 +1,26 @@
+{
+  "name": "@devdigest/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local stdio MCP server exposing DevDigest to MCP clients (Claude Code, Claude Desktop). Talks HTTP to @devdigest/api; no DB access.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "measure": "tsx scripts/measure-startup-tokens.ts",
+    "inspect": "mcp-inspector tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "^2.3.0",
+    "@types/node": "^22.10.0",
+    "js-tiktoken": "^1.0.21",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

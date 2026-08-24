@@ -4,7 +4,9 @@ A **plan** is the work breakdown for one change: what has to be true when it is 
 tasks get it there. The [planner](../../.claude/agents/planner.md) writes them; the
 [implementer](../../.claude/agents/implementer.md) executes one task at a time, often several in
 parallel. This file is the contract between the two — both agents cite it, so change it here rather
-than in either agent.
+than in either agent. A change too small to earn a plan document skips the file entirely and is
+dispatched as an **inline task block**: same block, same mandatory fields, same refusals — see
+[Where a task block comes from](#where-a-task-block-comes-from).
 
 A plan is **not** a spec. `<package>/specs/<feature>.md` describes a feature durably and stays in
 sync with the code; a plan is a snapshot of intent that goes stale the moment the work lands. Link
@@ -47,8 +49,9 @@ a requirement nobody implemented is visible on the page rather than discovered a
 
 ## The task block
 
-This is the real contract. **Every field is mandatory** — a task missing one is invalid and must not
-be dispatched.
+This is the real contract — and it is the contract wherever the block arrives from, a plan file or a
+dispatch prompt. **Every field is mandatory** — a task missing one is invalid and must not be
+dispatched.
 
 ~~~markdown
 ### T3 — Add findings severity filter endpoint
@@ -89,6 +92,31 @@ be dispatched.
 the only task in its wave. It is informational for most tasks and load-bearing for exactly one case
 — a task owning a **Tier B** path is refused unless it says `no`.
 
+## Where a task block comes from
+
+A task block reaches an implementer from one of **two sources**, and they are equal:
+
+- **A plan file** — a task in `docs/plans/NN-*.md`, dispatched by reference: *"T3 from
+  `docs/plans/04-smart-diff.md`"*.
+- **An inline task block** — the same syntax as above, pasted straight into the dispatch prompt,
+  for a change too small to earn a plan document.
+
+**The block is the contract, not the file.** Every field above is mandatory in both. A block missing
+one is invalid and must not be dispatched: inline is not a lighter mode, it is the same block
+without a file around it, and the implementer refuses it either way.
+
+What a plan file supplies that an inline block does not, and who picks it up instead:
+
+| Supplied by the plan | Who owns it inline |
+|---|---|
+| §6's coverage matrix and the recorded disjointness check | **The dispatching session.** Fanning out two inline blocks at once means verifying their `Owned paths` are disjoint *before* dispatching — there is no §6 to record the check in, and the ownership invariant below is not relaxed by the absence of a document. |
+| §3's insight synthesis | The block's own `Binding insights` field. `none` is valid; an empty field is not. |
+| The `Created` date the conflict rule keys on | A `**Dispatched:** YYYY-MM-DD` line in the block. Without one, the implementer treats every `INSIGHTS.md` entry as newer than the block. |
+
+`Wave:` and `Depends on:` are meaningful only inside a plan's task graph; inline they may read
+`n/a`. **`Parallel:` may not** — it is load-bearing for the Tier B rule below, so it stays mandatory
+in both sources.
+
 ## Skills per lane
 
 **Both agents preload the same twelve skills** — the planner because it assigns them, the
@@ -102,6 +130,7 @@ is the source of truth for the `Skills` field; both agent files carry a copy of 
 | backend | `server/src/**` | `onion-architecture`, `fastify-best-practices`, `zod`, `typescript-expert`; **+** `drizzle-orm-patterns` and `postgresql-table-design` for `db/**` or any `repository*`; **+** `security` for auth, untrusted input, secrets, uploads |
 | frontend | `client/src/**` | `frontend-ui-architecture`, `next-best-practices`, `react-best-practices`, `typescript-expert`; **+** `react-testing-library` for any `*.test.tsx`; **+** `zod` for forms and parsing |
 | engine | `reviewer-core/src/**` | `typescript-expert`, `zod`; **+** `security` on prompt-assembly and injection paths |
+| mcp | `mcp/**` | `onion-architecture` — **as scoped by `mcp/specs/mcp-server.md`**, which is the package's own ring model and import matrix; `typescript-expert`; `zod`; **+** `security` on the tool boundary and any interpolated URL; **+** `context7-mcp` for the MCP TypeScript SDK's current API. **Never** `fastify-best-practices`, `drizzle-orm-patterns`, `postgresql-table-design` (no HTTP server, no database ring), nor any of the four UI skills |
 | e2e | `e2e/**` | none of the twelve — `e2e/AGENTS.md` governs |
 | process | **New** `.claude/agents/<name>.md` and `.claude/skills/<name>/SKILL.md`; plus the two catalogs `.claude/agents/README.md` and `.claude/skills/README.md` (Tier B — solo wave). Editing an **existing** agent or skill is Tier A and never a task | none of the twelve — `.claude/agents/README.md` §"Adding a new agent" and `.claude/skills/README.md` §"Creating New Skills" govern |
 
@@ -125,7 +154,9 @@ preload list.
 Implementers share one working tree — there is no worktree isolation. So two tasks in the same wave
 naming the same file is not a style problem, it is lost work: whichever agent writes second
 overwrites the first. The planner verifies disjointness before emitting and records the check in §6;
-the implementer refuses to touch anything outside its own list.
+the implementer refuses to touch anything outside its own list. Dispatched inline there is no §6 and
+no planner, so **the dispatching session runs the check itself** before it fans out — the invariant
+is unchanged, only its bookkeeper is.
 
 **Disjointness is necessary and not sufficient.** It stops two agents *writing* the same file. It
 does nothing about a sibling *reading* a file you are halfway through rewriting — two tasks can own
@@ -135,9 +166,12 @@ why a task owning a **Tier B** path must additionally be the only task in its wa
 
 ## Protected paths
 
-Two tiers, and they are not interchangeable. **Tier A cannot be fixed by a plan** — a plan that
-assigns one is wrong, and the third column names the task that should have been written instead.
-**Tier B can** — it needs isolation, not prohibition.
+Two tiers, and they are not interchangeable. **Tier A cannot be fixed by a plan** — a plan, or a
+dispatch prompt, that assigns one is wrong, and the third column names the task that should have
+been written instead. **Tier B can** — it needs isolation, not prohibition.
+
+Neither tier is relaxed by dispatching inline. Losing the plan document loses the coverage matrix
+and the recorded disjointness check, nothing else: "no plan file" never means "no rules".
 
 Each row is absolute for *its own* reason. Reading them as one blanket rule is what produces a
 `BLOCKED` report that says "not allowed" without saying what to do.
@@ -145,7 +179,7 @@ Each row is absolute for *its own* reason. Reading them as one blanket rule is w
 ### Tier A — never, plan or no plan
 
 The planner may not put these in any `Owned paths` list, and the implementer refuses them **even
-when a plan names one**.
+when a plan — or the prompt that dispatched it — names one**.
 
 | Path | Why | Do this instead |
 |---|---|---|
@@ -163,7 +197,7 @@ when a plan names one**.
 
 | Path | Why it is not Tier A | Condition |
 |---|---|---|
-| `.claude/agents/README.md`, `.claude/skills/README.md` | These catalogs *describe* the set; they do not *govern* behaviour. Editing one changes no rule anybody works by. | The owning task must be **alone in its wave**: `**Parallel:** no` in the task block, and `Parallel? = no` on its row in §6 |
+| `.claude/agents/README.md`, `.claude/skills/README.md` | These catalogs *describe* the set; they do not *govern* behaviour. Editing one changes no rule anybody works by. | The owning task must be **alone in its wave**: `**Parallel:** no` in the task block, and `Parallel? = no` on its row in §6. Dispatched inline, the block still states `**Parallel:** no` and the dispatching session runs it alone — the marker is the condition, the §6 row is only its record |
 
 Work that genuinely needs a Tier A path becomes a serialized **`[parent session]`** step in wave 0,
 not an implementer task — and the plan names the *replacement action*, not the file.
@@ -194,11 +228,12 @@ The planner copies the matching row into each task verbatim. This table is the s
 | frontend | `cd client && pnpm typecheck && pnpm test` |
 | engine | `cd reviewer-core && npm run typecheck && npm test` — typecheck **is** the build; the package never emits JS |
 | contract | `./scripts/sync-vendor.sh && ./scripts/sync-vendor.sh --check && cd server && pnpm typecheck && cd ../client && pnpm typecheck` |
+| mcp | `cd mcp && npm run typecheck && npm test` — one hermetic lane, no Docker and no `.it` split, because the package has no persistence ring |
 | e2e | `cd e2e && npm run typecheck` — `npm run e2e:hermetic` is bash-only (Git Bash/WSL on Windows) |
 | process | `n/a` — markdown has no typecheck and no test lane |
 
-The package managers differ: **pnpm** for `server/` and `client/`, **npm** for `reviewer-core/` and
-`e2e/`. There is no root `package.json`; every command runs from inside its package.
+The package managers differ: **pnpm** for `server/` and `client/`, **npm** for `reviewer-core/`,
+`e2e/` and `mcp/`. There is no root `package.json`; every command runs from inside its package.
 
 **`n/a` is not "skip the check" — it is a different check.** Every other lane proves itself with a
 command whose output the implementer pastes verbatim. The `process` lane has no such command, so the
@@ -216,6 +251,13 @@ Two passes with different jobs. **Neither agent reads all four logs.**
 | **Reads** | every touched module's `INSIGHTS.md`, in full | **exactly one** — its own lane's module |
 | **Job** | *synthesis* — what does this whole change need to know? | *freshness* — has anything landed since the plan was written? |
 | **Emits** | §3 `Insights consulted`, then pushes the relevant dated entries down into each task's `Binding insights` | `**Insights read:**` in its report, naming what bound the task |
+
+**With no plan, the synthesis pass has no owner.** An inline dispatch skips the left-hand column
+entirely, so the dispatching session either quotes the binding entries into the block's
+`Binding insights` itself or writes `none` — and in that case the implementer's own-module read is
+the *only* pass over any `INSIGHTS.md`. That is a real narrowing, and it is the price of skipping the
+plan: fine for a single-module change, not fine for one that spans modules the implementer will
+never read.
 
 The implementer's pass is not redundant with the plan. The root `AGENTS.md` protocol requires
 whoever works in a module to read that module's log and summarize it before writing code — the plan

@@ -27,4 +27,5 @@ export * from './contracts/why.js';
 export * from './contracts/eval-ci.js';
 export * from './contracts/observability.js';
 export * from './contracts/productionize.js';
+export * from './contracts/lookup-api.js';
 export * from './adapters.js';

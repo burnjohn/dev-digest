@@ -17,7 +17,7 @@ and produces. The rules themselves live in the agent files; do not restate them 
 |-------|-------|-------------|----------------|
 | [researcher](researcher.md) | `sonnet` | Read-only — no `Write`/`Edit`; `Bash` for reading only | Finds information in the project or on the public internet. Returns a structured report with citations, per-finding confidence, an explicit `NOT FOUND` verdict, and a search log. Interviews first when the request is not researchable as written. |
 | [planner](planner.md) | `opus` | Read + `Write` (confined to `docs/plans/` **by rule**); no `Edit` at all — mechanical, but note `Bash` reopens the same capability, so it is bounded by rule in the file; `Agent` unscoped, so "delegates only to `researcher`/`Explore`" is also **by rule** | Turns a request into a Development Plan. Decomposes into tasks with owned paths, governing skills, binding insights, acceptance, red flags and a done-condition command. Writes one file and no code. |
-| [implementer](implementer.md) | `sonnet` | Read-write in the **current checkout**, confined to its task's owned paths **by rule** (`tools` cannot scope a path); no `Agent` — that one *is* allowlist-enforced, and it is what keeps the graph a tree | Executes **one** task from a plan — backend or frontend. Runs N-up in parallel. Never commits, pushes, or reviews. |
+| [implementer](implementer.md) | `sonnet` | Read-write in the **current checkout**, confined to its task's owned paths **by rule** (`tools` cannot scope a path); no `Agent` — that one *is* allowlist-enforced, and it is what keeps the graph a tree | Executes **one** task block — backend or frontend — taken either from a plan file or written inline in the dispatch prompt. Runs N-up in parallel. Never commits, pushes, or reviews. |
 | [test-writer](test-writer.md) | `sonnet` | Read-write, confined to test files **by rule**; `tools` includes `Write`, `Edit`, `Bash`, `Skill` and two Context7 tools, none of them path-scoped. Temporarily mutates the file under test to prove RED, always reverting | Writes tests for code that already exists, routed by package across five lanes. Every case names the mutation that would break it, and the report shows a verbatim RED run before the GREEN one. |
 | [architecture-reviewer](architecture-reviewer.md) | `opus` | Read-only — no `Write`/`Edit` in `tools`, which is mechanical; `Bash` is present and read-only **by rule** | Judges structure only — ring/import-matrix violations, `Deps` vs `Container`, client placement/promotion breaches, contract drift between server and client. Never correctness, security, or pushability. |
 | [plan-verifier](plan-verifier.md) | `opus` | Read-only — no `Write`/`Edit` in `tools`, which is mechanical; `Bash` is present and read-only **by rule** | Walks a finished plan's `REQ` list against the code and returns one of four fixed verdicts per requirement (`VERIFIED` / `PARTIAL` / `NOT IMPLEMENTED` / `CANNOT VERIFY`). Judges completeness only, never quality or architecture. |
@@ -31,7 +31,7 @@ What each agent takes in and hands back. Only the implementer changes the workin
 |-------|-------|--------|
 | `researcher` | A question, plus a mode (this project / the public internet) | A report in the reply. **No files written.** |
 | `planner` | A feature request; then, read on its own initiative: module `AGENTS.md` + `INSIGHTS.md`, the placement skills, existing code | **`docs/plans/NN-slug.md`** — the plan file. Reply is a dispatch summary, not the plan. On a gate: no file, an interview instead. |
-| `implementer` | **One task block** from `docs/plans/NN-*.md`, plus its own module's `INSIGHTS.md` | Source + test files in the working tree, **uncommitted**. A `DONE`/`BLOCKED`/`PARTIAL` report with skills declared, acceptance ticked, and verbatim typecheck/test output. |
+| `implementer` | **One task block** — from `docs/plans/NN-*.md`, or supplied inline in the dispatch prompt — plus its own module's `INSIGHTS.md` | Source + test files in the working tree, **uncommitted**. A `DONE`/`BLOCKED`/`PARTIAL` report with skills declared, acceptance ticked, and verbatim typecheck/test output. |
 | `test-writer` | A target file/feature that already exists, classified into one of five lanes — client / server-unit / server-integration / engine / e2e-refused | Test file(s) in the working tree, uncommitted. A `DONE`/`BLOCKED` report with a per-case mutation table and verbatim RED-then-GREEN runs. |
 | `architecture-reviewer` | A diff, path, or module to review structurally | A `BLOCK`/`CHANGES`/`PASS` verdict report with `file:line`-cited findings. **No files written.** |
 | `plan-verifier` | A finished (or partial) `docs/plans/NN-*.md`, plus the code it claims to have produced | A `COMPLETE`/`INCOMPLETE` verdict report, one of four values per `REQ`, with cited evidence. **No files written.** |
@@ -48,7 +48,14 @@ request → planner → docs/plans/NN-slug.md → parent dispatches wave 1
                                               └── implementer (T2)  ─┴→ parent: review, commit
 ```
 
-The hand-off contract — plan format, the mandatory task fields, the ownership invariant,
+**The pipeline has a short leg.** A change too small to earn a plan document is dispatched straight
+to an implementer with the task block written **inline in the prompt**, carrying the same mandatory
+fields. Nothing is relaxed by it — the block is the contract either way — but the two things a plan
+file supplied for free are now the dispatching session's job: the coverage matrix, and the check
+that parallel blocks own disjoint paths.
+
+The hand-off contract — plan format, the mandatory task fields, where a task block may come from,
+the ownership invariant,
 protected paths (Tier A / Tier B), skills per lane, done-condition commands — lives in
 [`docs/plans/README.md`](../../docs/plans/README.md). **That file is canonical**; both agents carry
 copies of its tables and both defer to it.
@@ -136,12 +143,25 @@ the session started**, it does not watch `.claude/agents/` under `--add-dir`, an
 the opposite — a newly written agent was not dispatchable and `Agent` failed with "not found",
 listing only what existed at startup.
 
-**This is unresolved.** The likely reconciliation is the first exception: `.claude/agents/` did not
-exist when that session began, so the watcher never covered it, and the general claim was
-over-generalized from that one case. Nobody has re-probed it since the directory became permanent.
-Until someone does, budget for a restart when authoring — the cost of being wrong that way is a
-wasted minute, and the cost the other way is a smoke test that silently ran against a stale
-definition.
+**Probed 2026-08-22, and the observation wins: an EDIT does not take effect mid-session.** This is
+the deliberate probe the paragraph below used to ask for. In a session that started with
+`.claude/agents/` long since on disk, `implementer.md` was edited to add a new gate (`G6 — No task
+block`) and rename the report's `**Plan:**` field to `**Task source:**`. An implementer dispatched
+afterwards with a block deliberately missing `Acceptance` and `Red flags` **did not fire `G6`** — it
+invented an acceptance box from the `Do` line, wrote "no red-flag list was provided", and headed its
+report `**Plan:**`. Two runs in that session, both on the pre-edit definition. Note the probe design
+that made it readable: the new rule was given a *name that exists nowhere else*, so "the agent chose
+not to apply it" and "the agent never had it" look different in the output.
+
+Caveat on scope: this probes an **edit to an existing** agent, which is the case that matters most
+here (Tier A says only the parent session may make one, and the parent is the session that then wants
+to dispatch it). It says nothing about how quickly a *newly added* file registers, and nothing about
+`.claude/skills/`.
+
+So: **budget for a restart after touching any agent file**, and treat a post-edit dispatch in the
+same session as running the old rules. The likely reconciliation with the docs is still the first
+exception — a watcher that covers only directories present at session start — but the practical rule
+no longer depends on which explanation is right.
 
 Note what this does *not* mean. Authoring a new agent is ordinary work and can be delegated to an
 existing one — only the **dispatch** of the new agent might have to wait. And a new agent turning up
@@ -201,5 +221,5 @@ like enforcement, they enforce nothing. Do not re-derive them; do re-probe any r
 | deny is hermetic | **FALSE.** Covers the file tools and recognized Bash file commands (`cat`, `sed`), not an arbitrary subprocess. `node -e "fs.writeFileSync(…)"` gets through. |
 | deny can restrict one agent | **FALSE.** Session-wide — it would block the parent session too. |
 | deny reaches subagents | **TRUE per the docs, unproven here.** Permission settings and `PreToolUse` hooks both cascade into a subagent's tool calls. No probe was run. |
-| Agents register only at session start | **Contradicted by the docs, unresolved here.** See the restart paragraph above. |
+| Agents register only at session start | **TRUE for edits — probed 2026-08-22.** See the restart paragraph above. |
 | `user-invocable: false` blocks preloading a skill | **FALSE.** That is `disable-model-invocation: true`. No skill here sets it. |

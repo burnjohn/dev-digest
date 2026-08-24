@@ -8,6 +8,14 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-23 — a red `.it` lane is usually Testcontainers contention, not a regression
+`pnpm exec vitest run .it.test` starts 16 suites in parallel, each spinning its own Postgres
+container; on a cold or busy Docker they blow the 120s `beforeAll` budget and report
+`Hook timed out in 120000ms` — **zero assertion failures**. Before debugging code, re-run one
+suite alone: if it passes, it was contention. Never run two `.it` invocations concurrently, and
+give Docker Desktop time to finish starting (its WSL2 `docker-desktop` distro can sit `Stopped`
+for minutes while `docker info` hangs rather than errors).
+
 ### 2026-08-22 — a Zod contract edit that passes BOTH typechecks can still break every fixture
 Adding required fields to a schema in `vendor/shared/contracts/` invalidates every test that
 `.parse()`s it, and `tsc` cannot see it for two independent reasons: `server/tsconfig.json` ends

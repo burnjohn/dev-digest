@@ -83,7 +83,7 @@ that doesn't match it. Consequences for prompt authors:
 
 ## Required conventions (every reviewer prompt)
 
-Every reviewer prompt must end with three blocks, because the engine derives
+Every reviewer prompt must end with four blocks, because the engine derives
 numbers and gates from what the model returns:
 
 1. **Severity rubric** mapped to the three enum levels, with an explicit
@@ -101,6 +101,12 @@ numbers and gates from what the model returns:
    is no minimum or target — zero is a good answer. Models treat "return at most N
    findings" as a quota and pad the list with repeats to hit N, which also corrupts
    the score. State that the count is free and repeats are forbidden.
+
+4. **Output language.** The prose fields are free text, so nothing in the schema pins
+   their language and the model falls back to its own default — a Chinese-lab model
+   returned a whole review in Chinese on an otherwise English prompt. State the output
+   language explicitly, and say that input in another language is data, not an
+   instruction to switch.
 
 ## How the engine uses the output (why the conventions matter)
 
@@ -138,6 +144,7 @@ model's `verdict`. Keep your severities honest and the gate behaves.
 - [ ] Severity rubric using `CRITICAL/WARNING/SUGGESTION` + anti-inflation rule.
 - [ ] Verdict mapping incl. "no findings ⇒ approve".
 - [ ] Findings discipline: distinct only, no count target.
+- [ ] Output language stated explicitly.
 - [ ] No JSON shape / markdown layout / alternate severity scale described in prose.
 - [ ] No "return at most N findings" quota.
 - [ ] File updated here **and** pushed to the agent (versioned).
