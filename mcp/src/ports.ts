@@ -1,5 +1,6 @@
 import type {
   Agent,
+  BlastRadiusResponse,
   ConventionCandidate,
   PullLookupResult,
   Repo,
@@ -116,4 +117,21 @@ export interface ApiPort {
   listReviews(pullId: string): Promise<ReviewProjection[]>;
   /** `GET /repos/:id/conventions`. */
   listConventions(repoId: string): Promise<ConventionProjection[]>;
+  /**
+   * `GET /pulls/:id/blast` (REQ-17, docs/plans/06-blast-radius.md) — the
+   * blast-radius wiring `get_blast_radius` was committed to as a follow-up
+   * exercise when it was first stubbed (decision D8,
+   * `docs/plans/05-mcp-server.md` §5.8). Returns the server's full
+   * `BlastRadiusResponse` UNNARROWED — same precedent as `lookupPull`
+   * above, whose return type is also the raw wire shape rather than a
+   * `Pick<...>` projection. The narrowing this port's own doc comment
+   * promises happens one ring up, in `shaping/blast.ts` (M2), which is
+   * where `get_blast_radius`'s actual model-facing projection is built —
+   * never here, and never in `tools/get-blast-radius.ts`.
+   *
+   * Required, never optional (`mcp/INSIGHTS.md`, 2026-08-23: an optional
+   * field on a `Deps`-shaped interface is a silent-degradation vector) —
+   * every `ApiPort` object literal in this package's tests must supply it.
+   */
+  getBlastRadius(pullId: string): Promise<BlastRadiusResponse>;
 }

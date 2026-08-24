@@ -79,6 +79,9 @@ function createFakeApi(overrides: Partial<ApiPort> = {}): ApiPort {
     listConventions: vi.fn(async () => {
       throw new Error('listConventions not stubbed for this test');
     }),
+    getBlastRadius: vi.fn(async () => {
+      throw new Error('getBlastRadius not stubbed for this test');
+    }),
     ...overrides,
   };
 }
@@ -257,7 +260,7 @@ describe('the whole tool surface (REQ-5, REQ-7, REQ-9), driven through buildServ
         run_agent_on_pr: 780,
         get_findings: 736,
         get_conventions: 352,
-        get_blast_radius: 285,
+        get_blast_radius: 983,
       });
 
       expect(client.getInstructions()).toBe(buildInstructions('http://localhost:3001'));

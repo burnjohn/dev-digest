@@ -63,3 +63,8 @@ export function reviewsUrl(base: string, pullId: string): string {
 export function conventionsUrl(base: string, repoId: string): string {
   return joinUrl(base, `/repos/${segment(repoId)}/conventions`);
 }
+
+/** `GET /pulls/:id/blast` (REQ-17, docs/plans/06-blast-radius.md). */
+export function blastUrl(base: string, pullId: string): string {
+  return joinUrl(base, `/pulls/${segment(pullId)}/blast`);
+}

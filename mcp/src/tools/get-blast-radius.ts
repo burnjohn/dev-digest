@@ -1,35 +1,59 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { registerTool } from './_register.js';
+import type { ApiPort } from '../ports.js';
+import { resolvePull, type ResolverDeps } from '../resolve/resolver.js';
+import { projectBlastRadius, summarizeBlastRadius } from '../shaping/blast.js';
 import { GetBlastRadiusInput, GetBlastRadiusOutput } from '../schemas/blast.js';
+import { registerTool } from './_register.js';
 
 /**
- * `get_blast_radius(repo, pr)` (ring M4) — the deliberately unimplemented
- * stub (decision D-E, plan 05 §5.8). It is registered so the tool APPEARS in
- * the tool list; wiring it to `repo-intel`'s `getBlastRadius` is the course
- * homework, not an oversight, and doing it here would remove the exercise.
+ * `get_blast_radius(repo, pr)` (ring M4, REQ-17, docs/plans/06-blast-radius.md)
+ * — "what else could this diff touch?", answered from `repo-intel`'s local
+ * code index via `GET /pulls/:id/blast`. No LLM call on this path.
  *
- * Makes NO HTTP call and holds no `ApiPort` at all (REQ-21) — there is
- * nothing in this file that could reach the network even by accident, which
- * is a stronger guarantee than "the handler happens not to call fetch".
+ * PROVENANCE, so nobody reads this as an accidental wiring: this tool was
+ * REGISTERED from day one as a deliberate stub (decision D8,
+ * `docs/plans/05-mcp-server.md` §5.8) that made no HTTP call and always
+ * returned `isError: true` with an `{implemented: false, retry: false, …}`
+ * payload — "wiring it to repo-intel is the course homework, not an
+ * oversight". The owner has now explicitly commissioned that exercise
+ * (docs/plans/06-blast-radius.md, T3); this file is the result. No
+ * `implemented: false` literal survives anywhere under `mcp/src/**`.
  *
- * Returns `isError: true` rather than a successful empty result (decision
- * D8): a successful result invites the model to state the blast radius is
- * empty, which is a worse failure than a visible one. `retry: false` in the
- * structured content and "Not implemented" leading the text are what stop a
- * retry loop; the error flag is what stops the fabrication.
+ * Same shape as `get-findings.ts`: resolve the pull FIRST (so an unresolvable
+ * `repo`/`pr` is reported as a resolution error, never a confusing empty
+ * blast map), then one `ApiPort.getBlastRadius` call, then project the
+ * result through `shaping/blast.ts` before it ever reaches `structuredContent`
+ * — this file holds no shaping or capping logic itself (REQ-18).
  */
 
 /**
- * §5.13.6, copied character for character (D-G). 285 UTF-8 bytes, first two
- * words "Not implemented" — both are load-bearing per §5.13.7 and asserted
- * by `test/tools-blast.test.ts`. Do not improve this string.
+ * Model-facing copy — states what the tool returns, that endpoint/cron
+ * detection is heuristic (never certainty), and that the result is capped
+ * and read-only. Byte count re-measured and pinned in
+ * `mcp/test/tools-blast.test.ts` and `mcp/test/protocol.test.ts` — do not
+ * edit this string without updating both.
  */
-const DESCRIPTION =
-  'Not implemented — this tool returns an explanation, never data. It is a registered placeholder ' +
-  'for a future pull request impact map. Do not call it expecting a blast radius and do not retry ' +
-  "it: use `run_agent_on_pr` for review findings, or `get_conventions` for a repository's rules.";
+const DESCRIPTION = [
+  "Return a heuristic map of what a pull request's changed code touches: the symbols it declares, " +
+    'how many places call each one, and which HTTP endpoints or cron jobs may depend on them — built ' +
+    "from a local code index, not from re-reading the diff. `repo` is \"owner/name\", `pr` is the " +
+    'pull request number.',
+  'Returns {status, status_reason, totals, symbols[], chips[], truncated}. `totals` counts symbols, ' +
+    'callers, endpoints and crons found. `symbols` is capped at 20, most-called first, each ' +
+    '{symbol, file, caller_count}. `chips` is a capped, deduplicated flat list of {label, kind} for ' +
+    'endpoints and crons the index found — `truncated: true` means some rows were cut. Endpoint and ' +
+    'cron detection is heuristic: false positives and negatives are expected, never certainty.',
+  '`status` is "partial" or "degraded" when part of the code index is unavailable, with ' +
+    '`status_reason` explaining what could not be determined. Read-only — this tool never starts a ' +
+    'review or rebuilds the index.',
+].join('\n\n');
 
-export function registerGetBlastRadius(server: McpServer): void {
+export interface GetBlastRadiusDeps {
+  api: ApiPort;
+  resolver: ResolverDeps;
+}
+
+export function registerGetBlastRadius(server: McpServer, deps: GetBlastRadiusDeps): void {
   registerTool(
     server,
     'get_blast_radius',
@@ -40,15 +64,20 @@ export function registerGetBlastRadius(server: McpServer): void {
       outputSchema: GetBlastRadiusOutput,
       annotations: { readOnlyHint: true },
     },
-    async () => ({
-      isError: true,
-      text: DESCRIPTION,
-      structuredContent: {
-        implemented: false as const,
-        retry: false as const,
-        reason: 'Blast radius is not wired up yet.',
-        use_instead: 'get_findings',
-      },
-    }),
+    async (args) => {
+      const pullResult = await resolvePull(args.repo, args.pr, deps.resolver);
+      if (!pullResult.ok) {
+        return { isError: true, text: pullResult.message, structuredContent: {} };
+      }
+
+      const blast = await deps.api.getBlastRadius(pullResult.pull.pullId);
+      const projected = projectBlastRadius(blast);
+
+      return {
+        isError: false,
+        text: summarizeBlastRadius(projected),
+        structuredContent: projected,
+      };
+    },
   );
 }

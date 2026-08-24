@@ -7,10 +7,11 @@ import type {
   ReviewProjection,
   RunStatus,
 } from '../ports.js';
-import type { PullLookupResult } from '@devdigest/shared';
+import type { BlastRadiusResponse, PullLookupResult } from '@devdigest/shared';
 import {
   activeRunsUrl,
   agentsUrl,
+  blastUrl,
   conventionsUrl,
   lookupPullUrl,
   reposUrl,
@@ -114,6 +115,13 @@ export class ApiClient implements ApiPort {
   async listConventions(repoId: string): Promise<ConventionProjection[]> {
     const result = await this.request<{ candidates: ConventionProjection[] }>(conventionsUrl(this.apiBaseUrl, repoId));
     return result.candidates.map((c) => ({ rule: c.rule, status: c.status }));
+  }
+
+  /** `GET /pulls/:id/blast` — returned VERBATIM, same precedent as
+   *  `lookupPull` above; the narrowing happens in `shaping/blast.ts` (M2),
+   *  never here. */
+  async getBlastRadius(pullId: string): Promise<BlastRadiusResponse> {
+    return this.request<BlastRadiusResponse>(blastUrl(this.apiBaseUrl, pullId));
   }
 
   /**

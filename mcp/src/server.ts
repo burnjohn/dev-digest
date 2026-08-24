@@ -97,7 +97,7 @@ export function buildServer(deps: ServerDeps): McpServer {
     now,
     webUiUrl: deps.config.webUiUrl,
   });
-  registerGetBlastRadius(server);
+  registerGetBlastRadius(server, { api, resolver: resolverDeps });
 
   return server;
 }

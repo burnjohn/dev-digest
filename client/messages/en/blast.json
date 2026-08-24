@@ -1,18 +1,27 @@
 {
+  "title": "Blast Radius",
+  "error": "Couldn't compute the blast radius for this PR.",
+  "retry": "Retry",
+  "empty": "No symbols were declared in this PR's changed files.",
+  "heuristicNote": "Endpoints and cron/job matches are detected by pattern matching, not certainty — they may be incomplete or wrong.",
   "stat": {
     "symbols": "symbols",
     "callers": "callers",
     "endpoints": "endpoints",
     "crons": "cron/jobs"
   },
-  "view": {
-    "tree": "tree",
-    "graph": "graph"
-  },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
-  "graph": {
-    "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+  "showAllSymbols": "Show all {count} symbols",
+  "callerTruncated": "Showing {shown} of {total} callers",
+  "narrative": {
+    "label": "AI-generated summary"
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files",
+    "unavailable": "not available",
+    "unavailableBody": "Prior PR overlap could not be determined for this repository.",
+    "empty": "No other PRs currently touch these files.",
+    "overlapCount": "{count, plural, one {# file} other {# files}} in common"
   }
 }

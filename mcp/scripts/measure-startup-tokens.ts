@@ -57,6 +57,7 @@ function createOfflineApi(): ApiPort {
     listRuns: unreachable('listRuns'),
     listReviews: unreachable('listReviews'),
     listConventions: unreachable('listConventions'),
+    getBlastRadius: unreachable('getBlastRadius'),
   };
 }
 

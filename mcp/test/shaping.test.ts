@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import type { ReviewProjection } from '../src/ports.js';
+import type { BlastRadiusResponse } from '@devdigest/shared';
 import { projectFindings, projectFindingsByAgent } from '../src/shaping/project.js';
-import { MAX_FINDINGS } from '../src/shaping/constants.js';
+import { MAX_BLAST_CHIPS, MAX_BLAST_SYMBOLS, MAX_FINDINGS } from '../src/shaping/constants.js';
 import { buildGroupedTruncationNote, compareFindings } from '../src/shaping/order.js';
 import { FindingsOutputShape, GetFindingsOutput } from '../src/schemas/findings.js';
+import { projectBlastRadius, summarizeBlastRadius } from '../src/shaping/blast.js';
 
 /**
  * `FindingsResultSchema` below wraps the SAME raw shape both `get_findings`
@@ -598,5 +600,179 @@ describe('projectFindingsByAgent — one group per agent', () => {
     const snapshot = JSON.stringify(reviews);
     projectFindingsByAgent(reviews, 'detailed');
     expect(JSON.stringify(reviews)).toBe(snapshot);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* projectBlastRadius / summarizeBlastRadius (T3, REQ-18)                   */
+/* ------------------------------------------------------------------------ */
+
+describe('projectBlastRadius (REQ-18) — drops the Tree DTO down to a flat, capped tool response', () => {
+  function blastSymbol(
+    name: string,
+    overrides: Partial<BlastRadiusResponse['symbols'][number]> = {},
+  ): BlastRadiusResponse['symbols'][number] {
+    return {
+      name,
+      file: 'src/x.ts',
+      kind: 'function',
+      callers: [],
+      caller_count: 0,
+      chips: [],
+      ...overrides,
+    };
+  }
+
+  function blastChip(label: string, kind: 'endpoint' | 'cron', file = 'src/routes.ts') {
+    return { label, kind, file };
+  }
+
+  function blastResponse(patch: Partial<BlastRadiusResponse> = {}): BlastRadiusResponse {
+    return {
+      status: 'ok',
+      status_reason: '',
+      coverage: {
+        callers_available: true,
+        endpoints_available: true,
+        crons_available: true,
+        imports_available: true,
+        prior_prs_available: true,
+        files_indexed: 5,
+        files_skipped: 0,
+        index_truncated: false,
+      },
+      changed_file_count: 1,
+      totals: { symbols: 1, callers: 0, endpoints: 0, crons: 0 },
+      symbols: [blastSymbol('doThing')],
+      file_impact: [],
+      prior_prs: [],
+      narrative: null,
+      ...patch,
+    };
+  }
+
+  it('keeps status/status_reason/totals and shapes each symbol to {symbol, file, caller_count}', () => {
+    const response = blastResponse({
+      status: 'partial',
+      status_reason: 'cron detection is unavailable on this path',
+      totals: { symbols: 1, callers: 4, endpoints: 1, crons: 0 },
+      symbols: [blastSymbol('handler', { caller_count: 4, chips: [blastChip('GET /x', 'endpoint')] })],
+    });
+
+    const projected = projectBlastRadius(response);
+
+    expect(projected).toEqual({
+      status: 'partial',
+      status_reason: 'cron detection is unavailable on this path',
+      totals: { symbols: 1, callers: 4, endpoints: 1, crons: 0 },
+      symbols: [{ symbol: 'handler', file: 'src/x.ts', caller_count: 4 }],
+      chips: [{ label: 'GET /x', kind: 'endpoint' }],
+      truncated: false,
+    });
+  });
+
+  it('drops per-caller rows, rank, file_impact, prior_prs and narrative — never present in the projection', () => {
+    const response = blastResponse({
+      symbols: [
+        blastSymbol('doThing', {
+          caller_count: 1,
+          callers: [{ file: 'src/caller.ts', symbol: 'callSite', line: 10, rank: 0.9 }],
+        }),
+      ],
+      file_impact: [{ file: 'src/other.ts', depth: 1, chips: [] }],
+      prior_prs: [
+        { number: 7, title: 'old pr', status: 'open', overlap_count: 1, overlapping_files: ['src/x.ts'], updated_at: null },
+      ],
+      narrative: 'a paragraph the client would render',
+    });
+
+    const projected = projectBlastRadius(response);
+
+    expect(projected).not.toHaveProperty('file_impact');
+    expect(projected).not.toHaveProperty('prior_prs');
+    expect(projected).not.toHaveProperty('narrative');
+    expect(projected).not.toHaveProperty('coverage');
+    expect(JSON.stringify(projected.symbols)).not.toContain('caller.ts');
+    expect(JSON.stringify(projected.symbols)).not.toContain('rank');
+  });
+
+  it('caps symbols at MAX_BLAST_SYMBOLS by taking a plain prefix, and sets truncated:true', () => {
+    const symbols = Array.from({ length: MAX_BLAST_SYMBOLS + 3 }, (_, i) => blastSymbol(`s${i}`, { caller_count: i }));
+
+    const projected = projectBlastRadius(blastResponse({ symbols }));
+
+    expect(projected.symbols).toHaveLength(MAX_BLAST_SYMBOLS);
+    expect(projected.symbols!.map((s) => s.symbol)).toEqual(
+      symbols.slice(0, MAX_BLAST_SYMBOLS).map((s) => s.name),
+    );
+    expect(projected.truncated).toBe(true);
+  });
+
+  it('does not reorder symbols — it trusts the server-provided order rather than re-sorting', () => {
+    const symbols = [
+      blastSymbol('low', { caller_count: 1 }),
+      blastSymbol('high', { caller_count: 999 }),
+      blastSymbol('mid', { caller_count: 5 }),
+    ];
+
+    const projected = projectBlastRadius(blastResponse({ symbols }));
+
+    expect(projected.symbols!.map((s) => s.symbol)).toEqual(['low', 'high', 'mid']);
+  });
+
+  it('flattens chips across symbols, deduplicates by kind+label, caps at MAX_BLAST_CHIPS', () => {
+    const dupe = blastChip('GET /same', 'endpoint');
+    const response = blastResponse({
+      symbols: [
+        blastSymbol('a', { chips: [dupe, blastChip('cron: 0 * * * *', 'cron')] }),
+        blastSymbol('b', { chips: [dupe] }),
+      ],
+    });
+
+    const projected = projectBlastRadius(response);
+
+    expect(projected.chips).toHaveLength(2);
+    expect(projected.chips).toEqual(
+      expect.arrayContaining([
+        { label: 'GET /same', kind: 'endpoint' },
+        { label: 'cron: 0 * * * *', kind: 'cron' },
+      ]),
+    );
+  });
+
+  it('reports truncated:true when chips alone exceed the cap, even with few symbols', () => {
+    const manyChips = Array.from({ length: MAX_BLAST_CHIPS + 2 }, (_, i) => blastChip(`GET /p${i}`, 'endpoint'));
+    const projected = projectBlastRadius(blastResponse({ symbols: [blastSymbol('a', { chips: manyChips })] }));
+
+    expect(projected.chips).toHaveLength(MAX_BLAST_CHIPS);
+    expect(projected.truncated).toBe(true);
+  });
+});
+
+describe('summarizeBlastRadius', () => {
+  it('mentions the totals and calls out heuristic endpoint/cron detection', () => {
+    const text = summarizeBlastRadius({
+      status: 'ok',
+      status_reason: '',
+      totals: { symbols: 2, callers: 5, endpoints: 1, crons: 0 },
+      symbols: [],
+      chips: [],
+      truncated: false,
+    });
+    expect(text).toContain('2 symbol');
+    expect(text).toContain('heuristic');
+  });
+
+  it('surfaces status_reason when status is not ok', () => {
+    const text = summarizeBlastRadius({
+      status: 'degraded',
+      status_reason: 'the index could not be read',
+      totals: { symbols: 0, callers: 0, endpoints: 0, crons: 0 },
+      symbols: [],
+      chips: [],
+      truncated: false,
+    });
+    expect(text).toContain('degraded');
+    expect(text).toContain('the index could not be read');
   });
 });

@@ -26,6 +26,11 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // D3 (docs/plans/06-blast-radius.md) — the blast-radius card's one-paragraph
+  // LLM narration. Default OFF, same idiom as EMBEDDINGS_ENABLED: with the flag
+  // unset/false, `blast/routes.ts` resolves no model and calls no LLM (REQ-20)
+  // — this is the ONE place `process.env` is read for it.
+  BLAST_EXPLAIN_ENABLED: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -59,6 +64,8 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** D3 — whether the blast-radius card's flagged LLM narration is active. Default false. */
+  blastExplainEnabled: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +84,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    blastExplainEnabled: parsed.BLAST_EXPLAIN_ENABLED === 'true',
   };
 }

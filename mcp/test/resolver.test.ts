@@ -30,6 +30,9 @@ function createFakeApi(overrides: Partial<ApiPort> = {}): ApiPort {
     listRuns: vi.fn(async () => []),
     listReviews: vi.fn(async () => []),
     listConventions: vi.fn(async () => []),
+    getBlastRadius: vi.fn(async () => {
+      throw new Error('getBlastRadius not stubbed for this test');
+    }),
     ...overrides,
   };
 }

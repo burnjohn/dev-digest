@@ -135,6 +135,38 @@ describe('ApiClient — request shaping and URL construction (api/routes.ts)', (
     expect(reviews).toEqual([{ run_id: 'run-1', agent_id: 'a1', verdict: 'approve', score: 90, findings: [finding] }]);
   });
 
+  it('fetches /pulls/:id/blast and returns the response verbatim, unnarrowed', async () => {
+    const calls: string[] = [];
+    const blastResponse = {
+      status: 'ok',
+      status_reason: '',
+      coverage: {
+        callers_available: true,
+        endpoints_available: true,
+        crons_available: true,
+        imports_available: true,
+        prior_prs_available: true,
+        files_indexed: 5,
+        files_skipped: 0,
+        index_truncated: false,
+      },
+      changed_file_count: 1,
+      totals: { symbols: 1, callers: 0, endpoints: 0, crons: 0 },
+      symbols: [{ name: 'doThing', file: 'src/x.ts', kind: 'function', callers: [], caller_count: 0, chips: [] }],
+      file_impact: [],
+      prior_prs: [],
+      narrative: null,
+    };
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      calls.push(String(url));
+      return jsonResponse(blastResponse);
+    }) as unknown as typeof fetch;
+
+    const result = await clientWith(fetchImpl).getBlastRadius('pull-123');
+    expect(result).toEqual(blastResponse);
+    expect(calls[0]).toContain('/pulls/pull-123/blast');
+  });
+
   it('unwraps /repos/:id/conventions to {rule, status} rows', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

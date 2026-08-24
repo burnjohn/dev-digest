@@ -53,6 +53,7 @@ function fakeApi(overrides: Partial<ApiPort> = {}): ApiPort {
     listRuns: vi.fn(),
     listReviews: vi.fn(),
     listConventions: vi.fn().mockResolvedValue([]),
+    getBlastRadius: vi.fn(),
     ...overrides,
   };
 }
