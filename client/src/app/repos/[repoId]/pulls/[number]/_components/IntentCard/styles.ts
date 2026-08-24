@@ -3,11 +3,32 @@ import type { CSSProperties } from "react";
 /** Co-located styles for IntentCard. Mirrors OverviewTab's descriptionBox card
     (border + bg-elevated + radius) so the two Overview-tab sections match. */
 export const s = {
+  // Root `<section>` — the sole child of OverviewTab's `cardSlot`
+  // (OverviewTab/styles.ts), itself a flex column. `flex: "1 1 auto"` fills
+  // the slot; `minHeight: 0` lets it shrink below its content size — matches
+  // BlastCard/styles.ts `section` so the two cards behave identically
+  // inside their slots.
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    flex: "1 1 auto",
+    minHeight: 0,
+  } satisfies CSSProperties,
   card: {
     border: "1px solid var(--border)",
     borderRadius: 8,
     background: "var(--bg-elevated)",
     padding: 18,
+    // Fills the remaining space under SectionLabel/the stale strip, and
+    // scrolls in the rare case its own content (a long summary + long
+    // in/out-of-scope lists) exceeds the slot's max height — IntentCard has
+    // no single dominant list to isolate the way BlastCard's symbolList is,
+    // so the whole card is the scroll container here.
+    display: "flex",
+    flexDirection: "column",
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowY: "auto",
   } satisfies CSSProperties,
   errorCard: {
     border: "1px solid var(--border)",
@@ -29,13 +50,6 @@ export const s = {
     fontWeight: 600,
     cursor: "pointer",
   } satisfies CSSProperties,
-  summaryRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
   // Italic quote with a left rule (mockup). Per-side longhands only — `borderColor`
   // is ITSELF a four-side shorthand, so pairing it with `borderLeftColor` still
   // trips React's shorthand/longhand rerender warning (see FindingCard/styles.ts).
@@ -45,8 +59,6 @@ export const s = {
     fontStyle: "italic",
     color: "var(--text-secondary)",
     lineHeight: 1.5,
-    flex: 1,
-    minWidth: 200,
     borderLeftWidth: 3,
     borderLeftStyle: "solid",
     borderLeftColor: "var(--border-strong)",
