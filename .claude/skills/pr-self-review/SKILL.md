@@ -470,8 +470,30 @@ cross-platform, and parses JSON natively.
 2. No match on `gh pr create` / `gh pr ready` / `git push` — allowing for `cd … &&` prefixes,
    `git -c …`, and env prefixes — ⇒ **exit 0, silently**. The hook must be invisible on
    99.9% of calls, or it gets deleted.
-3. Match ⇒ read `gate.json`. Deny when it is absent; when `verdict !== "approve"` without a
-   valid override; or when `headSha`/`workingTreeDigest` disagree (STALE).
+3. Match ⇒ read `gate.json`. Deny when it is absent; when `verdict === "request_changes"`
+   without a valid override; or when `headSha`/`workingTreeDigest` disagree (STALE).
+
+   **`approve` and `comment` both pass — only `request_changes` denies.** This follows
+   directly from §7: a CRITICAL is "the ONLY level that blocks merge", and the verdict is a
+   pure function of the findings, so `comment` means *WARNING/SUGGESTION only* — exactly the
+   case §7 lists under "Does not block". Several mechanical rules (H3, H5, H12, H17, H18) are
+   WARNING **by design** and must not stop a push.
+
+   Use an allow-list (`new Set(['approve','comment'])`), not `!== 'request_changes'`, so an
+   unknown or malformed verdict still fails closed.
+
+   On a non-`approve` pass, or when `coverage` is `"partial"`, write one line to **stderr**
+   saying so and allow. A silent allow is how a coverage gap becomes invisible; a *blocking*
+   one is how the gate gets ripped out. Never write to stdout — the hook must stay silent on
+   the happy path.
+
+   > **Regression note, 2026-08-24.** This read `verdict !== "approve"` until a live run hit
+   > it: a branch with zero CRITICALs and one WARNING (a stray `mcp/pnpm-lock.yaml`) was
+   > refused a push. It survived because `pr-gate.test.mjs` covers `approve` and
+   > `request_changes` but **never `comment`** — the third enum value was untested. The deny
+   > branch was itself the evidence: on a `comment` verdict it renders "0 blocking issue(s)"
+   > and "(see the report)", because it was written assuming criticals exist. **Any change
+   > here needs a `comment` → ALLOW case in `pr-gate.test.mjs`.**
 4. Deny via `permissionDecisionReason` carrying the verdict, the blocking CRITICAL titles,
    the report path, and the exact override command.
 5. **Fail open on internal error.** If the script itself throws, exit 0 with a warning on

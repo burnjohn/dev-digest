@@ -5,7 +5,7 @@
 // No framework: the four packages own their own vitest suites, and `.claude/` is not a
 // package. Exits non-zero on any failure so it can be wired into CI later if wanted.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +13,20 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || resolve(fileURLToPath(import.meta
 const HOOK = join(ROOT, '.claude/hooks/pr-gate.mjs');
 const GATE_DIR = join(ROOT, '.devdigest/cache/pr-self-review');
 const GATE = join(GATE_DIR, 'gate.json');
+
+// This suite writes fixture gates to the REAL gate path and used to end with a bare
+// clearGate(), so running the tests DELETED whatever live review was sitting there — the
+// developer then hit "no review has been run" on their next push, with nothing connecting
+// the two events.
+//
+// It cannot simply be redirected to a temp root: `run()` and `digest()` both pass
+// CLAUDE_PROJECT_DIR=ROOT, because the hook resolves git against the real repo to compute
+// HEAD and the working-tree digest — and it looks for gate.json under that same root. Point
+// GATE at a temp dir and the fixtures land somewhere the hook never reads, so every
+// gate-dependent case silently degrades to "no gate".
+//
+// So: snapshot the real gate here, restore it at the end.
+const SAVED_GATE = existsSync(GATE) ? readFileSync(GATE, 'utf8') : null;
 
 const git = (args) =>
   execFileSync('git', ['--no-pager', '-c', 'core.quotepath=false', ...args], {
@@ -45,6 +59,11 @@ function decision(out) {
 
 const writeGate = (o) => { mkdirSync(GATE_DIR, { recursive: true }); writeFileSync(GATE, typeof o === 'string' ? o : JSON.stringify(o, null, 2)); };
 const clearGate = () => { if (existsSync(GATE)) rmSync(GATE); };
+/** Put the developer's real gate back exactly as it was, or remove ours if there was none. */
+const restoreGate = () => {
+  if (SAVED_GATE !== null) { mkdirSync(GATE_DIR, { recursive: true }); writeFileSync(GATE, SAVED_GATE); }
+  else clearGate();
+};
 
 const head = git(['rev-parse', 'HEAD']).trim();
 const results = [];
@@ -90,6 +109,14 @@ const reason = JSON.parse(rc).hookSpecificOutput.permissionDecisionReason;
 t('D3b names the critical', true, reason.includes('Run rows written before commit'));
 t('D3b offers override', true, reason.includes('--override'));
 
+// ── D3c: fresh comment (WARNING/SUGGESTION only, no CRITICAL) → ALLOW ─────────
+// The verdict enum has three values and this is the one that was never tested, which is
+// exactly how the hook shipped reading `verdict === 'approve'` — turning every WARNING
+// into a hard block. `decision()` reads stdout only, so the hook's stderr note about a
+// non-approve pass does not show up here: ALLOW(silent) is the correct expectation.
+writeGate({ ...fresh, verdict: 'comment', criticalCount: 0, criticals: [] });
+t('D3c fresh comment', 'ALLOW(silent)', decision(run('git push --dry-run')));
+
 // ── D4: stale → DENY ───────────────────────────────────────────────────────────
 writeGate({ ...fresh, workingTreeDigest: 'deadbeef' });
 const stale = run('git push --dry-run');
@@ -116,6 +143,13 @@ writeGate({ ...fresh, verdict: 'request_changes', criticalCount: 1, criticals: [
   override: { reason: 'a perfectly long and detailed justification here', workingTreeDigest: 'stale-digest' } });
 t('override bound to old tree', 'DENY', decision(run('git push')));
 
-clearGate();
+restoreGate();
+
+const failed = results.filter((r) => r.startsWith('FAIL')).length;
 console.log(results.join('\n'));
-console.log(`\n${results.filter((r) => r.startsWith('PASS')).length}/${results.length} passed`);
+console.log(`\n${results.length - failed}/${results.length} passed`);
+
+// The header has always promised "Exits non-zero on any failure so it can be wired into
+// CI later" — but the suite printed its tally and then exited 0 regardless, so a CI job
+// wired to it would have gone green on a red run. Make the promise true.
+if (failed > 0) process.exit(1);
