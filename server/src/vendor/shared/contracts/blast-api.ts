@@ -41,7 +41,28 @@ export const BlastCoverage = z.object({
   prior_prs_available: z.boolean(),
   files_indexed: z.number().int(),
   files_skipped: z.number().int(),
-  /** True once a repo's index hit MAX_INDEXED_FILES and results are necessarily partial. */
+  /**
+   * Intended to be `true` once a repo's index hit `MAX_INDEXED_FILES` (5000) and the
+   * results are therefore necessarily partial.
+   *
+   * **Currently ALWAYS `false`, and that is not yet a measurement — do not trust it.**
+   * The signal does not survive the indexer: `repo-intel/pipeline/walk.ts` truncates to
+   * the first 5000 relpaths ALPHABETICALLY and records `stats.bounded`, but nothing ever
+   * reads `bounded` — it does not set `status: 'partial'`, it does not feed
+   * `files_skipped` (that counts individually oversized files, a different thing), and
+   * the `'repo_too_large'` member of `DegradedReason` is declared but never assigned.
+   * So a repo over 5000 files reports `status: 'ok'` with this field `false`.
+   *
+   * `blast/` cannot fix that from the outside: the honest signal has to come from
+   * `IndexState`, and editing `repo-intel` is out of scope by owner decision (plan 06,
+   * D4). Reading this field as "the index is complete" is therefore wrong today. It is
+   * kept on the wire so the fix is a one-line change here rather than a contract edit,
+   * and so this limitation has somewhere to be written down.
+   *
+   * Before relying on it: make `walk.stats.bounded` set `status: 'partial'` +
+   * `degradedReason: 'repo_too_large'`, surface it on `IndexState`, then replace the
+   * hardcoded `false` in `blast/helpers.ts`.
+   */
   index_truncated: z.boolean(),
 });
 export type BlastCoverage = z.infer<typeof BlastCoverage>;
