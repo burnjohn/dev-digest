@@ -37,14 +37,14 @@ export const NAV: NavGroup[] = [
     ],
   },
   // GLOBAL — workspace-wide screens that aren't scoped to one repo/agent.
-  // Currently just CI Runs (SPEC-08 T14); sibling entries the Development
-  // Plan for this feature assumed already existed here (Multi-Agent Review,
-  // Agent Performance, Memory) are later-lesson screens not yet built in
-  // this codebase (see root README's "starter surface" note) — this group
-  // is created fresh, not appended to.
+  // CI Runs (SPEC-08 T14) and Agent Performance (L08 homework) both live
+  // here now; Multi-Agent Review and Memory are still later-lesson screens
+  // not yet built in this codebase (see root README's "starter surface"
+  // note).
   {
     section: "GLOBAL",
     items: [
+      { key: "agent-performance", label: "Agent Performance", icon: "Gauge", href: "/agent-performance", gKey: "f" },
       { key: "ci-runs", label: "CI Runs", icon: "Activity", href: "/ci-runs", gKey: "r" },
     ],
   },
@@ -80,6 +80,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "g s", label: "Go to Skills", group: "Navigation" },
   { keys: "g c", label: "Go to Conventions", group: "Navigation" },
   { keys: "g e", label: "Go to Eval Dashboard", group: "Navigation" },
+  { keys: "g f", label: "Go to Agent Performance", group: "Navigation" },
   { keys: "g r", label: "Go to CI Runs", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },

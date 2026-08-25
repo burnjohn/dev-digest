@@ -159,10 +159,31 @@ export function useSetAgentContextDocs(agentId: string) {
   });
 }
 
-export function useAgentStats(agentId: string | null | undefined) {
+/** Optional explicit period for `useAgentStats`/`useAgentsStats` (Agent
+ *  Performance dashboard). Both ISO datetime strings — omitted entirely
+ *  (the default, zero-arg call shape used by the Stats tab) means "let the
+ *  server apply its own trailing-30-days default". */
+export interface StatsRange {
+  since?: string;
+  until?: string;
+}
+
+function statsQueryString(range?: StatsRange): string {
+  if (!range) return "";
+  const params = new URLSearchParams();
+  if (range.since) params.set("since", range.since);
+  if (range.until) params.set("until", range.until);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function useAgentStats(agentId: string | null | undefined, range?: StatsRange) {
   return useQuery({
-    queryKey: ["agent-stats", agentId],
-    queryFn: () => api.get<AgentStats>(`/agents/${agentId}/stats`),
+    // Range included in the key so different periods don't collide in the
+    // cache; `since`/`until` both undefined (the Stats tab's call shape)
+    // collapses back to the exact same key the Stats tab has always used.
+    queryKey: ["agent-stats", agentId, range?.since, range?.until],
+    queryFn: () => api.get<AgentStats>(`/agents/${agentId}/stats${statsQueryString(range)}`),
     enabled: !!agentId,
   });
 }
@@ -170,17 +191,23 @@ export function useAgentStats(agentId: string | null | undefined) {
 /** Stats for a SET of agents at once (SPEC-07 T10, Configure run screen's
  *  cost/time estimate — needs every workspace agent's `avg_cost_usd`/
  *  `avg_latency_ms` at once, not just the checked ones, since each row shows
- *  its own "no run history" state regardless of check state). One query per
- *  id via `useQueries` — calling `useAgentStats` inside a `.map()` would
- *  violate the rules of hooks here (the number of workspace agents can
- *  change across renders); same pattern as `useSkillsContextDocs`
+ *  its own "no run history" state regardless of check state). Also backs
+ *  the global Agent Performance dashboard's period picker (`range`) — the
+ *  ONLY data fetch that page does; no second, dashboard-only aggregator.
+ *  One query per id via `useQueries` — calling `useAgentStats` inside a
+ *  `.map()` would violate the rules of hooks here (the number of workspace
+ *  agents can change across renders); same pattern as `useSkillsContextDocs`
  *  (`hooks/skills.ts`). Uses the SAME query key shape as `useAgentStats` so
- *  the cache is shared with the Agent Editor's Stats tab. */
-export function useAgentsStats(agentIds: string[]): Map<string, AgentStats> {
+ *  the cache is shared with the Agent Editor's Stats tab for the same
+ *  agent/period. */
+export function useAgentsStats(
+  agentIds: string[],
+  range?: StatsRange,
+): { data: Map<string, AgentStats>; isLoading: boolean; isError: boolean; refetch: () => void } {
   const results = useQueries({
     queries: agentIds.map((agentId) => ({
-      queryKey: ["agent-stats", agentId],
-      queryFn: () => api.get<AgentStats>(`/agents/${agentId}/stats`),
+      queryKey: ["agent-stats", agentId, range?.since, range?.until],
+      queryFn: () => api.get<AgentStats>(`/agents/${agentId}/stats${statsQueryString(range)}`),
     })),
   });
   const map = new Map<string, AgentStats>();
@@ -190,5 +217,10 @@ export function useAgentsStats(agentIds: string[]): Map<string, AgentStats> {
     if (!agentId || !stats) continue;
     map.set(agentId, stats);
   }
-  return map;
+  return {
+    data: map,
+    isLoading: results.some((r) => r.isLoading),
+    isError: results.some((r) => r.isError),
+    refetch: () => results.forEach((r) => r.refetch()),
+  };
 }

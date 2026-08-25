@@ -11,7 +11,7 @@ import type {
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
-import { StatsRepository } from './stats-repository.js';
+import { StatsRepository, DEFAULT_WINDOW_DAYS, type StatsRange } from './stats-repository.js';
 import { computeAgentStats } from './stats-helpers.js';
 
 /**
@@ -190,13 +190,33 @@ export class AgentsService {
   }
 
   /**
-   * 30-day quality/cost aggregates for an agent. Returns undefined when the
-   * agent isn't in this workspace (route → 404).
+   * Quality/cost aggregates for an agent over `range` — defaults to the
+   * trailing 30 days when omitted, so every existing caller (the per-agent
+   * Stats tab) is unaffected. Returns undefined when the agent isn't in
+   * this workspace (route → 404).
    */
-  async getStats(workspaceId: string, agentId: string): Promise<AgentStats | undefined> {
+  async getStats(
+    workspaceId: string,
+    agentId: string,
+    range?: Partial<StatsRange>,
+  ): Promise<AgentStats | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    const { runs, findings, skillNames } = await this.statsRepo.getWindowData(workspaceId, agentId);
+    // Each side of the range defaults independently — a caller passing only
+    // `since` (or only `until`) gets the other side filled in here, not in
+    // the route. This is the one place that resolves "what's the default
+    // window," so a partial-param request (?since=... with no ?until=)
+    // can't silently diverge from this logic the way a route-level
+    // resolution would.
+    const resolvedRange: StatsRange = {
+      since: range?.since ?? new Date(Date.now() - DEFAULT_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+      until: range?.until ?? new Date(),
+    };
+    const { runs, findings, skillNames } = await this.statsRepo.getWindowData(
+      workspaceId,
+      agentId,
+      resolvedRange,
+    );
     return computeAgentStats({ agentId, agentName: agent.name, runs, findings, skillNames });
   }
 }

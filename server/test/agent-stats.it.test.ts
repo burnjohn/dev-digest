@@ -215,6 +215,119 @@ d('agent stats (Testcontainers pg)', () => {
     await app.close();
   });
 
+  it('an explicit since/until window excludes an older run while the default (no params) still includes it', async () => {
+    const app = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        embedder: new MockEmbedder(),
+        git: new MockGitClient({ diff: DIFF }),
+        llm: {
+          openai: new MockLLMProvider('openai', { structured: REVIEW }),
+          openrouter: new MockLLMProvider('openrouter', { structured: MOCK_INTENT }),
+        },
+      },
+    });
+
+    const agent = (
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name: 'Range Stats Agent', provider: 'openai', model: 'gpt-4.1', system_prompt: 'review' },
+      })
+    ).json();
+
+    const [repo] = await pg.handle.db
+      .insert(t.repos)
+      .values({ workspaceId, owner: 'acme', name: 'range-stats-repo', fullName: 'acme/range-stats-repo' })
+      .returning();
+    const [pr] = await pg.handle.db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId: repo!.id,
+        number: 11,
+        title: 't',
+        author: 'a',
+        branch: 'b',
+        base: 'main',
+        headSha: 'x',
+        additions: 1,
+        deletions: 0,
+        filesCount: 1,
+        status: 'needs_review',
+      })
+      .returning();
+    await pg.handle.db.insert(t.prFiles).values({
+      prId: pr!.id,
+      path: 'src/config.ts',
+      additions: 1,
+      deletions: 0,
+      patch: '@@ -10,3 +10,4 @@\n   port: 3000,\n+  stripeKey: "sk_live_xxx",\n   redisUrl: x,',
+    });
+
+    // Run #1 — created "today" via the real review flow.
+    await app.inject({ method: 'POST', url: `/pulls/${pr!.id}/review`, payload: { agentId: agent.id } });
+    await waitForPrRuns(pg.handle.db, pr!.id, { expected: 1 });
+
+    // Run #2 — a second, older run inserted directly 5 days in the past.
+    // Within the default trailing-30-day window, but outside a 1-day
+    // since/until range ending now — the concrete proof that an explicit
+    // range narrows the result while an omitted one keeps the historic
+    // 30-day default (Stats tab stays unaffected).
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await pg.handle.db.insert(t.agentRuns).values({
+      workspaceId,
+      agentId: agent.id,
+      prId: pr!.id,
+      ranAt: fiveDaysAgo,
+      status: 'done',
+      source: 'local',
+      costUsd: 0.01,
+      durationMs: 1000,
+      findingsCount: 0,
+      skillIds: [],
+    });
+
+    const defaultRes = await app.inject({ method: 'GET', url: `/agents/${agent.id}/stats` });
+    expect(defaultRes.statusCode).toBe(200);
+    expect(defaultRes.json().runs).toBe(2);
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const until = new Date().toISOString();
+    const rangedRes = await app.inject({
+      method: 'GET',
+      url: `/agents/${agent.id}/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`,
+    });
+    expect(rangedRes.statusCode).toBe(200);
+    expect(rangedRes.json().runs).toBe(1);
+
+    // Partial range: only `since` passed, no `until`. `service.getStats` must
+    // resolve the missing `until` to "now" itself — this is the concrete
+    // regression test for the fix that moved default-resolution out of the
+    // route (which previously computed this fallback inline) and into the
+    // service, the one place that's allowed to decide the default window.
+    const sinceOnlyRes = await app.inject({
+      method: 'GET',
+      url: `/agents/${agent.id}/stats?since=${encodeURIComponent(since)}`,
+    });
+    expect(sinceOnlyRes.statusCode).toBe(200);
+    expect(sinceOnlyRes.json().runs).toBe(1);
+
+    // Symmetric case: only `until` passed, no `since`. `since` must default
+    // to the trailing 30-day window (not, say, "now" — which would silently
+    // exclude everything) — the 5-day-old run falls inside that resolved
+    // window, so both runs are counted, matching the no-params default.
+    const untilOnlyRes = await app.inject({
+      method: 'GET',
+      url: `/agents/${agent.id}/stats?until=${encodeURIComponent(until)}`,
+    });
+    expect(untilOnlyRes.statusCode).toBe(200);
+    expect(untilOnlyRes.json().runs).toBe(2);
+
+    await app.close();
+  });
+
   it('404s for an unknown agent', async () => {
     const app = await buildApp({
       config: config(),

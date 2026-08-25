@@ -2,11 +2,25 @@
   "title": "Agent Performance",
   "subtitle": "Accept-rate is the headline quality signal · cost shown as a breakdown",
   "loadError": "Could not load agent performance.",
+  "retry": "Retry",
+  "period": {
+    "label": "Period",
+    "oneDay": "1 day",
+    "thirtyDays": "30 days",
+    "custom": "Custom",
+    "since": "From",
+    "until": "To"
+  },
+  "estimatedCost": "estimated",
+  "estimatedCostTooltip": "Cost is a DevDigest estimate — there's no reconciled billing source in this product.",
+  "smallSample": "small sample",
   "summary": {
     "totalRuns": "Total runs",
     "avgAcceptRate": "Avg accept-rate",
     "totalCost": "Total cost",
-    "mostActive": "Most active"
+    "mostActive": "Most active",
+    "basedOnRuns": "{count} runs in period",
+    "decidedOf": "{accepted}/{decided} decided"
   },
   "costByAgent": "Cost by agent",
   "costByModel": "Cost by model",
@@ -22,11 +36,21 @@
     "runs": "Runs",
     "findings": "Findings",
     "cost": "Cost",
-    "trend": "Trend"
+    "trend": "Trend",
+    "avgCost": "Avg cost",
+    "avgDuration": "Avg duration",
+    "acceptRate": "Accept rate",
+    "lastRun": "Last run",
+    "view": "View",
+    "acceptRateWithDenominator": "{pct}% ({accepted}/{decided})"
   },
   "empty": {
     "title": "No agent runs yet",
-    "body": "Run a review (manually) to populate per-agent performance."
+    "body": "Run a review (manually) to populate per-agent performance.",
+    "noRunsInPeriodTitle": "No runs in this period",
+    "noRunsInPeriodBody": "Widen the period or run a review to populate this dashboard.",
+    "noAgentsTitle": "No agents yet",
+    "noAgentsBody": "Create an agent to start tracking performance."
   },
   "perAgent": "Per-agent"
 }

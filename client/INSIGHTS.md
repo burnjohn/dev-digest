@@ -854,3 +854,23 @@ noted here for a future pass, not silently dropped.
 number-only render); client/src/app/agents/[id]/_components/AgentEditor/
 _components/CiTab/helpers.ts vs client/src/app/ci-runs/_components/
 CiRunsView/helpers.ts (duplicated `statusI18nKey`)
+
+## 2026-08-25 · dependency
+**Розширення `useAgentsStats` періодом (Agent Performance dashboard) змінило
+її повернений тип з голого `Map<string, AgentStats>` на `{ data, isLoading,
+isError, refetch }` — зламало ЄДИНОГО іншого викликача поза новою фічею**
+`ConfigureRunScreen.tsx` (SPEC-07 T10, Configure run screen) уже викликав
+`useAgentsStats(all.map(...))` і одразу індексував результат як `Map`
+(`statsMap.get(a.id)`). Новий дашборд потребував `isLoading`/`isError`/
+`refetch` з тієї самої функції (щоб не форкати другий агрегатор — план
+`agent-performance-dashboard.md` прямо забороняв другий шлях агрегації), а
+`Map`, попри те що це об'єкт, не має природного місця для трьох додаткових
+булевих/функціональних полів без хаку (`Object.assign` на екземпляр `Map`).
+Обрано змінити форму повернення й оновити єдиного існуючого викликача
+(`const { data: statsMap } = useAgentsStats(...)`) — не форкати другий хук.
+Перед будь-якою зміною форми повернення спільного хука: `grep -rn
+"useAgentsStats"` по всьому `client/src` (не лише по фічі з плану) — тут
+знайшовся рівно один зовнішній викликач, і план цю залежність не згадував.
+Доказ: client/src/lib/hooks/agents.ts:203-226 (нова форма повернення);
+client/src/app/repos/[repoId]/pulls/[number]/_components/ConfigureRunScreen/ConfigureRunScreen.tsx:37
+(оновлений виклик)

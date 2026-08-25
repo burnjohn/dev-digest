@@ -290,3 +290,22 @@ worktree `devdigest-ci`). Group 4 (`client`: нова вкладка CI в
 потребує реального прогону typecheck/тестів координатором, за замовчуванням.
 Доказ: system prompt цієї сесії (`<functions>`-блок без `Bash`); записи
 вище для Group 2/Group 3, той самий план і той самий worktree `devdigest-ci`
+
+## 2026-08-25 · gotcha
+**Відсутність `Bash` у сесії `implementer` — ВОСЬМИЙ підтверджений раз, тепер
+на плані `agent-performance-dashboard.md` (server + client, обидва пакети
+одної сесії)**
+Продовжує довгий ряд записів вище (2026-08-19 ×2, 2026-08-22 ×4) — знову
+список `functions` цієї сесії містив лише `Read/Edit/Write/Skill/Grep/Glob`,
+без `Bash`. Новий факт: цього разу це один суцільний implementer-прогін, що
+торкнувся ОБОХ пакетів одразу (`server/src/modules/agents/*`,
+`client/src/app/agent-performance/**`, `client/src/lib/hooks/agents.ts`,
+`client/src/vendor/ui/nav.ts`) — попередні підтвердження завжди були
+по-пакетно (окремий implementer на server, окремий на client). Наслідок:
+`pnpm exec vitest run` (server unit + `.it.test`) і `pnpm test`/`pnpm
+typecheck` (client) НЕ були виконані цією сесією — лише Read/Edit/Write.
+Координатор/наступна сесія має прогнати їх сама, включно з новим
+`server/test/agent-stats.it.test.ts` кейсом (потребує Docker) і новим
+`client/.../AgentPerformanceView/AgentPerformanceView.test.tsx`.
+Доказ: system prompt цієї сесії (`<functions>`-блок без `Bash`); попередні
+підтвердження — записи 2026-08-19 (×2) і 2026-08-22 (×4) вище в цьому файлі

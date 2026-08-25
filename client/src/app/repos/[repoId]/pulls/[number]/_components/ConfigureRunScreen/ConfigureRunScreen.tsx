@@ -34,7 +34,7 @@ export function ConfigureRunScreen({ prId, onCancel, onSubmitted }: ConfigureRun
   const t = useTranslations("prReview");
   const { data: agents, isLoading } = useAgents();
   const all = agents ?? [];
-  const statsMap = useAgentsStats(all.map((a) => a.id));
+  const { data: statsMap } = useAgentsStats(all.map((a) => a.id));
   const run = useRunReview();
 
   // Per-agent override of the default `agent.enabled` checked-state; an agent

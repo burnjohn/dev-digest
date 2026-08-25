@@ -64,4 +64,15 @@ describe('routes (no DB)', () => {
     expect(res.json().error.code).toBe('validation_error');
     await app.close();
   });
+
+  it('GET /agents/:id/stats returns 422 on a malformed since/until querystring (validated before the handler touches the DB)', async () => {
+    const app = await buildApp({ config });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/agents/00000000-0000-0000-0000-000000000000/stats?since=not-a-date',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+    await app.close();
+  });
 });

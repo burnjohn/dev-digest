@@ -1,9 +1,17 @@
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, lte, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { StatsFinding, StatsRun } from './stats-helpers.js';
 
-const WINDOW_DAYS = 30;
+/** Default trailing window when a caller doesn't pass an explicit range —
+ *  kept here (not just in service.ts) so this repository stays self-
+ *  documenting about its historic default. */
+export const DEFAULT_WINDOW_DAYS = 30;
+
+export interface StatsRange {
+  since: Date;
+  until: Date;
+}
 
 export class StatsRepository {
   constructor(private db: Db) {}
@@ -11,8 +19,9 @@ export class StatsRepository {
   async getWindowData(
     workspaceId: string,
     agentId: string,
+    range: StatsRange,
   ): Promise<{ runs: StatsRun[]; findings: StatsFinding[]; skillNames: Map<string, string> }> {
-    const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const { since, until } = range;
 
     const runRows = await this.db
       .select({
@@ -34,6 +43,7 @@ export class StatsRepository {
           eq(t.agentRuns.workspaceId, workspaceId),
           eq(t.agentRuns.agentId, agentId),
           gte(t.agentRuns.ranAt, since),
+          lte(t.agentRuns.ranAt, until),
           // Stats describe completed reviews — a 'running'/'failed' run has
           // null skillIds/costUsd/durationMs and would otherwise pollute
           // every headline aggregate (total runs, avg cost/latency, and the
@@ -64,6 +74,7 @@ export class StatsRepository {
           eq(t.reviews.workspaceId, workspaceId),
           eq(t.reviews.agentId, agentId),
           gte(t.reviews.createdAt, since),
+          lte(t.reviews.createdAt, until),
         ),
       );
     const reviewIds = reviewRows.map((r) => r.id);

@@ -16,6 +16,15 @@ const VersionParams = z.object({
   version: z.coerce.number().int().positive(),
 });
 
+/** `/agents/:id/stats?since=&until=` — both optional; when either is
+ *  omitted the service falls back to the trailing-30-days default (mirrors
+ *  `ListCiRunsQuery` in `modules/ci/routes.ts`). ISO datetime strings,
+ *  parsed to `Date` in the handler below. */
+const GetStatsQuery = z.object({
+  since: z.string().datetime().optional(),
+  until: z.string().datetime().optional(),
+});
+
 /**
  * A2 — agents module (owner A2).
  *   GET    /agents                  → list (workspace-scoped)
@@ -27,7 +36,9 @@ const VersionParams = z.object({
  *   GET    /agents/:id/skills       → linked skills (ordered)
  *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
- *   GET    /agents/:id/stats        → 30-day quality/cost aggregates
+ *   GET    /agents/:id/stats        → quality/cost aggregates; optional
+ *                                     ?since=&until= ISO range, default
+ *                                     trailing 30 days when omitted
  *   GET    /providers/:id/models    → dynamic model list for a provider (editor)
  */
 
@@ -172,12 +183,26 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     return service.listModels(agent.provider);
   });
 
-  app.get('/agents/:id/stats', { schema: { params: IdParams } }, async (req) => {
-    const { workspaceId } = await getContext(app.container, req);
-    const stats = await service.getStats(workspaceId, req.params.id);
-    if (!stats) throw new NotFoundError('Agent not found');
-    return stats;
-  });
+  app.get(
+    '/agents/:id/stats',
+    { schema: { params: IdParams, querystring: GetStatsQuery } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const { since, until } = req.query;
+      // Parse whichever params the caller actually passed and hand them
+      // through as-is — `service.getStats` is the one place that resolves a
+      // missing side to the trailing-30-days default (Stats tab's own call,
+      // with neither param, gets both sides defaulted there unchanged).
+      // No range-window arithmetic belongs here.
+      const range = {
+        since: since ? new Date(since) : undefined,
+        until: until ? new Date(until) : undefined,
+      };
+      const stats = await service.getStats(workspaceId, req.params.id, range);
+      if (!stats) throw new NotFoundError('Agent not found');
+      return stats;
+    },
+  );
 
   app.get('/providers/:id/models', { schema: { params: ProviderParams } }, async (req) => {
     await getContext(app.container, req);
