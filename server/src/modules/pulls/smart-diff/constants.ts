@@ -34,6 +34,17 @@ export const BOILERPLATE_SUFFIX_PATTERNS = [
   '.d.ts',
   '.snap',
   '.lock',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.svg',
+  '.ico',
+  '.webp',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.eot',
 ] as const;
 
 // Checked second — middle priority
