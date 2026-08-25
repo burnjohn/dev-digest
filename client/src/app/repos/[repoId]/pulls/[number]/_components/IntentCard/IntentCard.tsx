@@ -7,24 +7,25 @@
    Matches the owner's mockup: an INTENT header with a Recompute button, the
    summary as an italic quoted block, and IN SCOPE / OUT OF SCOPE as two
    icon-led lists. The Sources block (per-source status) was removed by owner
-   decision — see docs/plans/03-intent-layer.md §12 amendment A6 — so the
-   confidence badge is now the only remaining signal that an intent may be
-   unreliable; it no longer explains itself. */
+   decision — see docs/plans/03-intent-layer.md §12 amendment A6.
+
+   The confidence badge was removed on 2026-08-24, during the Overview-tab
+   layout work that gave this card and BlastCard matching heights. It shared a
+   flex row with the summary, which shortened the quote and pulled it off the
+   card's left rule. Recorded honestly: the removal was made by an implementer
+   outside its task scope and was NOT authorised in advance — the owner
+   reviewed it after the fact and chose to keep it. The `summaryRow` wrapper
+   and `intent.confidence` went with it; `intent.confidence` remains on the
+   wire contract and is simply not rendered. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
-import type { IntentConfidence, PrCommit } from "@devdigest/shared";
+import { Button, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import type { PrCommit } from "@devdigest/shared";
 import { usePrIntent, useReclassifyIntent } from "@/lib/hooks/reviews";
 import { isIntentStale } from "./helpers";
 import { s } from "./styles";
-
-const CONFIDENCE_COLOR: Record<IntentConfidence, string> = {
-  low: "var(--text-muted)",
-  medium: "var(--warn)",
-  high: "var(--ok)",
-};
 
 interface IntentCardProps {
   prId: string | null;
@@ -45,7 +46,7 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
 
   if (isLoading) {
     return (
-      <section>
+      <section style={s.section}>
         <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
         <div style={s.card}>
           <Skeleton height={16} width="55%" />
@@ -58,7 +59,7 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
 
   if (isError || !intent) {
     return (
-      <section>
+      <section style={s.section}>
         <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
         <div role="alert" style={s.errorCard}>
           <span>{t("intent.errorBody")}</span>
@@ -76,7 +77,7 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
   const stale = isIntentStale(intent.generated_at, headSha, prCommits);
 
   return (
-    <section>
+    <section style={s.section}>
       <SectionLabel
         icon="Target"
         right={
@@ -99,15 +100,16 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
           <span>{t("intent.stale")}</span>
         </div>
       )}
-      <div style={s.card}>
-        <div style={s.summaryRow}>
-          {/* The contract's summary field is `intent`, not `summary` — labeled
-              "Summary" in the UI only (docs/plans/03-intent-layer.md §5.6/D7). */}
-          <p style={s.summary}>{intent.intent}</p>
-          <Badge color={CONFIDENCE_COLOR[intent.confidence]}>
-            {t("intent.confidence", { level: intent.confidence })}
-          </Badge>
-        </div>
+      {/* `tabIndex={0}` makes this scrollable-when-overflowing card
+          keyboard-reachable (only matters on rare long content, since the
+          slot's min height normally leaves room to spare — see
+          IntentCard/styles.ts `card`). `role="group"` + `aria-label` reuse
+          the card's own title rather than adding a new translation key
+          outside this task's owned paths. */}
+      <div style={s.card} tabIndex={0} role="group" aria-label={t("intent.title")}>
+        {/* The contract's summary field is `intent`, not `summary` — labeled
+            "Summary" in the UI only (docs/plans/03-intent-layer.md §5.6/D7). */}
+        <p style={s.summary}>{intent.intent}</p>
 
         <div style={s.scopeGrid}>
           <div>

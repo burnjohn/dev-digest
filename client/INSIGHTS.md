@@ -6,6 +6,14 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-25 — a hook's `isError` branch does NOT cover a malformed payload; that one throws in render
+`api.get<T>()` is a plain TypeScript cast with no runtime parse, so a partial or drifted response
+resolves *successfully* and then throws when the component destructures it (`const { totals } = blast`).
+TanStack Query never sees a failure, the card's `isError` branch never runs, and `app/error.tsx` blanks
+the whole route segment. Wrap such cards in `components/error-boundary` — pass `resetKeys={[prId]}` so
+the fallback clears on navigation — or validate the payload in the hook. The card's own error branch is
+only for transport failures.
+
 ### 2026-08-22 — Capture a scroll position in the RENDER phase; `scroll` events are async and always lose the race
 `_lib/use-tab-scroll-memory.ts` shipped three separate fixes for "the Files-changed offset is lost on
 tab switch" while a `scroll` listener still owned the capture — all three failed in Chrome with a

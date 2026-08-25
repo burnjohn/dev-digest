@@ -49,6 +49,7 @@ import {
   INDEX_JOB_KIND,
   INDEXER_VERSION,
   MAX_CALLERS_PER_SYMBOL,
+  MAX_TOTAL_CALLER_ROWS,
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
@@ -282,6 +283,7 @@ export class RepoIntelService implements RepoIntel {
           viaSymbol: sym.name,
           line: r.line,
           rank: 0, // ripgrep/degraded path has no persistent rank
+          declFile: sym.file, // known exactly — this loop iterates one changed symbol at a time
         });
         callerFiles.add(r.fromPath);
       }
@@ -359,7 +361,11 @@ export class RepoIntelService implements RepoIntel {
         enclosingFromRows(symsByFile.get(c.fromPath) ?? [], c.line) ??
         c.fromPath.split('/').pop() ??
         c.fromPath;
-      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}`;
+      // declFile is part of the dedup key too: two DIFFERENT changed symbols
+      // sharing a name (declared in different files) can both be called from
+      // the same enclosing caller function, and must not collapse into one
+      // row now that they're independently attributable.
+      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}|${c.declFile}`;
       if (seenCaller.has(key)) continue;
       seenCaller.add(key);
       callers.push({
@@ -368,6 +374,7 @@ export class RepoIntelService implements RepoIntel {
         viaSymbol: c.toSymbol,
         line: c.line,
         rank: c.rank,
+        declFile: c.declFile,
       });
     }
     callers.sort((a, b) => b.rank - a.rank);
@@ -384,7 +391,7 @@ export class RepoIntelService implements RepoIntel {
 
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: capBlastCallers(callers),
       impactedEndpoints: [...endpoints],
       factsByFile,
       degraded: false,
@@ -742,6 +749,71 @@ const JUNK_PATH_PATTERNS = [
 function isJunkPath(path: string): boolean {
   const lower = path.toLowerCase();
   return JUNK_PATH_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Caps an ALREADY rank-sorted (desc) list of resolved caller rows in two
+ * passes:
+ *
+ *   1. Per changed symbol — grouped by `(viaSymbol, declFile)`, NOT
+ *      `viaSymbol` alone, because two changed symbols can share a name
+ *      across different declaring files; a name-only group would let one
+ *      collide-name symbol's high-rank callers crowd out the other's,
+ *      recreating the exact "empty means genuinely none" lie this cap
+ *      exists to prevent, just scoped to the colliding pair instead of the
+ *      whole PR. Each group is sliced at `perSymbolCap`, preserving the
+ *      rank-desc order already established by the caller.
+ *   2. A global ceiling (`totalCeiling`), applied via round-robin across the
+ *      already-capped per-symbol groups. Round-robin (rather than a flat
+ *      slice of the concatenated groups) guarantees every group that has AT
+ *      LEAST ONE caller keeps at least one after the ceiling — the ceiling
+ *      can only ever thin every symbol's list a little, never zero one out
+ *      while another keeps all of its rows. That invariant holds as long as
+ *      `totalCeiling >= number of distinct (viaSymbol, declFile) groups`,
+ *      which is the whole reason `totalCeiling` is set well above
+ *      `perSymbolCap` rather than close to it.
+ *
+ * Exported so this interaction is unit-testable without a database —
+ * `tryPersistentBlast` is the only production caller.
+ */
+export function capBlastCallers(
+  sortedCallers: BlastCallerRow[],
+  perSymbolCap: number = MAX_CALLERS_PER_SYMBOL,
+  totalCeiling: number = MAX_TOTAL_CALLER_ROWS,
+): BlastCallerRow[] {
+  const byChangedSymbol = new Map<string, BlastCallerRow[]>();
+  for (const c of sortedCallers) {
+    const key = `${c.viaSymbol}|${c.declFile ?? ''}`;
+    const group = byChangedSymbol.get(key);
+    if (group) group.push(c);
+    else byChangedSymbol.set(key, [c]);
+  }
+  const perSymbolCapped = [...byChangedSymbol.values()].map((group) =>
+    group.slice(0, perSymbolCap),
+  );
+  return capRoundRobin(perSymbolCapped, totalCeiling);
+}
+
+/** Round-robins across already-capped groups up to `limit` total rows. */
+function capRoundRobin<T>(groups: T[][], limit: number): T[] {
+  const out: T[] = [];
+  const cursor = new Array(groups.length).fill(0);
+  let anyLeft = true;
+  while (out.length < limit && anyLeft) {
+    anyLeft = false;
+    for (let i = 0; i < groups.length && out.length < limit; i += 1) {
+      const group = groups[i];
+      if (!group) continue;
+      const idx = cursor[i] ?? 0;
+      const item = group[idx];
+      if (item !== undefined) {
+        out.push(item);
+        cursor[i] = idx + 1;
+        anyLeft = true;
+      }
+    }
+  }
+  return out;
 }
 
 /** Enclosing top-level (bare-name) symbol for a line, from persistent rows. */

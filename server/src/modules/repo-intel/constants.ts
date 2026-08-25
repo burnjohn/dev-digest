@@ -26,8 +26,30 @@ export const EXCLUDED_DIRS = [
 ] as const;
 
 // --- Read-time limits -------------------------------------------------------
-/** [T1] Caller fan-out cap per changed symbol (ORDER BY rank DESC LIMIT N). */
+/**
+ * [T1] Caller fan-out cap PER CHANGED SYMBOL — i.e. per (name, declaring
+ * file), not per name alone (two changed symbols can share a name across
+ * different files). `tryPersistentBlast` (repo-intel/service.ts) applies
+ * this by grouping resolved callers on `(viaSymbol, declFile)` and slicing
+ * each group, never by slicing the flattened cross-symbol list — the "20
+ * caller rows for the whole PR" bug the doc comment here always described
+ * but the code, until this fix, did not implement.
+ */
 export const MAX_CALLERS_PER_SYMBOL = 20;
+
+/**
+ * [T1] Global ceiling on TOTAL caller rows `tryPersistentBlast` returns
+ * across every changed symbol, applied AFTER the per-symbol cap above via
+ * round-robin (`capBlastCallers` in service.ts) so the ceiling can only ever
+ * thin every symbol's list a little — never zero one out while another
+ * keeps all of its rows, which would silently reproduce the exact bug
+ * `MAX_CALLERS_PER_SYMBOL`'s per-group cap was just fixed to avoid, one
+ * layer up. Set well above the per-symbol cap (25x) so it only engages for
+ * pathological PRs touching dozens of hot symbols — the measured worst case
+ * (366 changed symbols on one real PR) stays well under it even if every
+ * symbol had callers.
+ */
+export const MAX_TOTAL_CALLER_ROWS = 500;
 
 /**
  * [T1] Bumped whenever the AST extractor or symbol schema changes. A mismatch

@@ -79,8 +79,7 @@ describe("IntentCard — get-or-create on mount (REQ-8, REQ-14)", () => {
     expect(usePrIntentSpy).toHaveBeenCalledWith("pr-1");
     expect(screen.getByText(INTENT.intent)).toBeInTheDocument();
     expect(screen.getByText("Rate limiter middleware")).toBeInTheDocument();
-    expect(screen.getByText("Auth changes")).toBeInTheDocument();
-    expect(screen.getByText("high confidence")).toBeInTheDocument();
+    expect(screen.getByText("Auth changes")).toBeInTheDocument();
   });
 });
 

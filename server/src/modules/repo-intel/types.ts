@@ -69,6 +69,18 @@ export interface BlastCallerRow {
   line: number;
   /** file_rank.rank of the caller file (0 in the degraded/ripgrep path). */
   rank: number;
+  /**
+   * The FILE `viaSymbol` is declared in — both production paths (persistent
+   * SQL resolution and the ripgrep fallback) always know this, so a caller
+   * can be attributed to the exact changed symbol it reaches rather than
+   * just its name (two changed symbols can share a name across different
+   * files — plan 06-blast-radius follow-up "Blast Radius — symbol list
+   * ordering & caller-cap correctness", D2). Optional (not `undefined`-safe
+   * everywhere by construction) so hand-built `BlastCallerRow` test fixtures
+   * that predate this field keep compiling and keep their old, looser
+   * (name-only) matching behaviour in `blast/helpers.ts`.
+   */
+  declFile?: string;
 }
 
 export interface BlastResult {

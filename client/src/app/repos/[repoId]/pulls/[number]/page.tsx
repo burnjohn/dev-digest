@@ -183,6 +183,7 @@ export default function PRDetailPage() {
             prBody={pr.body}
             headSha={pr.head_sha}
             prCommits={pr.commits}
+            repoFullName={repoFullName}
           />
         )}
 

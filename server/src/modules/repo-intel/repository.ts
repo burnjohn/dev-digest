@@ -13,7 +13,7 @@
  * raw-SQL probes below MUST swallow `undefined_table` (Postgres 42P01) so the
  * facade keeps returning degraded — never throws.
  */
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { clampIndexedName } from '../../db/schema/context.js';
@@ -136,6 +136,12 @@ export interface ResolvedCallerRow {
   toSymbol: string;
   line: number;
   rank: number;
+  /** The changed file `toSymbol` resolved to — carried so callers of two
+   * same-named changed symbols (declared in different files) can be told
+   * apart downstream (blast/helpers.ts). Always one of the `declFiles`
+   * passed to `getResolvedCallers`, never null (guaranteed by the
+   * `inArray(declFile, declFiles)` filter below). */
+  declFile: string;
 }
 
 export class RepoIntelRepository {
@@ -551,19 +557,35 @@ export class RepoIntelRepository {
       .where(and(eq(t.symbols.repoId, repoId), inArray(t.symbols.path, paths)));
   }
 
-  /** Resolved cross-file callers of symbols declared in `declFiles`. */
+  /**
+   * Resolved cross-file callers of symbols declared in `declFiles`. Excludes
+   * same-file references at the SQL level (`fromPath <> declFile`) — a
+   * caller-cap-plan follow-up fix: this used to only be enforced later, in
+   * `blast/helpers.ts`, which meant same-file references consumed a cap slot
+   * upstream before being discarded downstream, silently reducing recall for
+   * the real cross-file callers that should have kept that slot. The JS
+   * guard in `blast/helpers.ts` stays as belt-and-suspenders — the contract
+   * there re-asserts the exclusion per-symbol regardless of what this query
+   * returns.
+   *
+   * KNOWN RECALL GAP (documented, not fixed here — out of scope): the
+   * `innerJoin` on `file_rank` means a caller file with no `file_rank` row
+   * (e.g. not walked by the rank step, or rank hasn't been computed yet)
+   * vanishes from the result entirely rather than surfacing with `rank: 0`.
+   */
   async getResolvedCallers(
     repoId: string,
     declFiles: string[],
     names: string[],
   ): Promise<ResolvedCallerRow[]> {
     if (declFiles.length === 0 || names.length === 0) return [];
-    return this.db
+    const rows = await this.db
       .select({
         fromPath: t.references.fromPath,
         toSymbol: t.references.toSymbol,
         line: t.references.line,
         rank: t.fileRank.rank,
+        declFile: t.references.declFile,
       })
       .from(t.references)
       .innerJoin(
@@ -578,8 +600,14 @@ export class RepoIntelRepository {
           eq(t.references.repoId, repoId),
           inArray(t.references.declFile, declFiles),
           inArray(t.references.toSymbol, names),
+          ne(t.references.fromPath, t.references.declFile),
         ),
       );
+    // `declFile` is `text | null` at the column level (T2: NULL = unresolved),
+    // but the `inArray(declFile, declFiles)` filter above guarantees every
+    // returned row has a non-null value that is one of `declFiles` — this
+    // narrows the column's nullable type to the row shape callers actually get.
+    return rows.map((r) => ({ ...r, declFile: r.declFile as string }));
   }
 
   /** Per-file facts (endpoints/crons) for the given files. */

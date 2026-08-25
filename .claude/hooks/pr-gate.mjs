@@ -3,8 +3,9 @@
  * pr-gate — PreToolUse hook for the `pr-self-review` skill.
  *
  * Denies `git push` / `gh pr create` / `gh pr ready` unless
- * `.devdigest/cache/pr-self-review/gate.json` holds a FRESH `approve` (or a valid
- * override bound to the same working tree).
+ * `.devdigest/cache/pr-self-review/gate.json` holds a FRESH non-blocking verdict —
+ * `approve` or `comment` — or a valid override bound to the same working tree.
+ * `request_changes` (i.e. at least one CRITICAL) is the verdict that denies.
  *
  * Three properties this file exists to guarantee, in priority order:
  *
@@ -199,6 +200,32 @@ function emitDigest() {
   process.exit(0);
 }
 
+/**
+ * The verdicts that do NOT block a push.
+ *
+ * SKILL.md §7 is explicit: a CRITICAL is "the ONLY level that blocks merge", and the
+ * verdict is a pure function of the findings (contracts/findings.ts:26) — any CRITICAL
+ * → `request_changes`, WARNING/SUGGESTION-only → `comment`, nothing → `approve`. So
+ * `comment` means "reviewed, nothing blocking", which §7 lists under "Does not block".
+ *
+ * This was `verdict === 'approve'` until 2026-08-24, when a live run hit it: a branch
+ * with zero CRITICALs and one WARNING (a stray `mcp/pnpm-lock.yaml`) was refused a push.
+ * Two things were wrong with that. It collapses a three-level severity rubric into two,
+ * making WARNING indistinguishable from CRITICAL in the only place severity is acted on;
+ * and several mechanical rules (H3, H5, H12, H17, H18) are WARNING BY DESIGN and were
+ * never meant to stop a push. The deny branch below is itself the evidence — on a
+ * `comment` verdict it renders "0 blocking issue(s)" and "(see the report)", because it
+ * was written assuming criticals exist.
+ *
+ * It survived because `pr-gate.test.mjs` covered `approve` and `request_changes` but
+ * never `comment` — the third enum value was untested. ANY change here needs a
+ * `comment` → ALLOW case in that file.
+ *
+ * A Set rather than `!== 'request_changes'` so an unknown or malformed verdict still
+ * fails closed.
+ */
+const PASSING_VERDICTS = new Set(['approve', 'comment']);
+
 function main() {
   if (process.argv[2] === '--digest') emitDigest();
 
@@ -274,7 +301,22 @@ function main() {
     ov.reason.trim().length >= OVERRIDE_MIN_REASON &&
     ov.workingTreeDigest === digest;
 
-  if (gate.verdict === 'approve' || overrideValid) allow();
+  if (PASSING_VERDICTS.has(gate.verdict) || overrideValid) {
+    // Passing, but not spotless — say so. A silent allow on a partial review is how a
+    // coverage gap becomes invisible; a BLOCKING one is how the gate gets ripped out.
+    // stderr only: stdout is the hook's decision channel and must stay clean, and the
+    // hook must remain silent on the happy path.
+    if (gate.verdict !== 'approve' || gate.coverage === 'partial') {
+      const bits = [];
+      if (gate.verdict !== 'approve') bits.push(`verdict \`${gate.verdict}\``);
+      if (gate.coverage === 'partial') bits.push('coverage `partial`');
+      process.stderr.write(
+        `pr-gate: allowing \`${matched}\` with ${bits.join(' and ')} — no CRITICAL findings. ` +
+          `Report: ${gate.reportPath ?? '(none)'}\n`,
+      );
+    }
+    allow();
+  }
 
   const criticals = Array.isArray(gate.criticals) ? gate.criticals : [];
   const list = criticals.length

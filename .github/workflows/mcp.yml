@@ -1,0 +1,58 @@
+# mcp suite — the local stdio MCP server (@devdigest/mcp).
+# Talks HTTP to @devdigest/api; no DB access, no HTTP server of its own.
+# Tests are hermetic units: buildServer(deps) runs with a fake ApiPort, no
+# transport, no socket, no network, no keys. Uses npm (package-lock.json).
+#
+# This package has exactly ONE lane, not a unit/integration split: the
+# `.it.test.ts` suffix rule applies "iff the subject imports drizzle-orm,
+# postgres, db/client or a repository.ts" (onion-architecture §5 Tests), and
+# nothing in mcp/ can — there is no persistence ring here at all (plan
+# docs/plans/05-mcp-server.md §5.12.4/§5.12.5). So `npm test` is the whole
+# suite, no Docker, no split.
+#
+# server/src/vendor/shared/** is in the path filter because mcp/tsconfig.json
+# aliases @devdigest/shared to it at type-check time (same reason as
+# reviewer-core.yml's identical filter entry).
+name: mcp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp.yml'
+  pull_request:
+    paths:
+      - 'mcp/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
