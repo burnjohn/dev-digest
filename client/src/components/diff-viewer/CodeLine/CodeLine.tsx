@@ -35,8 +35,12 @@ export function CodeLine({
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
 
+  const lineId =
+    ln.newNo != null ? `dl-${path.replace(/[^a-z0-9]/gi, "_")}-${ln.newNo}` : undefined;
+
   return (
     <div
+      id={lineId}
       style={cs.rowWrap}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

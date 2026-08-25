@@ -14,6 +14,7 @@ import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
+import { SmartDiffViewer } from "./_components/SmartDiffViewer";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -173,6 +174,19 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+          />
+        )}
+
+        {tab === "smart-diff" && prId && (
+          <SmartDiffViewer
+            prId={prId}
+            onFindingClick={(path, line) => {
+              setTab("diff");
+              const id = `dl-${path.replace(/[^a-z0-9]/gi, "_")}-${line}`;
+              setTimeout(() => {
+                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }, 350);
+            }}
           />
         )}
       </div>

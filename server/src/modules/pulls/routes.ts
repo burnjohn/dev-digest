@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, SmartDiff } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
+import { buildSmartDiff } from './smart-diff/service.js';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -355,6 +356,44 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         const msg = err instanceof Error ? err.message : 'Failed to post the comment to GitHub.';
         throw new AppError('github_comment_failed', msg, 400, { cause: String(err) });
       }
+    },
+  );
+
+  // ---- Smart Diff ----------------------------------------------------------
+  app.get(
+    '/pulls/:id/smart-diff',
+    { schema: { params: IdParams } },
+    async (req): Promise<SmartDiff> => {
+      const { workspaceId } = await getContext(container, req);
+      const [pr] = await container.db
+        .select()
+        .from(t.pullRequests)
+        .where(
+          and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.id, req.params.id)),
+        );
+      if (!pr) throw new NotFoundError('Pull request not found');
+
+      const files = await container.db
+        .select()
+        .from(t.prFiles)
+        .where(eq(t.prFiles.prId, pr.id));
+
+      const reviews = await container.reviewRepo.reviewsForPull(pr.id);
+      const latestFindings = reviews[0]?.findings ?? [];
+
+      return buildSmartDiff(
+        files.map((f) => ({
+          path: f.path,
+          additions: f.additions,
+          deletions: f.deletions,
+          patch: f.patch ?? null,
+        })),
+        latestFindings.map((f) => ({
+          file: f.file,
+          start_line: f.startLine ?? null,
+          end_line: f.endLine ?? null,
+        })),
+      );
     },
   );
 }
