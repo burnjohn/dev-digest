@@ -18,9 +18,19 @@ import { z } from 'zod';
  * model is allowed to see. Every field below is re-declared against this
  * package's own zod rather than re-exported from the shared contract, and
  * every field carries a comment saying why it earns its tokens (§5.3, §5.6
- * principle 3) — `run_id`, `agent_id` (per-finding), `review_id`,
- * `pr_id`, `accepted_at`, `dismissed_at`, `grounding`, `created_at`, `kind`,
- * `category`, `trifecta_components` and `evidence` all stay out on purpose.
+ * principle 3) — `agent_id` (per-finding), `review_id`, `pr_id`,
+ * `accepted_at`, `dismissed_at`, `grounding`, `kind`, `category`,
+ * `trifecta_components` and `evidence` all stay out on purpose.
+ *
+ * `run_id` and `created_at` used to be on that list and no longer are, in ONE
+ * place: `AgentFindingsGroupSchema` below (2026-08-25). That is a deliberate,
+ * scoped reversal, not drift. `get_findings` gained `all_runs`, and a per-run
+ * group without a run id or a timestamp is a group the model cannot tell apart
+ * from the next one — the two fields are what makes the parameter mean
+ * anything, and they are what makes the DEFAULT ("each agent's latest run")
+ * legible rather than an invisible collapse. They stay out of the per-FINDING
+ * shapes, where they would be paid for once per finding instead of once per
+ * group and would buy nothing.
  */
 
 export const FindingSeverity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
@@ -130,8 +140,8 @@ export interface DetailedFindingsResultShape extends Omit<ConciseFindingsResultS
 }
 
 /* ---------------------------------------------------------------------- */
-/* get_findings(repo, pr, agent?, response_format?, severity?, file?)      */
-/*                                                            — §5.13.4    */
+/* get_findings(repo, pr, agent?, response_format?, severity?, file?,      */
+/*              all_runs?)                                    — §5.13.4    */
 /* ---------------------------------------------------------------------- */
 
 export const GetFindingsInput = {
@@ -148,6 +158,10 @@ export const GetFindingsInput = {
     .describe('"concise" (default) or "detailed" — detailed adds rationale/suggestion/confidence per finding'),
   severity: FindingSeverity.optional().describe('narrow to one severity — CRITICAL, WARNING or SUGGESTION'),
   file: z.string().optional().describe('narrow to findings on exactly this file path'),
+  all_runs: z
+    .boolean()
+    .optional()
+    .describe("true = one group per stored run; omit for each agent's latest run only"),
 };
 
 /**
@@ -156,8 +170,11 @@ export const GetFindingsInput = {
  * `{findings: []}` — an empty structured result would misreport "could not
  * resolve the PR" as "this PR has zero findings" (the 2026-08-17 fail-open
  * insight `run-agent-on-pr.test.ts`/`get-findings.test.ts` both guard).
- * `get_findings` needs no `run_id`/`status`/`poll_with` — it never starts a
- * run — but it does add `agents`, one entry per agent that reviewed.
+ * `get_findings` needs no TOP-LEVEL `run_id`/`status`/`poll_with` — it never
+ * starts a run, so it has no single run to report on — but it does add
+ * `agents`, one entry per agent that reviewed (or, under `all_runs`, per run).
+ * Each of those groups carries its OWN `run_id`; that is a different field
+ * answering a different question, and the two must not be conflated.
  *
  * It does NOT reuse `FindingsOutputShape` any more. A pull carries one review
  * per agent, and a flat shape forced one `verdict`/`score` to stand for all of
@@ -170,6 +187,15 @@ export const GetFindingsInput = {
 export const AgentFindingsGroupSchema = z.object({
   agent_id: z.string().nullable(),
   agent_name: z.string().nullable(),
+  /** Which run this group came from. Nullable on the wire — `reviews.run_id`
+   *  has been nullable since migration 0008 with no backfill — so a null here
+   *  means "not recorded", never "no run". Under `all_runs` this is the only
+   *  field that distinguishes two groups from the same agent. */
+  run_id: z.string().nullable(),
+  /** The review's ISO-8601 timestamp. Present in BOTH modes on purpose: under
+   *  the default it is what tells a reader *which* run the latest-wins rule
+   *  picked, which is the question `all_runs` exists to answer. */
+  created_at: z.string(),
   /** `false` = this agent never reviewed this pull, so there is no stored
    *  result — distinct from a review that ran and found nothing, which is
    *  `true` with an empty `findings` array. Collapsing the two is what makes
@@ -207,6 +233,8 @@ export const GetFindingsOutput = {
 export interface ConciseAgentGroupShape {
   agent_id: string | null;
   agent_name: string | null;
+  run_id: string | null;
+  created_at: string;
   reviewed: boolean;
   verdict: ReviewVerdict | null;
   score: number | null;

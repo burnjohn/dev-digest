@@ -347,6 +347,13 @@ describe('run_agent_on_pr — registration (§5.13.3, D-G)', () => {
     expect(result.isError).toBe(false);
     expect(result.structuredContent).toEqual({ run_id: 'run-1', status: 'running', poll_with: 'get_findings' });
     expect(result.content[0]?.text).toContain('get_findings');
+
+    // The sentence must quote the budget this call actually ran under (5s
+    // here), not the 90s default it hardcoded until 2026-08-25. The negative
+    // assertion is the one that fails on a regression: `toContain('after 5s')`
+    // alone would still pass a message that mentioned both.
+    expect(result.content[0]?.text).toContain('after 5s');
+    expect(result.content[0]?.text).not.toContain('90s');
   });
 
   it('a failed run is an isError result naming a next step, never {findings: []}', async () => {

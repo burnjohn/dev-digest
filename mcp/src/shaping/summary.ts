@@ -16,13 +16,33 @@ import type {
 type GroupedResult = ConciseGroupedFindingsResultShape | DetailedGroupedFindingsResultShape;
 type Group = GroupedResult['agents'][number];
 
+/** Mirrors `shaping/project.ts`'s `GroupBy` — re-declared rather than imported
+ *  because `shaping/**` files do not reach sideways into each other for a
+ *  two-member string union, and because this file's use of it is narrower:
+ *  it only decides what a group is CALLED in the sentence. */
+export type SummaryGrouping = 'agent' | 'run';
+
 /** Same discipline as `formatCandidates`' cap in `resolve/messages.ts`: name
  *  a few, then say how many were not named. A workspace with a dozen agents
  *  should not spend a dozen agent names on one summary line. */
 const MAX_AGENTS_NAMED = 5;
 
-function label(group: Group): string {
-  return group.agent_name ?? group.agent_id ?? 'an unattributed review';
+/**
+ * Under `all_runs` several groups carry the SAME agent name, so the name alone
+ * stops identifying anything — a roster reading "Security Reviewer, Security
+ * Reviewer, Security Reviewer" tells a reader nothing and invites them to
+ * assume it is a bug. The run marker is a short `run_id` prefix, not the whole
+ * uuid: enough to tell three groups apart and to quote back in a follow-up,
+ * without spending 36 characters per group on a token budget this file already
+ * caps agent names against.
+ */
+const RUN_MARKER_LENGTH = 8;
+
+function label(group: Group, grouping: SummaryGrouping = 'agent'): string {
+  const name = group.agent_name ?? group.agent_id ?? 'an unattributed review';
+  if (grouping !== 'run') return name;
+  const marker = group.run_id === null ? 'run unrecorded' : `run ${group.run_id.slice(0, RUN_MARKER_LENGTH)}`;
+  return `${name} (${marker})`;
 }
 
 function withNote(sentence: string, note: string | undefined): string {
@@ -35,7 +55,10 @@ function withNote(sentence: string, note: string | undefined): string {
  * agent found nothing" read identically in a bare findings count, and only
  * one of them is a reason to spend a run.
  */
-export function summarizeGroupedFindings(result: GroupedResult): string {
+export function summarizeGroupedFindings(
+  result: GroupedResult,
+  grouping: SummaryGrouping = 'agent',
+): string {
   const groups = result.agents;
 
   if (groups.length === 0) {
@@ -53,17 +76,25 @@ export function summarizeGroupedFindings(result: GroupedResult): string {
   if (groups.length === 1 && only !== undefined) {
     const verdict = only.verdict ?? 'no verdict yet';
     return withNote(
-      `${label(only)} — verdict: ${verdict}. Showing ${result.shown} of ${result.total} findings.`,
+      `${label(only, grouping)} — verdict: ${verdict}. Showing ${result.shown} of ${result.total} findings.`,
       result.note,
     );
   }
 
-  const named = groups.slice(0, MAX_AGENTS_NAMED).map((group) => `${label(group)} (${group.verdict ?? 'no verdict'})`);
+  const named = groups
+    .slice(0, MAX_AGENTS_NAMED)
+    .map((group) => `${label(group, grouping)} (${group.verdict ?? 'no verdict'})`);
   const remaining = groups.length - named.length;
   const roster = remaining > 0 ? `${named.join(', ')}, and ${remaining} more` : named.join(', ');
 
+  // "N agents reviewed" is false under `all_runs`, where N groups are N RUNS
+  // and may all belong to one agent. Saying "agents" there would overstate the
+  // review coverage of the PR — the same class of error as borrowing a verdict
+  // from the wrong agent, one level up.
+  const subject = grouping === 'run' ? 'runs are stored for this pull request' : 'agents reviewed this pull request';
+
   return withNote(
-    `${groups.length} agents reviewed this pull request: ${roster}. ` +
+    `${groups.length} ${subject}: ${roster}. ` +
       `Showing ${result.shown} of ${result.total} findings, most severe first.`,
     result.note,
   );

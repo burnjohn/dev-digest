@@ -258,7 +258,7 @@ describe('the whole tool surface (REQ-5, REQ-7, REQ-9), driven through buildServ
       expect(byteCountByName).toEqual({
         list_agents: 298,
         run_agent_on_pr: 780,
-        get_findings: 736,
+        get_findings: 874,
         get_conventions: 352,
         get_blast_radius: 983,
       });

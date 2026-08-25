@@ -94,6 +94,12 @@ export function compareFindingsAcrossAgents(
 export interface OrderableGroup {
   counts: { critical: number; warning: number; suggestion: number };
   agent_name: string | null;
+  /** The review's ISO-8601 timestamp, used ONLY to break a tie between two
+   *  groups of the same agent — which is a case that cannot arise at all
+   *  until `get_findings` is called with `all_runs` (2026-08-25). A plain
+   *  code-unit comparison orders ISO-8601 UTC correctly, so this ring still
+   *  needs no `Date` and no clock. */
+  created_at: string;
   agentKey: string;
 }
 
@@ -108,6 +114,14 @@ export interface OrderableGroup {
  * it makes the order total; `agent_name` sorts before it only so the result
  * reads alphabetically for a human, and a null name sorts last rather than
  * throwing the comparison.
+ *
+ * `created_at` DESC sits between the two (2026-08-25). Under `all_runs` a
+ * single agent contributes several groups that tie on name and often on counts
+ * as well, and falling straight through to `agentKey` would order those by run
+ * id — a uuid, i.e. at random as far as a reader is concerned. Recency is the
+ * TIEBREAK, not the primary key: run mode gets no ordering rule of its own, so
+ * a run carrying a CRITICAL still leads a newer run that carries none. The
+ * default mode is unaffected, where one agent never has two groups to tie.
  */
 export function compareAgentGroups(a: OrderableGroup, b: OrderableGroup): number {
   const byCritical = b.counts.critical - a.counts.critical;
@@ -121,6 +135,9 @@ export function compareAgentGroups(a: OrderableGroup, b: OrderableGroup): number
 
   const byName = compareStrings(a.agent_name ?? '￿', b.agent_name ?? '￿');
   if (byName !== 0) return byName;
+
+  const byRecency = compareStrings(b.created_at, a.created_at);
+  if (byRecency !== 0) return byRecency;
 
   return compareStrings(a.agentKey, b.agentKey);
 }

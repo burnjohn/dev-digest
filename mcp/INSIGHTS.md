@@ -40,6 +40,13 @@ manual `AbortController.abort()` produces `AbortError`. Error-translation code d
 server is down" from "the request timed out" must check both names — see
 `api/errors.ts::fromFetchFailure`.
 
+### 2026-08-25 — nothing was truncating `run_agent_on_pr`; the client tool timeout defaults to ~28 hours
+An unset `MCP_TOOL_TIMEOUT` defaults to about 28 hours, a **stdio** server has no per-request
+timer at all, and its idle timeout is 30 minutes — so the 90s `DEVDIGEST_MCP_RUN_BUDGET_MS`
+was never at risk from the client. `.mcp.json` now carries `"timeout": 120000` as a pin against
+a *raised* budget, not as a repair: keep it above the budget, note that values under `1000` are
+ignored, and that a value ≥ 1000 also floors the idle timeout. `claude mcp add` cannot set it.
+
 ---
 
 ## Codebase Patterns
@@ -79,6 +86,20 @@ not take scalar fields off `reviews[0]`: `get_findings` served five CRITICAL fin
 Contract Reviewer under the Performance Reviewer's `approve`/100. Group per agent and let
 `verdict`/`score` exist only inside a group — `projectFindings` (one run in, one run out) is the
 only caller for which the flat shape is correct.
+
+### 2026-08-25 — `shaping/project.ts` is BINARY to git, so its diff never appears in review
+`dedupeKey` joins on a literal NUL (`\0`), which makes git classify the whole file as binary:
+`git diff --numstat` reports `-  -` and a PR shows "Bin 14651 -> 18239 bytes" instead of a single
+changed line. This has been true since the file was first committed, and it silently exempts the
+module's densest logic from code review. Fix by adding `*.ts diff` to a `.gitattributes`, or by
+picking a non-NUL separator — but verify the dedupe still can't collide on filenames.
+
+### 2026-08-25 — the frozen byte counts protect the string but NOT the four docs that quote it
+Changing `get_findings`'s description (736 → 874 bytes) broke exactly the two assertions designed
+to catch it — and left three prose copies stale that nothing checks: the verbatim blockquote in
+`specs/mcp-server.md`, the count beside it, and the roster in `AGENTS.md`. That roster was
+*already* wrong (`get_blast_radius` listed as 285, actually 983). When you edit a frozen string,
+`grep` the old byte count and a distinctive phrase across `specs/`, `README.md` and `AGENTS.md`.
 
 ---
 

@@ -128,7 +128,7 @@ export function registerRunAgentOnPr(server: McpServer, deps: RunAgentOnPrDeps):
       if (wait.outcome === 'timeout') {
         return {
           isError: false,
-          text: budgetExhausted(),
+          text: budgetExhausted(deps.budgetMs),
           structuredContent: { run_id: runId, status: 'running' as const, poll_with: 'get_findings' as const },
         };
       }

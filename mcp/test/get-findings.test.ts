@@ -124,14 +124,14 @@ const finding = (patch: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe('get_findings — registration (§5.13.4, D-G)', () => {
-  it('registers with the frozen §5.13.4 description (736 bytes) and readOnlyHint:true', () => {
+  it('registers with the frozen §5.13.4 description (874 bytes) and readOnlyHint:true', () => {
     const { server, registered } = createFakeServer();
     registerGetFindings(server, buildDeps(createFakeApi()));
 
     expect(registered).toHaveLength(1);
     const tool = registered[0]!;
     expect(tool.name).toBe('get_findings');
-    expect(Buffer.byteLength(tool.config.description as string, 'utf8')).toBe(736);
+    expect(Buffer.byteLength(tool.config.description as string, 'utf8')).toBe(874);
     expect((tool.config.description as string).startsWith('Return the findings of a review')).toBe(true);
     expect(tool.config.annotations).toEqual({ readOnlyHint: true });
   });
@@ -377,5 +377,111 @@ describe('get_findings — narrowing to one agent', () => {
     expect(result.content[0]!.text).toContain('API Contract Reviewer');
     expect(result.content[0]!.text).toContain('Performance Reviewer');
     expect(api.listAgents).not.toHaveBeenCalled();
+  });
+});
+
+describe('get_findings — all_runs (2026-08-25)', () => {
+  /** Two runs of ONE agent, the older one still stored. This is the shape the
+   *  tool used to collapse with nothing in the response admitting it. */
+  function twoRunsOfOneAgent(): ReviewProjection[] {
+    return [
+      reviewFixture({
+        run_id: 'run-new',
+        agent_id: 'agent-sec',
+        agent_name: 'Security Reviewer',
+        created_at: '2026-08-25T12:00:00.000Z',
+        verdict: 'approve',
+        score: 90,
+        findings: [],
+      }),
+      reviewFixture({
+        run_id: 'run-old',
+        agent_id: 'agent-sec',
+        agent_name: 'Security Reviewer',
+        created_at: '2026-08-24T12:00:00.000Z',
+        verdict: 'request_changes',
+        score: 10,
+        findings: [finding({ id: 'sec-1', severity: 'CRITICAL' })],
+      }),
+    ];
+  }
+
+  function apiWithReviews(reviews: ReviewProjection[]): ApiPort {
+    return createFakeApi({
+      lookupPull: vi.fn(async () => fakePull()),
+      listReviews: vi.fn(async () => reviews),
+    });
+  }
+
+  it('returns only the latest run per agent by default, and says which run that was', async () => {
+    const api = apiWithReviews(twoRunsOfOneAgent());
+    const { server, registered } = createFakeServer();
+    registerGetFindings(server, buildDeps(api));
+
+    const result = await registered[0]!.handler({ repo: 'owner/name', pr: 42 });
+
+    const grouped = result.structuredContent as { agents: { run_id: string; created_at: string }[] };
+    expect(grouped.agents).toHaveLength(1);
+    // The whole point of carrying these two fields in the DEFAULT mode: the
+    // collapse is now a stated fact rather than an invisible one.
+    expect(grouped.agents[0]!.run_id).toBe('run-new');
+    expect(grouped.agents[0]!.created_at).toBe('2026-08-25T12:00:00.000Z');
+  });
+
+  it('returns one group per run under all_runs:true, most severe run first', async () => {
+    const api = apiWithReviews(twoRunsOfOneAgent());
+    const { server, registered } = createFakeServer();
+    registerGetFindings(server, buildDeps(api));
+
+    const result = await registered[0]!.handler({ repo: 'owner/name', pr: 42, all_runs: true });
+
+    const grouped = result.structuredContent as { agents: { run_id: string; verdict: string }[] };
+    // Severity-major, NOT chronological: `run-old` carries the one CRITICAL,
+    // so it leads. Recency only breaks a tie (order.ts). Run mode does not get
+    // its own ordering rule — the run that blocks the merge is still read
+    // first, which is the same promise `note` and the 20-finding cap make.
+    expect(grouped.agents.map((group) => group.run_id)).toEqual(['run-old', 'run-new']);
+    // Each run keeps ITS OWN verdict — the older `request_changes` must not be
+    // overwritten by the newer `approve`, which is the per-agent version of
+    // the misattribution bug that made grouping necessary in the first place.
+    expect(grouped.agents.map((group) => group.verdict)).toEqual(['request_changes', 'approve']);
+    expect(result.isError).toBe(false);
+  });
+
+  it('says "runs", not "agents", when the groups are runs of a single agent', async () => {
+    const api = apiWithReviews(twoRunsOfOneAgent());
+    const { server, registered } = createFakeServer();
+    registerGetFindings(server, buildDeps(api));
+
+    const result = await registered[0]!.handler({ repo: 'owner/name', pr: 42, all_runs: true });
+
+    const text = result.content[0]!.text;
+    expect(text).toContain('2 runs are stored');
+    expect(text).not.toContain('2 agents reviewed');
+    // The run marker is what stops the roster reading "Security Reviewer,
+    // Security Reviewer" and looking like a bug.
+    expect(text).toContain('run run-new');
+    expect(text).toContain('run run-old');
+  });
+
+  it('all_runs:false is treated exactly like an absent all_runs', async () => {
+    const api = apiWithReviews(twoRunsOfOneAgent());
+    const { server, registered } = createFakeServer();
+    registerGetFindings(server, buildDeps(api));
+
+    const explicit = await registered[0]!.handler({ repo: 'owner/name', pr: 42, all_runs: false });
+    const absent = await registered[0]!.handler({ repo: 'owner/name', pr: 42 });
+
+    expect(JSON.stringify(explicit.structuredContent)).toBe(JSON.stringify(absent.structuredContent));
+  });
+
+  it('still never starts a review, whichever way it is grouped', async () => {
+    const api = apiWithReviews(twoRunsOfOneAgent());
+    const { server, registered } = createFakeServer();
+    registerGetFindings(server, buildDeps(api));
+
+    await registered[0]!.handler({ repo: 'owner/name', pr: 42, all_runs: true });
+
+    expect(api.startReview).not.toHaveBeenCalled();
   });
 });

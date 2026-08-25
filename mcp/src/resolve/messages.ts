@@ -105,9 +105,19 @@ export function malformedRepo(repo: string): string {
  * with `isError: false` alongside `{run_id, status:"running",
  * poll_with:"get_findings"}` (REQ-13). Consumed by T10's waiter/tool, kept
  * here so its wording is covered by the same bulk test as every other entry.
+ *
+ * `budgetMs` is a PARAMETER, not the literal `90s` this used to hardcode
+ * (2026-08-25). The budget is configurable — `DEVDIGEST_MCP_RUN_BUDGET_MS`,
+ * parsed in `config.ts` and carried to the tool as `RunAgentOnPrDeps.budgetMs`
+ * — so a hardcoded duration is a message that quietly lies to the model on
+ * every non-default configuration, and lies about the ONE number the reader
+ * needs to decide how long to wait before polling. Rendered in whole seconds
+ * because that is the unit the sentence is about; sub-second budgets round to
+ * `0s`, which is honest for a budget nobody should set.
  */
-export function budgetExhausted(): string {
-  return 'Still running after 90s. Call `get_findings` with the same repo and pr in a minute.';
+export function budgetExhausted(budgetMs: number): string {
+  const seconds = Math.round(budgetMs / 1000);
+  return `Still running after ${seconds}s. Call \`get_findings\` with the same repo and pr in a minute.`;
 }
 
 /** "run failed" (§5.7). Consumed by T10. */
@@ -129,7 +139,7 @@ export function sampleCatalogue(): string[] {
     agentNotFound('x'),
     agentDisabled('x'),
     malformedRepo('not-a-slug'),
-    budgetExhausted(),
+    budgetExhausted(90_000),
     runFailed('model timeout'),
   ];
 }

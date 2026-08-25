@@ -589,10 +589,19 @@ describe('projectFindingsByAgent — one group per agent', () => {
       confidence: 0.75,
     });
 
-    // The group itself is model-facing too: no run id, no internal sort key.
-    for (const domainField of ['run_id', 'review_id', 'created_at', 'agentKey', 'capped']) {
+    // The group itself is model-facing too: no internal sort key, no field
+    // that exists only for this module's own bookkeeping.
+    //
+    // `run_id` and `created_at` left this list on 2026-08-25 and are asserted
+    // PRESENT below instead. That is the `all_runs` change, not drift: under
+    // `all_runs` they are the only two fields that tell two groups of the same
+    // agent apart, and under the default they are what makes "this is the
+    // latest run" a readable fact rather than an invisible collapse. They are
+    // still absent from the per-FINDING shapes, which the loop above pins.
+    for (const domainField of ['review_id', 'agentKey', 'capped']) {
       expect(concise.agents[0]!).not.toHaveProperty(domainField);
     }
+    expect(concise.agents[0]!).toMatchObject({ run_id: 'run-api', created_at: '2026-08-23T19:08:25.000Z' });
   });
 
   it('does not mutate the reviews it was given', () => {
@@ -600,6 +609,142 @@ describe('projectFindingsByAgent — one group per agent', () => {
     const snapshot = JSON.stringify(reviews);
     projectFindingsByAgent(reviews, 'detailed');
     expect(JSON.stringify(reviews)).toBe(snapshot);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* all_runs — groupBy: 'run' (2026-08-25)                                   */
+/* ------------------------------------------------------------------------ */
+
+describe("projectFindingsByAgent — groupBy 'run' (get_findings's all_runs)", () => {
+  /** Three runs of ONE agent. The oldest and newest share a finding on the
+   *  same file/line/title, which is what a re-review of an unfixed problem
+   *  actually looks like — and the case the two modes must disagree about. */
+  function run(runId: string, createdAt: string, titles: string[]): ReviewProjection {
+    return makeReview({
+      run_id: runId,
+      agent_id: 'agent-sec',
+      agent_name: 'Security Reviewer',
+      created_at: createdAt,
+      verdict: 'request_changes',
+      score: 20,
+      findings: titles.map((title, i) =>
+        makeFinding({ id: `${runId}-${i}`, severity: 'CRITICAL', file: 'auth.ts', start_line: 10, title }),
+      ),
+    });
+  }
+
+  const newest = () => run('run-3', '2026-08-25T12:00:00.000Z', ['Missing authz check']);
+  const middle = () => run('run-2', '2026-08-24T12:00:00.000Z', ['Weak hash']);
+  const oldest = () => run('run-1', '2026-08-23T12:00:00.000Z', ['Missing authz check']);
+
+  it('collapses three runs of one agent to one group by default, and keeps all three under all_runs', () => {
+    const history = [newest(), middle(), oldest()];
+
+    const collapsed = projectFindingsByAgent(history, 'concise');
+    expect(collapsed.agents).toHaveLength(1);
+    // Latest-wins, decided by created_at rather than array position.
+    expect(collapsed.agents[0]!.run_id).toBe('run-3');
+
+    const every = projectFindingsByAgent(history, 'concise', {}, undefined, 'run');
+    expect(every.agents).toHaveLength(3);
+    expect(every.agents.map((group) => group.run_id)).toEqual(['run-3', 'run-2', 'run-1']);
+  });
+
+  it('orders run groups newest-first even when the counts and the agent name tie', () => {
+    // All three carry exactly one CRITICAL from the same agent, so every key
+    // before created_at ties and the comparator falls through to it. Without
+    // the recency tiebreak this would order by run id — a uuid in production.
+    const shuffledHistory = [oldest(), newest(), middle()];
+    const result = projectFindingsByAgent(shuffledHistory, 'concise', {}, undefined, 'run');
+    expect(result.agents.map((group) => group.created_at)).toEqual([
+      '2026-08-25T12:00:00.000Z',
+      '2026-08-24T12:00:00.000Z',
+      '2026-08-23T12:00:00.000Z',
+    ]);
+  });
+
+  it('counts a finding once per run it survived in — the documented cost of all_runs', () => {
+    const history = [newest(), middle(), oldest()];
+
+    // Default: one run, one copy of 'Missing authz check'.
+    expect(projectFindingsByAgent(history, 'concise').total).toBe(1);
+
+    // all_runs: run-3 and run-1 each report it, and there is no cross-GROUP
+    // dedupe, so total counts it twice plus run-2's 'Weak hash'. A caller
+    // must not read the growth from 1 to 3 as two new findings.
+    expect(projectFindingsByAgent(history, 'concise', {}, undefined, 'run').total).toBe(3);
+  });
+
+  it('omits the top-level verdict once one agent contributes more than one group', () => {
+    const history = [newest(), middle()];
+
+    // One group: the flat verdict cannot lie, so it is kept.
+    expect(projectFindingsByAgent(history, 'concise').verdict).toBe('request_changes');
+
+    // Two groups from the SAME agent still means no single verdict is true of
+    // both — the rule is about group count, not about agent count.
+    const every = projectFindingsByAgent(history, 'concise', {}, undefined, 'run');
+    expect(every).not.toHaveProperty('verdict');
+    expect(every.agents.every((group) => group.verdict === 'request_changes')).toBe(true);
+  });
+
+  it('keeps every run of a null-run_id review instead of collapsing them onto one key', () => {
+    // `reviews.run_id` is nullable with no backfill. Bucketing these on the
+    // interpolation of null would put both in one bucket and silently drop
+    // one — findings gone from the groups, from total and from counts.
+    // Built literally, NOT through `makeReview`: its `?? default` fallbacks
+    // cannot express an explicit null, so passing one there silently produces
+    // the default run id and tests the wrong branch.
+    const unattributedReview = (createdAt: string): ReviewProjection => ({
+      run_id: null,
+      agent_id: null,
+      agent_name: null,
+      created_at: createdAt,
+      verdict: 'comment',
+      score: 50,
+      findings: [makeFinding()],
+    });
+    const unattributed = [unattributedReview('2026-08-25T09:00:00.000Z'), unattributedReview('2026-08-24T09:00:00.000Z')];
+    const result = projectFindingsByAgent(unattributed, 'concise', {}, undefined, 'run');
+    expect(result.agents).toHaveLength(2);
+    expect(result.agents.every((group) => group.run_id === null)).toBe(true);
+  });
+
+  it('keeps every run even when two reviews share a run_id', () => {
+    // Nothing guarantees run_id is unique across rows. A bare `run:${run_id}`
+    // key would drop the second one exactly like the null case above.
+    const collidingRunIds = [
+      makeReview({ run_id: 'run-dup', created_at: '2026-08-25T09:00:00.000Z' }),
+      makeReview({ run_id: 'run-dup', created_at: '2026-08-24T09:00:00.000Z' }),
+    ];
+    const result = projectFindingsByAgent(collidingRunIds, 'concise', {}, undefined, 'run');
+    expect(result.agents).toHaveLength(2);
+  });
+
+  it('narrows by agent in run mode too — every run of that one agent, and no other', () => {
+    const otherAgent = makeReview({ run_id: 'run-other', agent_id: 'agent-api', agent_name: 'API Contract Reviewer' });
+    const history = [newest(), middle(), otherAgent];
+    const result = projectFindingsByAgent(history, 'concise', {}, { agentId: 'agent-sec', name: 'Security Reviewer' }, 'run');
+
+    expect(result.agents).toHaveLength(2);
+    expect(result.agents.every((group) => group.agent_id === 'agent-sec')).toBe(true);
+  });
+
+  it('produces a byte-identical body however the runs are shuffled, in BOTH modes', () => {
+    const history = [newest(), middle(), oldest()];
+    for (const mode of ['agent', 'run'] as const) {
+      const baseline = JSON.stringify(projectFindingsByAgent(history, 'concise', {}, undefined, mode));
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const permuted = projectFindingsByAgent(shuffled(history), 'concise', {}, undefined, mode);
+        expect(JSON.stringify(permuted)).toBe(baseline);
+      }
+    }
+  });
+
+  it('validates against the registered GetFindingsOutput shape in run mode', () => {
+    const result = projectFindingsByAgent([newest(), middle()], 'detailed', {}, undefined, 'run');
+    expect(() => z.object(GetFindingsOutput).parse(result)).not.toThrow();
   });
 });
 

@@ -83,11 +83,33 @@ If it is missing, use path (b) or create (a) by hand from what is below.
     "devdigest": {
       "command": "node",
       "args": ["mcp/node_modules/tsx/dist/cli.mjs", "mcp/src/index.ts"],
-      "env": { "DEVDIGEST_API_URL": "http://localhost:3001" }
+      "env": { "DEVDIGEST_API_URL": "http://localhost:3001" },
+      "timeout": 120000
     }
   }
 }
 ```
+
+**Why `timeout` is there, and why it is not a bug fix.** It is Claude Code's
+per-server *tool-call* wall-clock cap, in milliseconds, and it is set here
+purely so it can never fall below `DEVDIGEST_MCP_RUN_BUDGET_MS` (default
+`90000`). Nothing truncates the wait today without it — an unset
+`MCP_TOOL_TIMEOUT` defaults to roughly 28 hours, a stdio server has no
+per-request timer at all, and the stdio idle timeout is 30 minutes — so this
+is a pin against a *future* raised budget, not a repair of a current one.
+Three properties of the field worth knowing before you touch the number:
+
+- A value below `1000` is **ignored** and falls through to `MCP_TOOL_TIMEOUT`.
+  There is no way to ask for a sub-second cap here.
+- A value of `1000` or more also acts as a **floor on the idle timeout**, so
+  it can only ever extend how long a call is allowed to sit quiet, never
+  shorten it.
+- Progress notifications do **not** extend it. It is wall clock.
+
+**The invariant: keep `timeout` > `DEVDIGEST_MCP_RUN_BUDGET_MS`.** Invert
+that and the client kills the call before the budget fires, which is exactly
+the failure `run_agent_on_pr`'s `{status:"running"}` fallback exists to
+prevent — see risk R5 in the table in §5.
 
 **This is the launch command that actually works, run from the repo root**
 — verified directly, not assumed: `node mcp/node_modules/tsx/dist/cli.mjs
@@ -129,6 +151,10 @@ claude mcp add --scope project --env DEVDIGEST_API_URL=http://localhost:3001 dev
 `--scope project` is what writes to the committed `.mcp.json` rather than
 your private, per-machine config — the same file (a) hand-edits, so the two
 paths converge on one file.
+
+`claude mcp add` has **no flag for `timeout`**, so an entry generated this
+way lands without one. Add `"timeout": 120000` to it by hand afterwards, for
+the reason (a) spells out.
 
 ### 3.5 Restart the client
 
@@ -219,7 +245,7 @@ to prove the byte stream, the Inspector to exercise the tools.
 |---|---|---|---|
 | `list_agents` | *(none)* | `{agents: [{id, name, model, enabled}]}` | The id source — call first to get a valid `agent` value for `run_agent_on_pr`; agent ids are uuids and cannot be guessed. |
 | `get_conventions` | `repo` | `{conventions: [{rule, status}]}` | The house rules DevDigest extracted from a repo's code. Read-only — reviews nothing, starts no run. |
-| `get_findings` | `repo`, `pr`, `agent?`, `response_format?`, `severity?`, `file?` | `{agents[{agent_name, reviewed, verdict, score, counts, findings[]}], counts, shown, total, note?}` | Re-read a review's findings at zero model cost, grouped by agent. **Never starts a review.** |
+| `get_findings` | `repo`, `pr`, `agent?`, `response_format?`, `severity?`, `file?`, `all_runs?` | `{agents[{agent_name, run_id, created_at, reviewed, verdict, score, counts, findings[]}], counts, shown, total, note?}` | Re-read a review's findings at zero model cost, grouped by agent — or by RUN with `all_runs:true`. **Never starts a review.** |
 | `run_agent_on_pr` | `repo`, `pr`, `agent`, `response_format?` | Same shape as `get_findings`, **or** `{run_id, status:"running", poll_with:"get_findings"}` if the wait budget (default 90s) expires first | The one write tool. See the call-out below before you call it twice. |
 | `get_blast_radius` | `repo`, `pr` | `isError: true`, `{implemented:false, retry:false, reason, use_instead}` | A registered placeholder. See the call-out below. |
 
@@ -260,6 +286,13 @@ instead.
 review for a PR at zero model cost and never starts anything — reach for it
 before calling `run_agent_on_pr` again on a PR you've already reviewed.
 
+**It shows one run per agent by default — the latest.** Every group names the
+`run_id` and `created_at` it came from, so which run you are looking at is
+always on the response rather than implied. Pass `all_runs:true` to get one
+group per stored run instead, e.g. to compare a re-review against the run
+before it. One number moves when you do: a finding that survived several runs
+is counted once per run, so `total` grows without anything new being found.
+
 ## 5. Configuration
 
 All four variables below are read and validated in exactly **one** file,
@@ -270,7 +303,7 @@ All four variables below are read and validated in exactly **one** file,
 |---|---|---|---|
 | `DEVDIGEST_API_URL` | `http://localhost:3001` | `.mcp.json`'s `env` block (wins over the shell — see below), or the shell your MCP client itself runs in | A non-loopback host **without** the opt-out below → **the process exits at startup**, before the transport ever connects (`ConfigError` thrown inside `loadConfig`). |
 | `DEVDIGEST_WEB_UI_URL` | `http://localhost:3000` | the shell (see below — `.mcp.json`'s `env` block does **not** set this one) | Same startup failure if non-loopback and not opted out; otherwise only changes the web-UI address embedded in a couple of error messages (`repo not imported`, `agent disabled`). |
-| `DEVDIGEST_MCP_RUN_BUDGET_MS` | `90000` | the shell | Set it *too high* and your MCP **client's own** tool-call timeout kills the call before this budget ever fires — `run_agent_on_pr` never gets the chance to return its own `{status:"running"}` fallback (plan `05-mcp-server.md` §9, risk R5). |
+| `DEVDIGEST_MCP_RUN_BUDGET_MS` | `90000` | the shell | Set it *too high* and your MCP **client's own** tool-call timeout kills the call before this budget ever fires — `run_agent_on_pr` never gets the chance to return its own `{status:"running"}` fallback (plan `05-mcp-server.md` §9, risk R5). **The remedy is in `.mcp.json`, not here:** raise that server entry's `timeout` (§3.4a) to stay above whatever you set this to. |
 | `DEVDIGEST_MCP_ALLOW_REMOTE` | unset | the shell | `=1` disables the loopback guard for **both** URLs above. Only set it if you actually intend to point this local agent at a non-local DevDigest instance — a mis-set value here silently removes the guard, it does not add one. |
 
 **The non-obvious consequence of `.mcp.json`'s shape.** Its `env` block

@@ -99,27 +99,46 @@ call:
 - **Still running when the budget expires:** `isError: false`,
   `{ run_id, status: "running", poll_with: "get_findings" }`. This is not an error —
   it is the hybrid design's expected fallback (see [The hybrid run](#the-hybrid-run--why-polling-beat-sse)).
+
+  **`isError: false` here is deliberate and has been challenged more than once; it stays.**
+  In MCP, `isError: true` means *the tool call failed*. A run that is still in flight has
+  not failed — the review was started, it is progressing, and the id to collect it with is
+  in the result. Flagging it as an error costs three things and buys nothing: the model
+  reports a failure to the user that did not happen; a model that retries on error calls
+  `run_agent_on_pr` again, which under [in-flight idempotency](#idempotency) attaches to
+  the same run and simply burns the budget a second time; and the protocol-level meaning of
+  `isError` erodes for every other branch that genuinely needs it.
+
+  The objection behind the challenge — "the model will read this as success and never tell
+  the user to poll" — is answered three separate times in the same response, by design:
+  the `text` names `get_findings` and the wait that elapsed, `structuredContent.poll_with`
+  carries the tool name as data, and the tool description says outright that this is a
+  normal result and not a failure. If a future reviewer wants this changed, the thing to
+  change is whichever of those three signals is not landing, not the error flag.
 - **Resolution failure or run failure:** `isError: true`, with either `{}` (a
   resolution failure — never `{findings: []}`, which would misreport "could not
   resolve the PR" as "this PR has zero findings") or `{ run_id, status: "failed" }`
   (the underlying agent run failed).
 
-### `get_findings(repo, pr, agent?, response_format?, severity?, file?)`
+### `get_findings(repo, pr, agent?, response_format?, severity?, file?, all_runs?)`
 
 > Return the findings of a review that already ran on a pull request, without starting
 > a new one. Use it to re-read a result, or to poll after `run_agent_on_pr` returned
 > status "running".
 >
 > `repo` is "owner/name", `pr` is the pull request number. Narrow with `agent` — an id
-> or name from `list_agents`, whose latest run is used — and with `severity` and `file`.
+> or name from `list_agents` — and with `severity` and `file`.
 >
-> Returns {agents[], counts, shown, total} — one entry per agent that reviewed this PR,
-> each with its own {agent_name, reviewed, verdict, score, counts, findings[]}. A group
+> Each agent contributes only its LATEST run by default. Pass `all_runs:true` for one
+> group per stored run instead, which counts a finding once per run it appears in.
+>
+> Returns {agents[], counts, shown, total} — one entry per group, each with its own
+> {agent_name, run_id, created_at, reviewed, verdict, score, counts, findings[]}. A group
 > with "reviewed": false means that agent has no stored result here. Findings are capped
-> at 20 across all agents, most severe first. This tool never starts a review — use
+> at 20 across all groups, most severe first. This tool never starts a review — use
 > `run_agent_on_pr` for that.
 
-736 UTF-8 bytes. The handler never calls `ApiPort.startReview` — there is no code path
+874 UTF-8 bytes (736 before `all_runs` landed on 2026-08-25). The handler never calls `ApiPort.startReview` — there is no code path
 in `get-findings.ts` that could. Under the in-flight-only idempotency rule (see
 [Idempotency](#idempotency--in-flight-only)) this is the **only** zero-cost way to
 re-read a verdict, which is why "without starting a new one" and "never starts a
@@ -152,15 +171,38 @@ a caller into starting an unrequested review in the first place.
 |---|---|---|---|
 | `repo` | string | yes | `"owner/name"` |
 | `pr` | integer | yes | the pull request number |
-| `agent` | string | no | an agent id or name from `list_agents`; that agent's latest run only. Unknown name → `isError`; known agent with no review here → a `reviewed: false` group |
+| `agent` | string | no | an agent id or name from `list_agents`. Unknown name → `isError`; known agent with no review here → a `reviewed: false` group |
 | `response_format` | `"concise" \| "detailed"` | no | same as `run_agent_on_pr` |
 | `severity` | `"CRITICAL" \| "WARNING" \| "SUGGESTION"` | no | narrows to one severity |
 | `file` | string | no | narrows to findings on exactly this file path (exact match, never a substring) |
+| `all_runs` | boolean | no | `true` → one group per stored run. Omitted/false → one group per agent, holding that agent's latest run |
 
 **Output:** `{agents[], counts, shown, total, note?}` — and `verdict`/`score` too when
-there are at most one group. `run_agent_on_pr` keeps the flat shape: it reports exactly
-one run, so it never had the misattribution this grouping prevents. `{}` with
-`isError: true` when the PR or the named agent cannot be resolved.
+there are at most one group. Each group carries its own `run_id` and `created_at`.
+`run_agent_on_pr` keeps the flat shape: it reports exactly one run, so it never had the
+misattribution this grouping prevents. `{}` with `isError: true` when the PR or the named
+agent cannot be resolved.
+
+**Why `all_runs`, and why it is not the default (2026-08-25).** A pull can hold several
+reviews by the same agent — the API returns every one of them, newest first. This tool
+kept only the newest and said nothing about it: a caller reading a verdict could not tell
+whether the PR had been reviewed once or five times, and had no way to reach an earlier
+result at all. Two changes close that, and they are separable on purpose:
+
+- `run_id` and `created_at` on **every** group, in **both** modes. This is the half that
+  matters most, because it makes the default's latest-wins rule a stated fact instead of
+  an invisible collapse. It is also a deliberate, scoped reversal of the token discipline
+  in [Response shaping](#response-shaping), which otherwise keeps both fields out.
+- `all_runs: true` re-groups by run instead of by agent. It stays opt-in because the
+  collapsed view answers the question people actually ask — *what does this PR look like
+  now* — and because run mode changes what `total` means: `collectFindings` runs per
+  group, so a finding that survived three runs is counted three times. Growth in `total`
+  between the two modes is run history, never new findings.
+
+Ordering does **not** change in run mode: groups stay severity-major, so the run carrying
+a CRITICAL leads a newer run that carries none. `created_at` DESC only breaks the tie that
+run mode newly makes common — several groups from one agent, identical on every earlier
+key.
 
 ### `get_conventions(repo)`
 
@@ -596,7 +638,7 @@ shell command to run.
 | Agent not found | ``Agent `x` not found — call `list_agents` for valid ids.`` |
 | Agent disabled | ``Agent `x` is disabled. Call `list_agents` and pick an enabled one, or enable it at <web UI address>/agents.`` |
 | Malformed `repo` argument | ``\`repo\` must be `owner/name`, e.g. `maxfurmanov/devdigest`. Got `x`. Retry `run_agent_on_pr`, `get_findings`, or `get_conventions` with a valid value.`` |
-| Wait budget exhausted | *not an error* — `isError: false`, `{run_id, status:"running", poll_with:"get_findings"}`, message: "Still running after 90s. Call `get_findings` with the same repo and pr in a minute." |
+| Wait budget exhausted | *not an error* — `isError: false`, `{run_id, status:"running", poll_with:"get_findings"}`, message: "Still running after **&lt;the configured budget&gt;**s. Call `get_findings` with the same repo and pr in a minute." The duration is rendered from `budgetMs`, not hardcoded: it was the literal `90s` until 2026-08-25, which lied on every non-default `DEVDIGEST_MCP_RUN_BUDGET_MS` — and lied about the one number the reader needs to decide how long to wait. |
 | The underlying run failed | ``The run failed: `<error>`. Call `list_agents` to check the agent's model, or retry.`` |
 | `get_blast_radius` called | see [The stub](#the-stub-get_blast_radius) |
 

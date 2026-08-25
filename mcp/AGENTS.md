@@ -108,7 +108,7 @@ any *tool call* succeeds — but the server itself starts fine without it and fa
   counts as a violation even when it is explaining why the thing is banned. Describe the rule
   without spelling the token — `instructions.ts`, `index.ts` and `server.ts` all had to.
 - **The frozen model-facing strings are byte-asserted.** `instructions` is 557 bytes and the five
-  descriptions are 298 / 780 / 736 / 352 / 285 (`list_agents` / `run_agent_on_pr` /
+  descriptions are 298 / 780 / 874 / 352 / 983 (`list_agents` / `run_agent_on_pr` /
   `get_findings` / `get_conventions` / `get_blast_radius`). They are approved copy: a "small clarification"
   fails the build rather than being silently absorbed. `instructions` is a *function* of the API
   base URL for the ring reason above, and its rendered default must stay byte-identical.
