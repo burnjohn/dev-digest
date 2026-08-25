@@ -225,6 +225,27 @@ describe("AgentPerformanceView", () => {
     expect(argsAfter).toEqual(argsBefore);
   });
 
+  it("selecting the 1-day period does not re-derive a new range on every re-render (regression: infinite refetch loop)", () => {
+    renderWithIntl();
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "1d" } });
+    const rangeAfterSelect = useAgentsStatsSpy.mock.calls.at(-1)![1];
+
+    // Any unrelated state update (a sort click) causes AgentPerformanceView
+    // to re-render without period/customSince/customUntil changing. If
+    // `periodRange("1d")` is re-derived fresh on every render (calling `new
+    // Date()` each time, not memoized on the period selection), the
+    // since/until strings differ by the render's exact millisecond, the
+    // useAgentsStats query key changes, a new query fires, its
+    // isLoading/isError transition triggers ANOTHER re-render, which
+    // re-derives yet another range — an infinite loop. The regression is
+    // this comparison actually being unequal.
+    fireEvent.click(screen.getByRole("button", { name: /^Runs/ }));
+    const rangeAfterUnrelatedRerender = useAgentsStatsSpy.mock.calls.at(-1)![1];
+
+    expect(rangeAfterUnrelatedRerender).toEqual(rangeAfterSelect);
+  });
+
   it("an agent below the small-sample threshold sinks to the bottom of the accept-rate sort rather than an arbitrary position", () => {
     renderWithIntl();
     fireEvent.click(screen.getByRole("button", { name: "Accept rate" }));

@@ -37,7 +37,18 @@ export function AgentPerformanceView() {
   const [sortKey, setSortKey] = React.useState<SortKey>("runs");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
-  const range = periodRange(period, customSince, customUntil);
+  // Memoized on [period, customSince, customUntil] only — NOT recomputed on
+  // every render. `periodRange("1d")` calls `new Date()` internally, so an
+  // unmemoized call re-derives a millisecond-fresh since/until on every
+  // render; that feeds straight into useAgentsStats's query key, which
+  // then differs from the previous render's, firing a new query whose
+  // isLoading/isError transition triggers another re-render — an infinite
+  // fetch loop that only "30 days"/an unset "custom" range were immune to
+  // (they both resolve to the value-stable `{}`, i.e. undefined/undefined).
+  const range = React.useMemo(
+    () => periodRange(period, customSince, customUntil),
+    [period, customSince, customUntil],
+  );
   const agentList = agents ?? [];
   const agentIds = agentList.map((a) => a.id);
   const { data: statsMap, isLoading, isError, refetch } = useAgentsStats(agentIds, range);
