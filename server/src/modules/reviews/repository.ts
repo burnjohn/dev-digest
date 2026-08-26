@@ -21,6 +21,7 @@ export type ReviewRow = typeof t.reviews.$inferSelect;
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
+import * as briefRepo from './repository/brief.repo.js';
 
 export class ReviewRepository {
   constructor(private db: Db) {}
@@ -188,5 +189,21 @@ export class ReviewRepository {
 
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
+  }
+
+  // ---- PR risk brief (SPEC-02, T6) -----------------------------------------
+
+  /**
+   * Both parameter/return types are DERIVED from the free functions rather
+   * than restated — see the `completeAgentRun` comment above for why a
+   * restated type on this façade is a bug waiting to happen (INSIGHTS.md,
+   * 2026-08-09).
+   */
+  getBrief(prId: string): ReturnType<typeof briefRepo.getBrief> {
+    return briefRepo.getBrief(this.db, prId);
+  }
+
+  upsertBrief(prId: string, brief: Parameters<typeof briefRepo.upsertBrief>[2]): Promise<void> {
+    return briefRepo.upsertBrief(this.db, prId, brief);
   }
 }

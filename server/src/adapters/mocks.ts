@@ -32,6 +32,8 @@ import type {
   AuthWorkspace,
   SecretsProvider,
   SecretKey,
+  BlastProvider,
+  BlastRadiusResponse,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
@@ -338,5 +340,29 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock Blast ----------
+export interface MockBlastOptions {
+  /** Fixture returned by `getBlastRadius`. Default `undefined` — "no PR found". */
+  response?: BlastRadiusResponse;
+  /** When set, `getBlastRadius` throws this instead of resolving — models
+   * `BlastProvider`'s degraded/unavailable path (REQ-17's "or throws" branch). */
+  error?: Error;
+}
+
+export class MockBlastProvider implements BlastProvider {
+  public calls: { workspaceId: string; prId: string }[] = [];
+
+  constructor(private opts: MockBlastOptions = {}) {}
+
+  async getBlastRadius(
+    workspaceId: string,
+    prId: string,
+  ): Promise<BlastRadiusResponse | undefined> {
+    this.calls.push({ workspaceId, prId });
+    if (this.opts.error) throw this.opts.error;
+    return this.opts.response;
   }
 }

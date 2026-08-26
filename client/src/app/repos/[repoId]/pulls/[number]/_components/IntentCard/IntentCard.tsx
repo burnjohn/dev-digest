@@ -4,10 +4,25 @@
    for why that hook issues a POST, not a GET) — so a PR that has never been
    reviewed still shows an intent (REQ-8), no user action required.
 
-   Matches the owner's mockup: an INTENT header with a Recompute button, the
-   summary as an italic quoted block, and IN SCOPE / OUT OF SCOPE as two
-   icon-led lists. The Sources block (per-source status) was removed by owner
-   decision — see docs/plans/03-intent-layer.md §12 amendment A6.
+   Matches the owner's mockup: the summary as an italic quoted block, and IN
+   SCOPE / OUT OF SCOPE as two icon-led lists. The Sources block (per-source
+   status) was removed by owner decision — see docs/plans/03-intent-layer.md
+   §12 amendment A6.
+
+   2026-08-26: this card no longer carries its own Recompute button. The
+   Overview tab has ONE refresh control, `PrBriefCard`'s Recalculate, and it
+   drives the intent and the brief in that order — the brief is built FROM the
+   intent, so two separate buttons meant the obvious click order produced a
+   brief keyed to the previous classification. This card therefore does not
+   mount `useReclassifyIntent` at all any more; it only reads.
+
+   2026-08-26: this card gained a `children` slot, rendered inside the card box
+   below a divider. SPEC-02's N3 ("IntentCard ships untouched") is amended:
+   both mockups draw RISK AREAS in the SAME bordered card as IN SCOPE / OUT OF
+   SCOPE, and the owner reversed the separate-card decision after seeing it
+   rendered. The slot keeps this card ignorant of what fills it — OverviewTab
+   passes `<RiskAreas>` in, already wrapped in its own ErrorBoundary, and this
+   file never touches the brief query.
 
    The confidence badge was removed on 2026-08-24, during the Overview-tab
    layout work that gave this card and BlastCard matching heights. It shared a
@@ -21,9 +36,9 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import type { PrCommit } from "@devdigest/shared";
-import { usePrIntent, useReclassifyIntent } from "@/lib/hooks/reviews";
+import { usePrIntent } from "@/lib/hooks/reviews";
 import { isIntentStale } from "./helpers";
 import { s } from "./styles";
 
@@ -35,14 +50,26 @@ interface IntentCardProps {
   /** Supplies the head commit's timestamp; see helpers.ts for why the join
       lives on the client and what it cannot prove. */
   prCommits?: PrCommit[];
+  /** An extra section rendered INSIDE the card, below the scope grid and a
+      divider. The caller owns its data, its loading/error states and its
+      error boundary — this card only gives it a place to sit. Rendered in
+      every branch (loading, error, loaded) on purpose: a failed intent fetch
+      must not also take down a section that has nothing to do with it. */
+  children?: React.ReactNode;
 }
 
-export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
+export function IntentCard({ prId, headSha, prCommits, children }: IntentCardProps) {
   const t = useTranslations("prReview");
   const { data: intent, isLoading, isError, refetch } = usePrIntent(prId);
-  const reclassify = useReclassifyIntent(prId);
 
   if (!prId) return null;
+
+  const slot = children ? (
+    <>
+      <div style={s.divider} />
+      {children}
+    </>
+  ) : null;
 
   if (isLoading) {
     return (
@@ -52,6 +79,7 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
           <Skeleton height={16} width="55%" />
           <Skeleton height={13} width="92%" style={{ marginTop: 12 }} />
           <Skeleton height={13} width="78%" style={{ marginTop: 6 }} />
+          {slot}
         </div>
       </section>
     );
@@ -61,39 +89,30 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
     return (
       <section style={s.section}>
         <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
-        <div role="alert" style={s.errorCard}>
-          <span>{t("intent.errorBody")}</span>
-          <button type="button" style={s.retryButton} onClick={() => refetch()}>
-            {t("intent.retry")}
-          </button>
+        {/* The card box, not the alert row itself, is what carries the border
+            here — the row has to share the box with `slot` below it. */}
+        <div style={s.card}>
+          <div role="alert" style={s.errorRow}>
+            <span>{t("intent.errorBody")}</span>
+            <button type="button" style={s.retryButton} onClick={() => refetch()}>
+              {t("intent.retry")}
+            </button>
+          </div>
+          {slot}
         </div>
       </section>
     );
   }
 
-  // Recomputed every render, never held in state: `reclassify` writes straight
-  // into the query cache (useReclassifyIntent), so the strip must disappear on
-  // that same render rather than one effect later.
+  // Recomputed every render, never held in state: the band's Recalculate
+  // writes straight into `["pr-intent", prId]` (useReclassifyIntent's
+  // `setQueryData`), so the strip must disappear on that same render rather
+  // than one effect later — that holds whichever component owns the button.
   const stale = isIntentStale(intent.generated_at, headSha, prCommits);
 
   return (
     <section style={s.section}>
-      <SectionLabel
-        icon="Target"
-        right={
-          <Button
-            kind="secondary"
-            size="sm"
-            icon="RefreshCw"
-            loading={reclassify.isPending}
-            onClick={() => reclassify.mutate()}
-          >
-            {t("intent.recompute")}
-          </Button>
-        }
-      >
-        {t("intent.title")}
-      </SectionLabel>
+      <SectionLabel icon="Target">{t("intent.title")}</SectionLabel>
       {stale && (
         <div role="status" style={s.staleNotice}>
           <Icon.AlertTriangle size={14} style={s.staleNoticeIcon} />
@@ -101,11 +120,10 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
         </div>
       )}
       {/* `tabIndex={0}` makes this scrollable-when-overflowing card
-          keyboard-reachable (only matters on rare long content, since the
-          slot's min height normally leaves room to spare — see
-          IntentCard/styles.ts `card`). `role="group"` + `aria-label` reuse
-          the card's own title rather than adding a new translation key
-          outside this task's owned paths. */}
+          keyboard-reachable (it overflows routinely now that the risk areas
+          share it — see IntentCard/styles.ts `card`). `role="group"` +
+          `aria-label` reuse the card's own title rather than adding a new
+          translation key outside this task's owned paths. */}
       <div style={s.card} tabIndex={0} role="group" aria-label={t("intent.title")}>
         {/* The contract's summary field is `intent`, not `summary` — labeled
             "Summary" in the UI only (docs/plans/03-intent-layer.md §5.6/D7). */}
@@ -143,6 +161,8 @@ export function IntentCard({ prId, headSha, prCommits }: IntentCardProps) {
             )}
           </div>
         </div>
+
+        {slot}
       </div>
     </section>
   );

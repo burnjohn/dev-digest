@@ -1,13 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ClassifyIntentRequest, PrIntentDetail, RunRequest, SmartDiffResponse } from '@devdigest/shared';
+import {
+  ClassifyIntentRequest,
+  PrIntentDetail,
+  RiskBriefRequest,
+  RiskBriefResponse,
+  RunRequest,
+  SmartDiffResponse,
+} from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+import { BriefService } from './brief-service.js';
 import type { IntentLogger } from './intent-classifier.js';
+import { resolveFeatureModel } from '../_shared/feature-models.js';
 
 /**
  * Adapt pino's object-first `req.log.info(obj, msg)` to `classifyIntent`'s
@@ -43,6 +52,13 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
   const service = new ReviewService(container);
+  const briefService = new BriefService({
+    db: container.db,
+    git: container.git,
+    github: () => container.github(),
+    llm: (id) => container.llm(id),
+    blast: container.blast,
+  });
 
   // ---- Run a review (manual trigger) -------------------------------
   // Tight per-route limit: each call can fan out to expensive LLM runs.
@@ -206,6 +222,36 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
         force: req.body.force === true,
         log: toIntentLogger(req.log),
         correlationId: randomUUID(),
+      });
+    },
+  );
+
+  // ---- PR Risk Brief (SPEC-02) ---------------------------------------------
+  // Get-or-create, mirroring POST /pulls/:id/intent's shape (REQ-1..REQ-5):
+  // returns the cached row with ZERO model calls when one exists and `force`
+  // is absent/false; `{ force: true }` is the ONLY path that regenerates.
+  // Rate limited like the other model-spending routes — it can spend money.
+  //
+  // The `resolveModel` closure is a NEW shape here, not a copy of an existing
+  // precedent: `blast/routes.ts:50-51` and `conventions/routes.ts:62` both
+  // resolve the feature model EAGERLY, before the service call. This route
+  // keeps their PLACEMENT rule (the route is the resolution SITE — never a
+  // service reaching into settings itself) but deliberately changes the
+  // TIMING: `BriefService.getOrGenerateBrief` calls `resolveModel()` only on
+  // a cache MISS, because REQ-2 forbids a settings read on a cache hit. Do
+  // not read this as the same shape as either neighbouring route.
+  app.post(
+    '/pulls/:id/brief',
+    {
+      schema: { params: IdParams, body: RiskBriefRequest, response: { 200: RiskBriefResponse } },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return briefService.getOrGenerateBrief(workspaceId, req.params.id, {
+        force: req.body.force === true,
+        resolveModel: () => resolveFeatureModel(container, workspaceId, 'risk_brief'),
+        log: toIntentLogger(req.log),
       });
     },
   );

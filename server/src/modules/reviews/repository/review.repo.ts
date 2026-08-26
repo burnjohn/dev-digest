@@ -54,7 +54,14 @@ export async function insertFindings(
   return rows;
 }
 
-/** Reviews for a PR (newest first), each with its findings. */
+/**
+ * Reviews for a PR (newest first), each with its findings.
+ *
+ * `id` is a secondary sort key, not decoration: agents fan out concurrently and
+ * `createdAt` is `defaultNow()`, so two runs completing in the same tick would
+ * otherwise be tie-broken non-deterministically by Postgres — and every consumer
+ * that reads this list in order would reshuffle between refreshes.
+ */
 export async function reviewsForPull(
   db: Db,
   prId: string,
@@ -63,7 +70,7 @@ export async function reviewsForPull(
     .select()
     .from(t.reviews)
     .where(eq(t.reviews.prId, prId))
-    .orderBy(desc(t.reviews.createdAt));
+    .orderBy(desc(t.reviews.createdAt), desc(t.reviews.id));
   if (reviews.length === 0) return [];
   const ids = reviews.map((r) => r.id);
   const findings = await db.select().from(t.findings).where(inArray(t.findings.reviewId, ids));

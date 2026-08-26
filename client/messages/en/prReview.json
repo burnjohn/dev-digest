@@ -24,7 +24,8 @@
     "comment": "Comment",
     "findingsCount": "{count} findings",
     "blockers": " · {count} blockers",
-    "prScore": "PR SCORE"
+    "prScore": "PR SCORE",
+    "derivedNote": "Derived from the blocker count across every agent run on this PR, not from the models' own verdicts."
   },
   "panel": {
     "hideLowConfidence": "Hide low confidence",
@@ -139,8 +140,7 @@
   },
   "intent": {
     "title": "Intent",
-    "recompute": "Recompute",
-    "stale": "Computed before the latest commit — recompute to refresh it.",
+    "stale": "Computed before the latest commit — Recalculate to refresh it.",
     "errorBody": "Couldn’t classify this PR’s intent.",
     "retry": "Retry",
     "inScope": "In scope",

@@ -6,6 +6,7 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
+  BlastProvider,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
@@ -29,6 +30,7 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import type { ContextDocs } from '../modules/context/types.js';
 import { ContextService } from '../modules/context/service.js';
+import { BlastService } from '../modules/blast/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -55,6 +57,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** blast-radius facade (SPEC-02 T2) — tests inject mock BlastProvider implementations. */
+  blast?: BlastProvider;
 }
 
 export class Container {
@@ -81,6 +85,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _blast?: BlastProvider;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -132,6 +137,25 @@ export class Container {
     if (this.overrides.contextDocs) return this.overrides.contextDocs;
     this._contextDocs ??= new ContextService({ db: this.db, config: this.config, git: this.git });
     return this._contextDocs;
+  }
+
+  /**
+   * The blast-radius facade (SPEC-02, T2). `modules/reviews`'s risk-brief
+   * service reaches it the same way it reaches `repoIntel` / `contextDocs` —
+   * as a port on the container, since `modules/**` may not import another
+   * module (onion §2 rule 2). `BlastService` already satisfies `BlastProvider`
+   * structurally (its `narrationModel` parameter is optional), so this getter
+   * calls `getBlastRadius` with two arguments only — no narration model, no
+   * settings read. Tests inject a mock via `ContainerOverrides.blast`.
+   */
+  get blast(): BlastProvider {
+    if (this.overrides.blast) return this.overrides.blast;
+    this._blast ??= new BlastService({
+      db: this.db,
+      repoIntel: this.repoIntel,
+      llm: (id) => this.llm(id),
+    });
+    return this._blast;
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

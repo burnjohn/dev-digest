@@ -1,12 +1,19 @@
 /* VerdictBanner — ported from findings.jsx.
-   request_changes / approve / comment + summary + finding/blocker counts + score. */
+   request_changes / approve / comment + summary + finding/blocker counts + score.
+
+   This is the PER-RUN verdict, rendered inside an expanded run accordion: it
+   shows the run's OWN `review.verdict`, its `summary` and the agent that
+   produced it. The PR Brief band on the Overview tab renders a different thing
+   — the PR's headline, derived from blocker counts, with the brief's prose as
+   its body — and deliberately does not reuse this component. The two share
+   `VERDICT_META` (_lib/verdict.ts) and nothing else. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, CircularScore } from "@devdigest/ui";
 import type { Verdict } from "@devdigest/shared";
-import { VERDICT_META } from "./constants";
+import { VERDICT_META } from "../../_lib/verdict";
 import { s } from "./styles";
 
 export function VerdictBanner({

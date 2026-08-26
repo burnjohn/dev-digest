@@ -1,0 +1,28 @@
+{
+  "title": "PR Brief",
+  "recalculate": "Recalculate",
+  "loading": "Generating risk brief…",
+  "error": "Couldn't generate a risk brief for this PR.",
+  "retry": "Retry",
+  "risks": {
+    "title": "Risk areas",
+    "empty": "No risk areas identified"
+  },
+  "reviewFocus": {
+    "title": "Review focus — read these first",
+    "empty": "Nothing flagged for review focus."
+  },
+  "builtWithout": {
+    "note": "Built without {sources}",
+    "separator": ", ",
+    "lastSeparator": " and ",
+    "source": {
+      "intent": "declared intent",
+      "blast": "blast radius",
+      "pr_body": "the PR description",
+      "linked_issue": "the linked issue",
+      "file_list": "the changed-file list",
+      "md_files": "documentation"
+    }
+  }
+}
