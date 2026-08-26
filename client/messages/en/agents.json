@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -103,6 +104,11 @@
     "reorderUnlinked": "Reorder {name} — attach it first to give it a position.",
     "saving": "Saving…",
     "savedNote": "Saved"
+  },
+  "context": {
+    "reorder": "Reorder {name} — position {position} of {total}. Use the arrow keys to move it.",
+    "reorderUnattached": "Reorder {name} — attach it first to give it a position.",
+    "saving": "Saving…"
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."

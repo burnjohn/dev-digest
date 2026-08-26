@@ -8,6 +8,14 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-25 — a runtime guarantee parked in an optional helper silently never runs
+`platform/trace-builder.ts`'s `buildRunTrace` carried the only `RunTraceSchema.parse` of a run trace
+— and had **zero importers**; `run-executor` built the `RunTrace` as a typed object literal on all
+three paths (done / cancelled / failed) and wrote it raw. Nothing flags this: `tsc` checks the
+literal's shape, so the absent runtime parse is invisible, and `run_traces` is opaque jsonb that only
+fails on read. Put a validate-before-persist at the **write chokepoint** (here `saveRunTrace` in
+`repository/run.repo.ts`, which every producer funnels through), never in a builder a caller may skip.
+
 ### 2026-08-23 — a red `.it` lane is usually Testcontainers contention, not a regression
 `pnpm exec vitest run .it.test` starts 16 suites in parallel, each spinning its own Postgres
 container; on a cold or busy Docker they blow the 120s `beforeAll` budget and report

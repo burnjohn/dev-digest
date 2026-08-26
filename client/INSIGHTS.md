@@ -6,6 +6,37 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-27 — A hand-rolled `api.post` opts out of cache invalidation, and `staleTime: 30_000` hides it for 30s
+`useContextAutosave` (`lib/hooks/context.ts`) skips `useMutation` to get its own debounce and
+issue-order sequencing, and so never touched the query cache — so after an attach/detach the
+`["context-attachment", …]` entry kept serving pre-edit paths, and since both `Context` tabs seed
+their attached set once at mount (deliberate, see 2026-08-16), switching agents and back reverted
+the checkbox. Only a refresh or `gcTime` eviction cleared it. **If a write does not go through
+`useMutation`, its `setQueryData`/`invalidateQueries` is on you.** Two traps when fixing this
+shape: guard the cache write with the same superseded-write check the rest of the handler uses, and
+prefer `refetchType: "none"` for a query the writing screen holds ACTIVE if its endpoint is
+expensive (`listForRepo` re-walks the checkout on every GET). A test can also pin the bug — this
+one was asserted as “the hook never writes into that query’s cache”.
+
+### 2026-08-26 — A full-height page (inner-scrolling panes) works without touching `AppFrame`
+`styles.css` sets `html, body { height: 100% }` and `AppFrame`'s `<main>` is
+`flex:1; minHeight:0; overflow:auto` inside a `100vh` column, so a page container with
+`height: "100%"` already gets a *definite* height — no `calc(100vh - 52px)` and no shell edit.
+The part that actually bites: every flex ancestor between that container and the scrolling child
+needs `minHeight: 0`, or the child refuses to shrink below its content and the whole page scrolls
+instead of the pane (`app/repos/[repoId]/context/.../styles.ts` is the worked example). Such a page
+opts out of the 2026-08-17 `maxWidth: 1100` container rule — that rule exists because `<main>` has
+no padding, so a full-bleed page satisfies it by giving each pane its own padding.
+
+### 2026-08-26 — `tsc` and vitest map `./x.js` → `x.ts`; Next's webpack does not, unless you tell it
+The vendored `src/vendor/shared` is a byte-identical copy of the server's NodeNext contracts, so its
+barrel re-exports `./contracts/*.js`. `moduleResolution: "Bundler"` and Vite both perform the TS
+`.js`→`.ts` substitution, but Next's webpack only does it via `experimental.extensionAlias`
+(`next.config.mjs`) — so a broken vendored import passes `pnpm typecheck` AND `pnpm test` and only
+surfaces as `Module not found: Can't resolve './contracts/findings.js'` in the dev server. `pnpm build`
+is the only gate that catches it. Corollary: `import type` from `@devdigest/shared` is erased by SWC
+and never resolved, so the first runtime VALUE import of the barrel is what trips this.
+
 ### 2026-08-25 — a hook's `isError` branch does NOT cover a malformed payload; that one throws in render
 `api.get<T>()` is a plain TypeScript cast with no runtime parse, so a partial or drifted response
 resolves *successfully* and then throws when the component destructures it (`const { totals } = blast`).

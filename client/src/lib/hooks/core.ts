@@ -15,8 +15,6 @@ import type {
   Repo,
   PrMeta,
   PrDetail,
-  SpecFile,
-  IndexStatus,
 } from "../types";
 
 // ---- Settings (F1: GET/PUT /settings, POST /settings/test-connection) ----
@@ -119,19 +117,10 @@ export function usePullDetail(prId: string | number | null | undefined) {
   });
 }
 
-// ---- Project Context (A3 contract; safe to call once API exposes it) ----
-export function useContextFiles(repoId: string | null | undefined) {
-  return useQuery({
-    queryKey: ["context", repoId],
-    queryFn: () => api.get<SpecFile[]>(`/repos/${repoId}/context`),
-    enabled: !!repoId,
-  });
-}
-
-export function useReindexContext() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (repoId: string) => api.post<IndexStatus>(`/repos/${repoId}/context/reindex`),
-    onSuccess: (_d, repoId) => qc.invalidateQueries({ queryKey: ["context", repoId] }),
-  });
-}
+// Project Context (SPEC-01) lives in `hooks/context.ts`, re-exported from
+// `hooks/index.ts` alongside everything here. The two A3-era placeholder
+// hooks that used to live in this file — one for the document list, one for
+// a reindex trigger, both naming `/repos/:repoId/context` before this
+// feature existed — are retired outright rather than superseded in place:
+// they had zero importers anywhere in the client, and the response shapes
+// they promised are superseded by `ContextDocumentList`.

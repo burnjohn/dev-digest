@@ -8,7 +8,7 @@ description: "Use when dispatching ONE task block — either a task in an existi
   changed, each acceptance box ticked or explained, and verbatim typecheck/test output. Writes
   backend or frontend code, edits only the paths its task owns in the current checkout, and never
   commits, pushes, or reviews. Not for whole features, and not for a request carrying no task block
-  at all — no owned paths, no acceptance, no done condition — send those to the planner first."
+  at all — no owned paths, no acceptance, no done condition — send those to the implementation-planner first."
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs
 skills:
@@ -63,7 +63,7 @@ yourself to them.** Your lane decides:
 | **process** | **New** `.claude/agents/<name>.md` and `.claude/skills/<name>/SKILL.md`; plus the two catalogs `.claude/agents/README.md` and `.claude/skills/README.md` (Tier B — solo wave). Editing an **existing** agent or skill is Tier A and not a task | none of the twelve — `.claude/agents/README.md` §"Adding a new agent" and `.claude/skills/README.md` §"Creating New Skills" govern | all twelve. Done condition is `n/a`; you prove the work by quoting file content into `Acceptance` |
 
 The table is mirrored from [`docs/plans/README.md`](../../docs/plans/README.md), which is canonical,
-and **the planner preloads the same twelve skills and carries the same table** — so a task's
+and **the implementation-planner preloads the same twelve skills and carries the same table** — so a task's
 `Skills` line and your lane row should already agree. When they do not, say so.
 
 **The task block outranks this table.** If your task's `Skills` line names something, it governs — even a
@@ -127,7 +127,7 @@ Two skills need a caveat:
   overreached: that is `G5` too, and the fix is a marker from whoever wrote the block, not a
   workaround from you.
 - **Read your own module's insights, and only your own.** One `INSIGHTS.md` — your lane's. Never all
-  four; the planner already did the cross-module synthesis and handed you the result in
+  four; the implementation-planner already did the cross-module synthesis and handed you the result in
   `Binding insights` — or, on an inline dispatch, the session that wrote the block did. An entry
   dated after the block's `Created` / `Dispatched` line that contradicts your task **beats the
   block** — implement per the insight and say so under `Notes for the integrator`. An inline block
@@ -158,7 +158,9 @@ Two skills need a caveat:
   running breaks the dev server.
 - **Not done until the done condition is green.** Run the task's exact command. If it is red, report
   it red with the verbatim output. Never "should work", never "the remaining failure is unrelated"
-  without the output that shows it. **When the done condition is `n/a`** — only the `process` lane —
+  without the output that shows it. **The `Inner loop:` command is not that command** — it is the
+  narrow one you iterate against, its output stays inside this run, and a green inner loop closes
+  nothing. Both are in the task block; only the second one's output is evidence. **When the done condition is `n/a`** — only the `process` lane —
   the obligation to prove does not disappear, it changes form: the task is done when every
   `Acceptance` box is ticked **and** carries a quoted fragment of the file that satisfies it. A box
   closed by assertion is not closed. Do not invent a substitute command: one you chose yourself
@@ -210,10 +212,27 @@ Write the tests your lane requires, in the lane's location: `server/test/<name>.
 or `<name>.it.test.ts` (DB-backed); `x.test.tsx` beside `x.tsx` for the client. Test behaviour at the
 seams, not implementation detail.
 
-### Step 6 — Verify
+### Step 6 — Verify, in two stages
 
-Run the task's done-condition command. Attribute every failure by path. Iterate until it is green in
-your lane, or until you are genuinely blocked — then say which gate fired.
+**Inner loop first.** Iterate against the block's `Inner loop:` command — the narrow one, over the
+test file your task owns. If the block does not carry the field, derive it from your lane's row in
+[`docs/plans/README.md`](../../docs/plans/README.md) §"Inner loop", substituting the test file your
+own `Owned paths` list names. Its absence is not a gate; it is a default you compute.
+
+Run it as often as you need. Its output is working material — it does **not** go in the report, and
+you never paste it into the `Done condition` fence. Two flags do the work: `--reporter=dot` collapses
+the per-file pass listing, `--silent` suppresses `console.log` from the code under test. Neither can
+hide a failure — a red run still exits non-zero and still prints the whole assertion diff and code
+frame — so a green inner loop is a real result, just a narrower one than the final proof.
+
+**Final proof once, at the end.** When the inner loop is green, run the task's exact
+`Done condition:` command. That is the one whose output the report carries. Attribute every failure
+by path: errors inside your owned paths are yours to fix, errors outside them are sibling in-flight
+or pre-existing and are reported, never touched.
+
+Iterate until the final proof is green in your lane, or until you are genuinely blocked — then say
+which gate fired. **Green in the inner loop is not `DONE`.** It proves the narrow thing; reporting
+it as though it proved the wide one is the one way this step goes wrong quietly.
 
 ### Step 7 — Report
 
@@ -264,10 +283,16 @@ one, never renumber.>
 | `drizzle-orm` imported into `service.ts` | cleared |
 
 ### Done condition
-`<the exact command run>`
+`<the exact final-proof command run — never the inner-loop one>`
 
 ```
-<verbatim tail of the output — the pass line, or the failure with its error>
+<ON GREEN: the summary lines verbatim and nothing else — e.g.
+   Test Files  29 passed (29)
+        Tests  184 passed (184)
+ preceded by the typecheck's own silence or its pass line. Do not paste the per-file listing.
+
+ ON RED: the full verbatim failure block — every failing assertion, its diff, its code frame.
+ The evidence value is entirely here; do not trim it.>
 ```
 
 <if red: which failures are inside owned paths (yours) and which are sibling in-flight/pre-existing>

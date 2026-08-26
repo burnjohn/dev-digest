@@ -1,16 +1,25 @@
 # Development Plans
 
 A **plan** is the work breakdown for one change: what has to be true when it is done, and which
-tasks get it there. The [planner](../../.claude/agents/planner.md) writes them; the
+tasks get it there. The [implementation-planner](../../.claude/agents/implementation-planner.md) writes them; the
 [implementer](../../.claude/agents/implementer.md) executes one task at a time, often several in
 parallel. This file is the contract between the two — both agents cite it, so change it here rather
 than in either agent. A change too small to earn a plan document skips the file entirely and is
 dispatched as an **inline task block**: same block, same mandatory fields, same refusals — see
 [Where a task block comes from](#where-a-task-block-comes-from).
 
-A plan is **not** a spec. `<package>/specs/<feature>.md` describes a feature durably and stays in
-sync with the code; a plan is a snapshot of intent that goes stale the moment the work lands. Link
-the spec from the plan when one exists.
+A plan is **not** a spec, and there are two kinds of spec it is not:
+
+| | Prescriptive | Descriptive |
+|---|---|---|
+| Path | `<package>/specs/SPEC-NN-<slug>.md` | `<package>/specs/<feature>.md` (no ID) |
+| Written by | [`spec-creator`](../../.claude/agents/spec-creator.md), **before** the code | [`doc-writer`](../../.claude/agents/doc-writer.md), **after** it shipped |
+| Says | what "done" means, as `AC-1..AC-n` | how the thing behaves today |
+
+A plan is a snapshot of how to get from the first to the second, and it goes stale the moment the
+work lands. **Where a prescriptive spec exists it is the plan's source of requirements** — the
+planner restates its `AC-n` as `REQ-n` rather than inventing any — and the `**Spec:**` field below
+names it. Neither spec is ever written or edited by the planner or an implementer.
 
 ## Naming
 
@@ -23,7 +32,7 @@ the spec from the plan when one exists.
 # Plan NN — <title>
 
 **Modules:** server · client   **Created:** YYYY-MM-DD   **Status:** draft | in-progress | done
-**Spec:** <link to `<package>/specs/<x>.md`, or `none`>
+**Spec:** SPEC-NN — <link to `<package>/specs/SPEC-NN-<slug>.md`>, or `none`
 
 ## 1. Goal
 ## 2. Requirements          <- REQ-1..REQ-n, each one testable sentence
@@ -46,6 +55,12 @@ a requirement nobody implemented is visible on the page rather than discovered a
 |---|---|---|---|
 | T1 | x | | |
 | T3 | | x | x |
+
+**Where the plan came from a spec, each REQ names the `AC-n` it restates** — `REQ-3 (SPEC-04 AC-9):
+a bad severity value is rejected with 422 before the handler runs.` That citation plus the matrix is
+the whole traceability chain: criterion → requirement → task → acceptance box. It is worth the six
+characters, because it is the only mechanical link between the two documents, and a `REQ` that cites
+no `AC` when a spec exists is either scope the owner never agreed to or a citation somebody skipped.
 
 ## The task block
 
@@ -83,10 +98,19 @@ dispatched.
 - [ ] passing `app.container` to the service instead of an explicit `Deps`
 - [ ] hand-rolling `.parse()` in the handler instead of a route schema
 
+**Inner loop:** `cd server && pnpm exec vitest run test/reviews-filter.test.ts --reporter=dot --silent`
+
 **Done condition:** `cd server && pnpm typecheck && pnpm exec vitest run --exclude '**/*.it.test.ts'`
 ~~~
 
 `Binding insights: none` is a valid value. An empty field is not.
+
+**`Inner loop:` is the one optional field, and its absence has a defined meaning** — not a refusal.
+A block without it is valid, and the implementer derives the command itself from its lane's row in
+[Inner loop](#inner-loop--run-while-iterating-its-output-stays-inside-the-agent), substituting the
+test file its own `Owned paths` list names. It is optional because every plan written before this
+field existed is still dispatchable; it is worth writing anyway, because the planner knows which
+file the task owns and can name it exactly. `Done condition:` stays mandatory and is unchanged.
 
 **`Parallel:`** mirrors the task's row in §6: `yes` when siblings run alongside it, `no` when it is
 the only task in its wave. It is informational for most tasks and load-bearing for exactly one case
@@ -117,9 +141,32 @@ What a plan file supplies that an inline block does not, and who picks it up ins
 `n/a`. **`Parallel:` may not** — it is load-bearing for the Tier B rule below, so it stays mandatory
 in both sources.
 
+### Extraction is the preferred way to dispatch a plan's task
+
+Dispatching *"T3 from `docs/plans/04-smart-diff.md`"* makes the implementer open the whole plan to
+find one block. The plans in this repo run 21k–44k tokens; a task block runs about 2k. The agent
+pays the whole file to read 5% of it, once per task — sixteen times over on plan 04.
+
+So the default is: **the dispatching session extracts the block and pastes it verbatim.** Task
+headings are `^### T<n> —`, so the extraction is mechanical. Two things must survive it:
+
+- **`**Dispatched:** YYYY-MM-DD` carrying the plan's own `Created:` value** — not today's date.
+  That field is what the conflict rule below keys on, and the plan's date is when the task was
+  actually authored, so copying it preserves "an entry newer than the block wins" exactly. Omit
+  the field and the implementer treats *every* `INSIGHTS.md` entry as newer than the task.
+- **A provenance line**, so the block is still traceable and the escape hatch stays open:
+  `Task source: T3 of docs/plans/04-smart-diff.md, reproduced verbatim below — do not open the
+  plan unless a mandatory field is missing from this block.`
+
+Nothing else is lost, because nothing else was being used: §3's insight synthesis is already
+pushed down into the block's `Binding insights`, and §6's coverage matrix is the dispatching
+session's to read, not the implementer's. Dispatch by reference remains correct — it is simply the
+expensive way to say the same thing, and it is the right choice when a block turns out to be
+malformed and somebody has to look at the plan anyway.
+
 ## Skills per lane
 
-**Both agents preload the same twelve skills** — the planner because it assigns them, the
+**Both agents preload the same twelve skills** — the implementation-planner because it assigns them, the
 implementer because it applies them. That is deliberate: a plan whose `Skills` line was chosen
 without knowing what is inside the skill produces tasks the implementer has to re-scope. This table
 is the source of truth for the `Skills` field; both agent files carry a copy of it.
@@ -153,9 +200,9 @@ preload list.
 
 Implementers share one working tree — there is no worktree isolation. So two tasks in the same wave
 naming the same file is not a style problem, it is lost work: whichever agent writes second
-overwrites the first. The planner verifies disjointness before emitting and records the check in §6;
+overwrites the first. The implementation-planner verifies disjointness before emitting and records the check in §6;
 the implementer refuses to touch anything outside its own list. Dispatched inline there is no §6 and
-no planner, so **the dispatching session runs the check itself** before it fans out — the invariant
+no implementation-planner, so **the dispatching session runs the check itself** before it fans out — the invariant
 is unchanged, only its bookkeeper is.
 
 **Disjointness is necessary and not sufficient.** It stops two agents *writing* the same file. It
@@ -178,7 +225,7 @@ Each row is absolute for *its own* reason. Reading them as one blanket rule is w
 
 ### Tier A — never, plan or no plan
 
-The planner may not put these in any `Owned paths` list, and the implementer refuses them **even
+The implementation-planner may not put these in any `Owned paths` list, and the implementer refuses them **even
 when a plan — or the prompt that dispatched it — names one**.
 
 | Path | Why | Do this instead |
@@ -191,7 +238,7 @@ when a plan — or the prompt that dispatched it — names one**.
 | Any `INSIGHTS.md` | An append-only log whose writer is defined by the `engineering-insights` protocol: the parent session, at session end. Concurrent appends from parallel siblings collide, and there is no conflict marker. | An `### Insight candidates` section in the report |
 | `AGENTS.md`, `CLAUDE.md`, `.claude/settings*.json`, `.claude/hooks/**` | The law you are governed by, and the permission and hook layer that constrains you. An agent rewriting its own constraints is the one edit no review can be trusted to catch, because the reviewer runs under the rewritten constraints. | A `[parent session]` step |
 | **Existing** files under `.claude/agents/*.md` and `.claude/skills/**/SKILL.md` | Same reason, narrower: these are rules already in force over you and your siblings. Editing one changes how work already in flight behaves. | A `[parent session]` step |
-| **This file** — `docs/plans/README.md` | It is the contract both agents defer to and carry copies of. Editing it mid-wave changes the law under tasks that are already running, and the implementer checking its own tier list would be reading a different document than the planner that wrote the task. | A `[parent session]` step, between waves — never during one |
+| **This file** — `docs/plans/README.md` | It is the contract both agents defer to and carry copies of. Editing it mid-wave changes the law under tasks that are already running, and the implementer checking its own tier list would be reading a different document than the implementation-planner that wrote the task. | A `[parent session]` step, between waves — never during one |
 
 ### Tier B — exclusive: assignable, never concurrent
 
@@ -219,7 +266,12 @@ lanes, and a plan that assigns the second is wrong no matter how it is marked.
 
 ## Done-condition commands
 
-The planner copies the matching row into each task verbatim. This table is the source of truth.
+A task carries **two** commands, and they answer different questions. The **inner loop** is what
+the implementer iterates against while it is still writing code; the **final proof** is what it
+runs once, at the end, and pastes into its report. The implementation-planner writes both fields
+into the task block, copying each from the matching row below. These tables are the source of truth.
+
+### Final proof — run once; its output is the report's evidence
 
 | Lane | Command |
 |---|---|
@@ -235,6 +287,39 @@ The planner copies the matching row into each task verbatim. This table is the s
 The package managers differ: **pnpm** for `server/` and `client/`, **npm** for `reviewer-core/`,
 `e2e/` and `mcp/`. There is no root `package.json`; every command runs from inside its package.
 
+### Inner loop — run while iterating; its output stays inside the agent
+
+`<own test file>` is the test file **this task owns**, from its `Owned paths` list — not a glob,
+not the package.
+
+| Lane | Command |
+|---|---|
+| backend (hermetic) | `cd server && pnpm exec vitest run <own test file> --reporter=dot --silent` |
+| backend (DB-backed) | `cd server && pnpm exec vitest run <own .it.test.ts file> --reporter=dot --silent` |
+| frontend | `cd client && pnpm exec vitest run <own test file> --reporter=dot --silent` |
+| engine | `cd reviewer-core && npm exec -- vitest run <own test file> --reporter=dot --silent` |
+| mcp | `cd mcp && npm exec -- vitest run <own test file> --reporter=dot --silent` |
+| contract | none — the lane owns no test file of its own; run the final proof directly |
+| e2e | none — `npm run typecheck` is already the whole check |
+| process | `n/a` |
+
+**Neither flag can hide a failure.** Probed 2026-08-25 against vitest 2.1.9: on a failing
+assertion the command still exits non-zero and still prints the full `AssertionError`, the
+expected/received diff and the code frame. `--reporter=dot` collapses only the per-file *pass*
+listing — roughly fifty lines down to two on `server/` — and `--silent` suppresses `console.log`
+from the code under test, which is usually the bulk of the noise.
+
+Why the split exists: the final-proof command typechecks and runs the whole package, so an
+implementer that loops on it pays for a full `tsc` plus every test file in the package on every
+iteration, and then has to read its siblings' in-flight errors to attribute them. The inner loop
+narrows both — fewer tokens spent, and almost nothing to attribute, because the only file in the
+run is one the task owns.
+
+**The inner loop never substitutes for the final proof.** Green in the inner loop is not `DONE`;
+the report's `Done condition` fence carries the final-proof command and its output, always. An
+implementer that pastes an inner-loop run there has proved the narrower thing and claimed the
+wider one.
+
 **`n/a` is not "skip the check" — it is a different check.** Every other lane proves itself with a
 command whose output the implementer pastes verbatim. The `process` lane has no such command, so the
 proof moves to the `Acceptance` boxes: each one is closed by **quoting the file content that
@@ -246,7 +331,7 @@ it was chosen to pass.
 
 Two passes with different jobs. **Neither agent reads all four logs.**
 
-| | Planner (once per plan) | Implementer (once per task) |
+| | Implementation planner (once per plan) | Implementer (once per task) |
 |---|---|---|
 | **Reads** | every touched module's `INSIGHTS.md`, in full | **exactly one** — its own lane's module |
 | **Job** | *synthesis* — what does this whole change need to know? | *freshness* — has anything landed since the plan was written? |
@@ -262,7 +347,7 @@ never read.
 The implementer's pass is not redundant with the plan. The root `AGENTS.md` protocol requires
 whoever works in a module to read that module's log and summarize it before writing code — the plan
 cannot discharge that obligation on the implementer's behalf. It also covers the two cases the
-planner structurally cannot see: an entry appended *after* the plan was written, and a gotcha that
+implementation-planner structurally cannot see: an entry appended *after* the plan was written, and a gotcha that
 only becomes relevant once you are inside the code.
 
 **Conflict rule.** Entries are dated and append-only. If an entry is newer than the plan's `Created`
@@ -289,8 +374,81 @@ Every implementer works in the session's own checkout and branch. Three conseque
   implementer's — they mutate shared state, and `pnpm build` while `pnpm dev` is running breaks the
   dev server (`client/INSIGHTS.md`).
 
-## Review
+## After the waves land
 
-Implementers do not review their own work and do not run `pr-self-review`. The parent session runs
-it **once**, over the whole diff, after every wave has landed — N partial reviews over N partial
-diffs would each miss the cross-task interactions that are exactly what needs reviewing.
+Implementers do not review their own work. What happens once the last wave is in belongs to the
+dispatching session, and it runs in this order:
+
+1. **Coverage triage — free, and first.** The session holds every implementer report and §6 is on
+   disk. Cross them: every `REQ` in the matrix is claimed by at least one report whose verdict is
+   `DONE`; no report is `BLOCKED` or `PARTIAL` with an unticked acceptance box; every
+   `Notes for the integrator` entry is actioned or recorded. This costs one read and no dispatch,
+   and it is deliberately *before* the expensive passes — finding a requirement nobody implemented
+   after paying for a structural review and a round of test writing is the failure this step exists
+   to prevent.
+2. **`architecture-reviewer`** over the whole diff. Structure only — its scope table is explicit
+   that correctness and vulnerabilities are not its question.
+3. **Remediation** of what it found — see below.
+4. **`test-writer`, only at the targets triage flagged as untested.** It is a gap-filler, not a
+   phase: every implementer already writes its lane's tests (`implementer.md`, Method step 5), and
+   `test-writer`'s RED proof temporarily mutates the file under test. On the dirty tree implementers
+   leave behind, that mutation cannot be undone with git — it restores from bytes held in the
+   agent's own context — so `G6`, a half-mutated source file left on disk, is the worst outcome
+   available anywhere in this agent set. Every target that did not need covering is one more walk
+   down that path for nothing.
+5. **`plan-verifier`** last, and it has to be last: inspection caps at `PARTIAL` in its contract, so
+   only a passing test buys `VERIFIED`. Run before step 4 it grades every uncovered requirement
+   `PARTIAL` and returns `INCOMPLETE` by construction.
+6. **Remediation** of what *it* found.
+
+**`pr-self-review` is not in this list, and neither is a commit.** That gate is slow and it is the
+owner's to spend — it runs once, by hand, when the owner judges the diff ready. No agent commits,
+stages, or checks anything out, and neither does the dispatching session on its own initiative:
+git state is the owner's call at every point in this workflow.
+
+## Remediation — who fixes what a reviewer found
+
+`architecture-reviewer` and `plan-verifier` are read-only by allowlist and by design. Neither fixes
+anything, so without this step their findings live in a chat transcript and are actioned by hand or
+not at all.
+
+**The dispatching session turns each finding into an inline task block and dispatches an
+`implementer`.** A finding already carries most of one: `architecture-reviewer` gives `file:line`
+plus the violated rule quoted verbatim, `plan-verifier` gives the `REQ` and the evidence it could
+not find. The session supplies the rest.
+
+~~~markdown
+### FIX-1 — <the finding, in one line>
+**Wave:** n/a · **Parallel:** no · **Lane:** backend · **Depends on:** n/a
+**Dispatched:** YYYY-MM-DD
+**Source finding:** `architecture-reviewer` — CRITICAL, `server/src/modules/x/service.ts:12`
+**Implements:** REQ-4 (re-open) | n/a — structural only
+
+**Owned paths (exclusive):**
+- `server/src/modules/x/service.ts` (edit)
+
+**May read:** `server/src/modules/x/repository.ts`
+
+**Skills (mandatory):** `onion-architecture`, `typescript-expert`
+
+**Binding insights:** none
+
+**Do:** <what the fix is, as intent — 1-3 sentences>
+
+**Acceptance:**
+- [ ] <the finding's own words, restated as a checkable fact about the code>
+
+**Red flags:**
+- [ ] <the mistake this particular fix invites>
+
+**Inner loop:** `cd server && pnpm exec vitest run <the covering test> --reporter=dot --silent`
+**Done condition:** `cd server && pnpm typecheck && pnpm exec vitest run --exclude '**/*.it.test.ts'`
+~~~
+
+Two rules carry over unchanged. Fix blocks fanned out together are a wave: **check their
+`Owned paths` are disjoint before dispatching**, because there is no §6 to record the check in.
+And a finding that lands on a **Tier A** path is not a fix block at all — it is a `[parent session]`
+step, and the replacement action comes from the "Do this instead" column above.
+
+A finding the session decides **not** to fix is recorded with the reason, not silently dropped. An
+unfixed `CRITICAL` that nobody wrote down reads exactly like one nobody found.

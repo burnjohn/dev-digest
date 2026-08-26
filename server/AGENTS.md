@@ -32,7 +32,8 @@ Full architecture, request/DI flow, and API map: **[README.md](README.md)**.
 ## Gotchas
 
 - **Migrations are NOT run on boot** — run `pnpm db:migrate` yourself (pgvector enabled by `0000`).
-- The DB schema already has **every** table; later-lesson tables sit empty until filled.
+- The schema is front-loaded with the tables the lesson series needs — later-lesson ones sit
+  empty until filled — but a genuinely new feature can still need a new table + its migration.
 - Rate limit is global 120/min (off under `NODE_ENV=test`); SSE + `/health*` exempt.
 - Grounding is mandatory: findings without a real diff line are dropped; model's score is ignored.
 

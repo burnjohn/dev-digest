@@ -55,7 +55,7 @@
   },
   "editor": {
     "unsaved": "unsaved",
-    "tokens": "{count} tokens",
+    "tokens": "{count}t",
     "enabled": "Enabled",
     "save": "Save skill",
     "saving": "Saving…",
@@ -64,7 +64,13 @@
     "tabs": {
       "config": "Config",
       "preview": "Preview",
+      "context": "Context",
       "versions": "Versions"
+    },
+    "context": {
+      "reorder": "Reorder {name} — position {position} of {total}. Use the arrow keys to move it.",
+      "reorderUnattached": "Reorder {name} — attach it first to give it a position.",
+      "noMatch": "No documents match that filter."
     },
     "config": {
       "heading": "Configuration",

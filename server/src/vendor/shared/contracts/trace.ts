@@ -72,6 +72,20 @@ export const RunStats = z.object({
 });
 export type RunStats = z.infer<typeof RunStats>;
 
+/**
+ * One attached project-context document as it was resolved for a run: the path,
+ * whether it was read or could not be found, and — when read — the SHA-256 of the
+ * exact bytes sent, so two runs over the same path with different content are
+ * distinguishable.
+ */
+export const SpecManifestEntry = z.object({
+  path: z.string(),
+  status: z.enum(['read', 'missing']),
+  sha256: z.string().nullable(),
+  chars: z.number().int().nullable(),
+});
+export type SpecManifestEntry = z.infer<typeof SpecManifestEntry>;
+
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
   config: z.object({
@@ -88,6 +102,10 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  // Per-document provenance for the specs above. `.nullish()` so already-stored
+  // trace jsonb docs (which lack the key) still parse — the `cost_usd` precedent
+  // above. A run with a non-empty effective document list must populate it.
+  specs_manifest: z.array(SpecManifestEntry).nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

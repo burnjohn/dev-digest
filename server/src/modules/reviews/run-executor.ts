@@ -1,6 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type { Container } from '../../platform/container.js';
-import type { PrIntentDetail, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type {
+  PrIntentDetail,
+  Provider,
+  Review,
+  RunTrace,
+  SpecManifestEntry,
+  UnifiedDiff,
+} from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import { approxTokens } from '../../adapters/tokenizer/index.js';
@@ -304,6 +312,28 @@ export class ReviewRunExecutor {
         }
       }
 
+      // ---- SPEC-01 T12: project-context documents → prompt `specs` slot -----
+      // REQ-18: `container.contextDocs.resolveEffectiveAttachments` is the
+      // SINGLE resolution rule (the agent's own attachments, then each
+      // ENABLED linked skill's, restricted to this repo, de-duplicated by
+      // path keeping the earliest occurrence) — consumed through the port,
+      // never re-derived here and never reached by importing `modules/context`
+      // directly (onion §2 rule 2).
+      //
+      // Failure policy: SKIP, not throw — the opposite of `linkedSkills`
+      // above. A document path points at a working tree that can legitimately
+      // move out from under the attachment (a rebase, a resync); a skill body
+      // is a row this run owns. `server/INSIGHTS.md`'s "silent fail-open"
+      // entry (2026-08-17) still holds — what it forbids is the SILENCE, not
+      // the skip — so a missing document is recorded as a typed `missing`
+      // manifest entry (AC-23/AC-27) rather than dropped unremarked.
+      const { specs, specsRead, specsManifest } = await this.buildProjectContext(
+        agent.id,
+        repo,
+        workspaceId,
+        runLog,
+      );
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -325,6 +355,11 @@ export class ReviewRunExecutor {
         // contract: with no skills the assembled prompt is byte-identical to
         // before this feature existed.
         ...(skills.length > 0 ? { skills } : {}),
+        // SPEC-01 T12 — the agent's effective project-context documents, each
+        // already formatted as T5's `### <path>` block. Same omit-when-empty
+        // contract: with no attached (or all-missing) documents the assembled
+        // prompt is byte-identical to before this feature existed (REQ-20).
+        ...(specs.length > 0 ? { specs } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -399,6 +434,10 @@ export class ReviewRunExecutor {
         mode: outcome.mode,
         chunks: outcome.chunks.length,
         sections,
+        // REQ-44 — paths/statuses/hashes/integer lengths only, NEVER a
+        // document body (NFR-8); omitted entirely (not an empty array) for a
+        // zero-attachment run, mirroring `specs_manifest`'s own contract below.
+        ...(specsManifest.length > 0 ? { specsManifest } : {}),
       });
 
       const keptFindings = outcome.review.findings;
@@ -459,7 +498,13 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: specsRead,
+        // AC-26/AC-27 — one entry per document in the effective list, in
+        // effective order; omitted (never an empty array) when the effective
+        // list itself was empty, following `cost_usd`'s existing `.nullish()`
+        // precedent on `RunStats` (`contracts/trace.ts`) so every already-
+        // stored trace keeps parsing.
+        ...(specsManifest.length > 0 ? { specs_manifest: specsManifest } : {}),
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -592,6 +637,70 @@ export class ReviewRunExecutor {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * SPEC-01 T12 — resolve the agent's effective project-context documents
+   * (REQ-18, via `container.contextDocs`), read each one's CURRENT text from
+   * disk, and build the `specs` blocks + the `specs_read`/`specs_manifest`
+   * pair for the persisted trace (AC-20/AC-21/AC-26/AC-27).
+   *
+   * A document may live under the repository clone OR the upload directory
+   * — `resolveEffectiveAttachments` returns bare paths with no root hint, so
+   * both roots are tried in turn, exactly the pattern `ContextService` itself
+   * already uses internally (`service.ts`'s `previewDocument` /
+   * `statAttachedPath`). Degradation is a SKIP — see the call site's comment
+   * and SPEC-01 `## Module interactions` for why this diverges from
+   * `linkedSkills`'s let-it-throw policy.
+   *
+   * REQ-25/REQ-39: issues no LLM completion, no embedding request, and at
+   * most one successful filesystem read plus one SHA-256 — over the exact
+   * bytes read, never re-derived or normalised — per attached document.
+   */
+  private async buildProjectContext(
+    agentId: string,
+    repo: typeof schema.repos.$inferSelect,
+    workspaceId: string,
+    runLog: RunLogger,
+  ): Promise<{ specs: string[]; specsRead: string[]; specsManifest: SpecManifestEntry[] }> {
+    const paths = await this.container.contextDocs.resolveEffectiveAttachments(agentId, repo.id);
+    if (paths.length === 0) {
+      return { specs: [], specsRead: [], specsManifest: [] };
+    }
+
+    const cloneDirAbs = this.container.git.clonePathFor({ owner: repo.owner, name: repo.name });
+    const uploadDirAbs = join(this.container.config.contextUploadDir, workspaceId, repo.id);
+
+    const specs: string[] = [];
+    const specsRead: string[] = [];
+    const specsManifest: SpecManifestEntry[] = [];
+
+    for (const path of paths) {
+      const found =
+        (await this.container.contextDocs.readDocument(cloneDirAbs, path)) ??
+        (await this.container.contextDocs.readDocument(uploadDirAbs, path));
+      if (!found) {
+        specsManifest.push({ path, status: 'missing', sha256: null, chars: null });
+        continue;
+      }
+      specs.push(found.block);
+      specsRead.push(path);
+      specsManifest.push({
+        path,
+        status: 'read',
+        sha256: createHash('sha256').update(found.body, 'utf8').digest('hex'),
+        chars: found.body.length,
+      });
+    }
+
+    const missing = specsManifest.filter((m) => m.status === 'missing').map((m) => m.path);
+    runLog.info(
+      missing.length > 0
+        ? `Project context: ${specsRead.length}/${paths.length} document(s) read; missing: ${missing.join(', ')}`
+        : `Project context: ${specsRead.length} document(s) attached`,
+    );
+
+    return { specs, specsRead, specsManifest };
   }
 
   /**

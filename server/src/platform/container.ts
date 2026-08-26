@@ -27,6 +27,8 @@ import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import type { ContextDocs } from '../modules/context/types.js';
+import { ContextService } from '../modules/context/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -48,6 +50,8 @@ export interface ContainerOverrides {
   llm?: Partial<Record<'openai' | 'anthropic' | 'openrouter', LLMProvider>>;
   /** repo-intel facade (T1.1+) — tests inject mock RepoIntel implementations. */
   repoIntel?: RepoIntel;
+  /** context facade (SPEC-01, T7) — tests inject mock ContextDocs implementations. */
+  contextDocs?: ContextDocs;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
@@ -73,6 +77,7 @@ export class Container {
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
   private _repoIntel?: RepoIntel;
+  private _contextDocs?: ContextDocs;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
@@ -115,6 +120,18 @@ export class Container {
     if (this.overrides.repoIntel) return this.overrides.repoIntel;
     this._repoIntel ??= new RepoIntelService(this);
     return this._repoIntel;
+  }
+
+  /**
+   * The project-context facade (SPEC-01, T7). Reviews (`run-executor`,
+   * later) reach it the same way they reach `repoIntel` — as a port on the
+   * container, since `modules/**` may not import another module (onion §2
+   * rule 2). Tests inject a mock via `ContainerOverrides.contextDocs`.
+   */
+  get contextDocs(): ContextDocs {
+    if (this.overrides.contextDocs) return this.overrides.contextDocs;
+    this._contextDocs ??= new ContextService({ db: this.db, config: this.config, git: this.git });
+    return this._contextDocs;
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

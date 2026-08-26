@@ -29,4 +29,5 @@ export * from './contracts/observability.js';
 export * from './contracts/productionize.js';
 export * from './contracts/lookup-api.js';
 export * from './contracts/blast-api.js';
+export * from './contracts/context-api.js';
 export * from './adapters.js';

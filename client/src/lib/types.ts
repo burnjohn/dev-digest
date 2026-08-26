@@ -34,6 +34,19 @@ export type {
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
 
+/** SPEC-01 Project Context — the document-list, preview and attachment shapes
+ * `lib/hooks/context.ts` and `components/context-docs/**` build on. */
+export type {
+  ContextDocType,
+  ContextDocSource,
+  ContextDocument,
+  ContextDocumentList,
+  ContextPreviewResponse,
+  ContextAttachRequest,
+  ContextAttachResponse,
+  ContextUploadRequest,
+} from "@devdigest/shared";
+
 /** UI-only view model for a PR list row (derives display fields from PrMeta). */
 export interface PrRowView {
   number: number;

@@ -9,9 +9,14 @@ import {
   vector,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { now } from './_shared';
 import { workspaces } from './core';
 import { repos } from './repos';
+import { agents } from './agents';
+import { skills } from './skills';
 
 // ============================================================ Context & codebase
 
@@ -125,6 +130,58 @@ export const references = pgTable(
       t.toSymbol,
     ),
     byFile: index('references_repo_from_idx').on(t.repoId, t.fromPath),
+  }),
+);
+
+/**
+ * `context_attachments` — REQ-10: attaches a document, identified only by its
+ * repository-relative path, to either an agent or a skill, scoped to one
+ * repo. No part of the document's body is persisted here — the path is
+ * resolved and read fresh from the repo when needed.
+ *
+ * The owner is modeled as two nullable cascading FKs (`agentId`, `skillId`)
+ * rather than a polymorphic `(owner_type, owner_id)` pair: deleting an agent
+ * or a skill cascades its attachments away instead of leaving orphaned rows
+ * with no referential integrity. `ownerXorCheck` enforces "exactly one of
+ * agentId / skillId is non-null" at the DB level — drizzle-orm@0.38.4
+ * exposes `check()`, so this is enforced here rather than only in T7's
+ * repository (which should still validate defensively before insert).
+ */
+export const contextAttachments = pgTable(
+  'context_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    position: integer('position').notNull(),
+    createdAt: now(),
+  },
+  (t) => ({
+    wsIdx: index('context_attachments_ws_idx').on(t.workspaceId),
+    repoIdx: index('context_attachments_repo_idx').on(t.repoId),
+    agentIdx: index('context_attachments_agent_idx').on(t.agentId),
+    skillIdx: index('context_attachments_skill_idx').on(t.skillId),
+    // One document cannot be attached twice to the same owner in the same repo.
+    // Partial (owner IS NOT NULL) because a plain UNIQUE treats NULLs as distinct
+    // per-row, which would not collapse the "other owner column" NULLs anyway —
+    // being explicit documents the intent.
+    agentPathUq: uniqueIndex('context_attachments_agent_repo_path_uq')
+      .on(t.agentId, t.repoId, t.path)
+      .where(sql`${t.agentId} IS NOT NULL`),
+    skillPathUq: uniqueIndex('context_attachments_skill_repo_path_uq')
+      .on(t.skillId, t.repoId, t.path)
+      .where(sql`${t.skillId} IS NOT NULL`),
+    ownerXorCheck: check(
+      'context_attachments_owner_xor_check',
+      sql`(${t.agentId} IS NOT NULL AND ${t.skillId} IS NULL) OR (${t.agentId} IS NULL AND ${t.skillId} IS NOT NULL)`,
+    ),
   }),
 );
 

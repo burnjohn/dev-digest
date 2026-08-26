@@ -67,7 +67,6 @@ The whole of `vendor/shared/**` imports nothing but `zod` and itself. **This rin
 | `platform/resilience.ts` | ✅ zero imports |
 | `platform/model-router.ts` | ✅ |
 | `platform/price-book.ts` | ✅ R0 only |
-| `platform/trace-builder.ts` | ✅ R0 only |
 | `platform/run-logger.ts` | ✅ R0 + `import type { RunBus }` from `sse.ts` — type-only, survives the `infra/` move |
 | `platform/config.ts` | ✅ `zod` + node builtins + `dotenv/config` (bounded exception: it *is* the env boundary) |
 | `platform/grounding.ts` | ⚠️ re-export shim → delete (SKILL §1) |
