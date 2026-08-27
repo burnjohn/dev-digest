@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrCommit, PrIntentDetail } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
@@ -55,15 +56,18 @@ const INTENT: PrIntentDetail = {
 function renderCard(
   prId: string | null = "pr-1",
   stale?: { headSha?: string | null; prCommits?: PrCommit[] },
+  children?: ReactNode,
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <IntentCard prId={prId} headSha={stale?.headSha} prCommits={stale?.prCommits} />
+      <IntentCard prId={prId} headSha={stale?.headSha} prCommits={stale?.prCommits}>
+        {children}
+      </IntentCard>
     </NextIntlClientProvider>,
   );
 }
 
-const STALE_TEXT = "Computed before the latest commit — recompute to refresh it.";
+const STALE_TEXT = "Computed before the latest commit — Recalculate to refresh it.";
 
 function commit(sha: string, committed_at: string | null): PrCommit {
   return { sha, message: `msg ${sha}`, author: "octocat", committed_at };
@@ -79,7 +83,7 @@ describe("IntentCard — get-or-create on mount (REQ-8, REQ-14)", () => {
     expect(usePrIntentSpy).toHaveBeenCalledWith("pr-1");
     expect(screen.getByText(INTENT.intent)).toBeInTheDocument();
     expect(screen.getByText("Rate limiter middleware")).toBeInTheDocument();
-    expect(screen.getByText("Auth changes")).toBeInTheDocument();
+    expect(screen.getByText("Auth changes")).toBeInTheDocument();
   });
 });
 
@@ -91,16 +95,19 @@ describe("IntentCard — cache hit issues no second create (REQ-8)", () => {
     // Cache hit: content is already there on first paint (no loading branch
     // taken), and the card itself never calls the force-reclassify mutation.
     expect(screen.getByText(INTENT.intent)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Recompute" })).toBeInTheDocument();
     expect(reclassifyMutate).not.toHaveBeenCalled();
   });
 
-  it("only reclassifies when the user explicitly clicks Recompute", () => {
+  it("carries no refresh control of its own (2026-08-26: one button, on the brief band)", () => {
+    // The Overview tab has exactly ONE Recalculate, in PrBriefCard's header,
+    // and it drives the intent then the brief. A Recompute button reappearing
+    // here is the regression: it would let a reviewer refresh the intent
+    // WITHOUT the brief, leaving a brief keyed to the previous classification.
     usePrIntentSpy.mockReturnValue({ data: INTENT, isLoading: false, isError: false, refetch });
     renderCard("pr-1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Recompute" }));
-    expect(reclassifyMutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Recompute|Recalculate/ })).not.toBeInTheDocument();
+    expect(reclassifyMutate).not.toHaveBeenCalled();
   });
 });
 
@@ -110,7 +117,6 @@ describe("IntentCard — loading and error states", () => {
     renderCard("pr-1");
 
     expect(screen.getByText("Intent")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Recompute" })).not.toBeInTheDocument();
     expect(screen.queryByText(INTENT.intent)).not.toBeInTheDocument();
   });
 
@@ -172,6 +178,21 @@ describe("IntentCard — staleness against the head commit", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
+  it("keeps the stale strip out of the error branch even with a slot filled", () => {
+    // Regression guard for the 2026-08-26 restructure: the error branch became
+    // a card box (so it can hold `children`), and the stale strip must not
+    // have followed it in.
+    usePrIntentSpy.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch });
+    renderCard(
+      "pr-1",
+      { headSha: "head", prCommits: [commit("head", "2026-08-21T00:00:00.000Z")] },
+      <p>RISK SLOT</p>,
+    );
+
+    expect(screen.queryByText(STALE_TEXT)).not.toBeInTheDocument();
+    expect(screen.getByText("RISK SLOT")).toBeInTheDocument();
+  });
+
   it("never shows the stale strip in the error branch", () => {
     // The error card owns `alert`; a stale strip there would be nonsense
     // because there is no intent to be stale.
@@ -182,5 +203,46 @@ describe("IntentCard — staleness against the head commit", () => {
     });
 
     expect(screen.queryByText(STALE_TEXT)).not.toBeInTheDocument();
+  });
+});
+
+describe("IntentCard — the children slot (2026-08-26; SPEC-02 N3 amended)", () => {
+  it("renders the slot inside the card box in every branch, below the scope grid", () => {
+    // The slot is where RISK AREAS lives now. It must survive all three
+    // branches: a failed or in-flight INTENT fetch has nothing to do with the
+    // brief, and hiding the risk areas with it would be the bug.
+    const slot = <p>RISK SLOT</p>;
+
+    usePrIntentSpy.mockReturnValue({ data: INTENT, isLoading: false, isError: false, refetch });
+    const loaded = renderCard("pr-1", undefined, slot);
+    const card = screen.getByRole("group", { name: "Intent" });
+    expect(card).toHaveTextContent("RISK SLOT");
+    // Order matters: the slot comes AFTER the out-of-scope list, never above
+    // the intent quote.
+    expect(
+      card.textContent!.indexOf("Auth changes") < card.textContent!.indexOf("RISK SLOT"),
+    ).toBe(true);
+    loaded.unmount();
+
+    usePrIntentSpy.mockReturnValue({ data: undefined, isLoading: true, isError: false, refetch });
+    const loading = renderCard("pr-1", undefined, slot);
+    expect(screen.getByText("RISK SLOT")).toBeInTheDocument();
+    loading.unmount();
+
+    usePrIntentSpy.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch });
+    renderCard("pr-1", undefined, slot);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("RISK SLOT")).toBeInTheDocument();
+  });
+
+  it("renders no divider when no slot is passed", () => {
+    // Every pre-existing call site passes no children; a bare rule hanging
+    // under the scope grid would be the visible regression.
+    usePrIntentSpy.mockReturnValue({ data: INTENT, isLoading: false, isError: false, refetch });
+    const { container } = renderCard("pr-1");
+    const dividers = Array.from(container.querySelectorAll("div")).filter(
+      (el) => el.style.borderTopStyle === "solid",
+    );
+    expect(dividers).toHaveLength(0);
   });
 });

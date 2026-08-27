@@ -109,7 +109,7 @@ export function truncateMarkdown(
  * Plain head cut for non-markdown / structureless text (the file-list block).
  * Always recorded `truncated`, never `used`.
  */
-function truncatePlain(text: string, budget: number): { text: string; chars: number } {
+export function truncatePlain(text: string, budget: number): { text: string; chars: number } {
   const markerBudget = Math.max(0, budget - TRUNCATION_MARKER.length - 1);
   const result = `${text.slice(0, markerBudget)}\n${TRUNCATION_MARKER}`;
   return { text: result, chars: result.length };
@@ -231,7 +231,7 @@ export function planSpecRefs(body: string | null | undefined, repoRef: RepoRef):
  * BEFORE anything reaches `GitClient.readFile`. Rejects `..` segments,
  * absolute paths, drive letters, and anything not ending in `.md`.
  */
-function isSafeRepoMdPath(path: string): boolean {
+export function isSafeRepoMdPath(path: string): boolean {
   if (!path.toLowerCase().endsWith('.md')) return false;
   if (path.startsWith('/') || path.startsWith('\\')) return false;
   if (/^[A-Za-z]:/.test(path)) return false;
@@ -259,7 +259,7 @@ function isLongMarkdownBody(body: string): boolean {
   return headings >= 2 || (headings >= 1 && listItems >= 1);
 }
 
-function renderFileList(files: UnifiedDiff['files']): { text: string; status: IntentSource['status']; chars: number } {
+export function renderFileList(files: UnifiedDiff['files']): { text: string; status: IntentSource['status']; chars: number } {
   if (files.length === 0) {
     return { text: '', status: 'missing', chars: 0 };
   }

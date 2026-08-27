@@ -34,6 +34,13 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
+  // Project-context discovery (SPEC-01) — where the `specs`/`docs`/`insights` walk
+  // starts. Comma-separated list of repository-relative directory prefixes; empty/
+  // unset defaults to a single root of '.' (the clone root) in loadConfig below.
+  DEVDIGEST_CONTEXT_SEARCH_ROOTS: z.string().optional(),
+  // Project-context uploads (SPEC-01) — a sibling of DEVDIGEST_CLONE_DIR, never
+  // inside it. Resolved the same absolute-vs-relative way as cloneDir below.
+  DEVDIGEST_CONTEXT_UPLOAD_DIR: z.string().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // `.env` (and .env.example) ship `LOG_LEVEL=` empty; an empty string is not a
   // valid enum member, so coerce '' → undefined to fall through to the default.
@@ -66,6 +73,27 @@ export type AppConfig = {
   repoIntelEnabled: boolean;
   /** D3 — whether the blast-radius card's flagged LLM narration is active. Default false. */
   blastExplainEnabled: boolean;
+  /**
+   * SPEC-01 project-context discovery. A list of **repository-relative directory
+   * prefixes** the `specs`/`docs`/`insights` walk starts from — never a glob and
+   * never an absolute path; either is unsupported here and simply treated as a
+   * literal (and likely non-matching) prefix. Defaults to `['.']` (the clone root)
+   * so the feature works with zero operator configuration. Parsed from
+   * `DEVDIGEST_CONTEXT_SEARCH_ROOTS` (comma-separated, each entry trimmed).
+   * Resolving a root against a repository's `cloneDir` and refusing one that
+   * escapes it is NOT done here — `config.ts` only parses env, it never touches
+   * the filesystem — that containment check lives in the walk's own helper.
+   */
+  contextSearchRoots: string[];
+  /**
+   * SPEC-01 project-context uploads. Absolute path to the directory uploaded
+   * context documents are written under. Deliberately a SIBLING of `cloneDir`,
+   * never inside it: `GitClient.sync` advances the working tree on every resync
+   * and would otherwise clobber an upload, and a file inside the clone would
+   * dirty the user's `git status`. Defaults to `~/.devdigest/context`.
+   * Overridable via `DEVDIGEST_CONTEXT_UPLOAD_DIR`.
+   */
+  contextUploadDir: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -73,6 +101,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const cloneDirRaw =
     parsed.DEVDIGEST_CLONE_DIR ?? join(homedir(), '.devdigest', 'workspace');
   const cloneDir = isAbsolute(cloneDirRaw) ? cloneDirRaw : resolve(process.cwd(), cloneDirRaw);
+  const contextUploadDirRaw =
+    parsed.DEVDIGEST_CONTEXT_UPLOAD_DIR ?? join(homedir(), '.devdigest', 'context');
+  const contextUploadDir = isAbsolute(contextUploadDirRaw)
+    ? contextUploadDirRaw
+    : resolve(process.cwd(), contextUploadDirRaw);
+  const contextSearchRoots = parsed.DEVDIGEST_CONTEXT_SEARCH_ROOTS
+    ? parsed.DEVDIGEST_CONTEXT_SEARCH_ROOTS.split(',')
+        .map((root) => root.trim())
+        .filter((root) => root.length > 0)
+    : ['.'];
   return {
     databaseUrl: parsed.DATABASE_URL,
     apiPort: parsed.API_PORT,
@@ -85,5 +123,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     blastExplainEnabled: parsed.BLAST_EXPLAIN_ENABLED === 'true',
+    contextSearchRoots,
+    contextUploadDir,
   };
 }

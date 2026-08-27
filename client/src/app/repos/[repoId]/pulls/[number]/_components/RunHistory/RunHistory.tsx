@@ -230,7 +230,7 @@ export function RunHistory({
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
               {settled && (r.tokens_in != null || r.tokens_out != null || r.cost_usd != null) && (
                 <span>
-                  {((r.tokens_in ?? 0) + (r.tokens_out ?? 0)).toLocaleString()} tok · {formatCost(r.cost_usd)}
+                  {((r.tokens_in ?? 0) + (r.tokens_out ?? 0)).toLocaleString()}t · {formatCost(r.cost_usd)}
                 </span>
               )}
             </div>

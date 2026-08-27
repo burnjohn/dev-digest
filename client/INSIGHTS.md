@@ -6,6 +6,60 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-27 — `usePrReviews` returns every agent's every run — `reviews[0]` is not "the PR's review"
+`reviewsForPull` returns EVERY historical `reviews` row for EVERY agent, newest-first, and until
+2026-08-27 had no secondary sort key — so `reviews[0]` is whichever agent happened to finish LAST,
+and on concurrently fanned-out runs (`created_at` is `defaultNow()`) it was not even stable across
+refreshes. `PrBriefCard` rendered that one row as the PR's headline and showed "Approve · 0 findings
+· 100" on a PR another agent had rejected with 4 blockers. **Any PR-wide number must group by
+`agent_id` and keep the newest per agent first** (`_lib/verdict.ts` `aggregatePr`) — a plain sum over
+the rows is also wrong, since re-running one agent adds a row rather than replacing one.
+
+### 2026-08-27 — An aggregate that folds floats is order-dependent; sort before you fold
+Summing `cost_usd` over a `Map`'s insertion order made `aggregatePr` return
+`0.026600000000000002` or `0.0266` for the same three runs depending only on the order the caller
+passed them — float addition is not associative, and a test asserting "stable however the reviews
+are ordered" is what caught it. Any helper claiming order-independence must impose its own order
+(here: newest-first, `id` breaking ties) before folding, not inherit the caller's.
+
+
+### 2026-08-27 — Asserting a style is ABSENT needs `el.style`, not `getComputedStyle`
+Refines the "jsdom reflects inline styles through `getComputedStyle`" note: that holds only for
+properties you SET. An unset one resolves to its CSS default, so `getComputedStyle(el).background`
+on a borderless box is `"rgba(0, 0, 0, 0)"`, never `""` — read `el.style.background` when the point
+of the test is that the component draws no card box (`PrBriefCard/RiskAreas.test.tsx`).
+
+### 2026-08-27 — A hand-rolled `api.post` opts out of cache invalidation, and `staleTime: 30_000` hides it for 30s
+`useContextAutosave` (`lib/hooks/context.ts`) skips `useMutation` to get its own debounce and
+issue-order sequencing, and so never touched the query cache — so after an attach/detach the
+`["context-attachment", …]` entry kept serving pre-edit paths, and since both `Context` tabs seed
+their attached set once at mount (deliberate, see 2026-08-16), switching agents and back reverted
+the checkbox. Only a refresh or `gcTime` eviction cleared it. **If a write does not go through
+`useMutation`, its `setQueryData`/`invalidateQueries` is on you.** Two traps when fixing this
+shape: guard the cache write with the same superseded-write check the rest of the handler uses, and
+prefer `refetchType: "none"` for a query the writing screen holds ACTIVE if its endpoint is
+expensive (`listForRepo` re-walks the checkout on every GET). A test can also pin the bug — this
+one was asserted as “the hook never writes into that query’s cache”.
+
+### 2026-08-26 — A full-height page (inner-scrolling panes) works without touching `AppFrame`
+`styles.css` sets `html, body { height: 100% }` and `AppFrame`'s `<main>` is
+`flex:1; minHeight:0; overflow:auto` inside a `100vh` column, so a page container with
+`height: "100%"` already gets a *definite* height — no `calc(100vh - 52px)` and no shell edit.
+The part that actually bites: every flex ancestor between that container and the scrolling child
+needs `minHeight: 0`, or the child refuses to shrink below its content and the whole page scrolls
+instead of the pane (`app/repos/[repoId]/context/.../styles.ts` is the worked example). Such a page
+opts out of the 2026-08-17 `maxWidth: 1100` container rule — that rule exists because `<main>` has
+no padding, so a full-bleed page satisfies it by giving each pane its own padding.
+
+### 2026-08-26 — `tsc` and vitest map `./x.js` → `x.ts`; Next's webpack does not, unless you tell it
+The vendored `src/vendor/shared` is a byte-identical copy of the server's NodeNext contracts, so its
+barrel re-exports `./contracts/*.js`. `moduleResolution: "Bundler"` and Vite both perform the TS
+`.js`→`.ts` substitution, but Next's webpack only does it via `experimental.extensionAlias`
+(`next.config.mjs`) — so a broken vendored import passes `pnpm typecheck` AND `pnpm test` and only
+surfaces as `Module not found: Can't resolve './contracts/findings.js'` in the dev server. `pnpm build`
+is the only gate that catches it. Corollary: `import type` from `@devdigest/shared` is erased by SWC
+and never resolved, so the first runtime VALUE import of the barrel is what trips this.
+
 ### 2026-08-25 — a hook's `isError` branch does NOT cover a malformed payload; that one throws in render
 `api.get<T>()` is a plain TypeScript cast with no runtime parse, so a partial or drifted response
 resolves *successfully* and then throws when the component destructures it (`const { totals } = blast`).

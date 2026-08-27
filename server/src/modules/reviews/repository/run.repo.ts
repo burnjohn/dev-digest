@@ -1,6 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
+import { RunTrace as RunTraceSchema } from '@devdigest/shared';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
 
 // ---- in-flight / history --------------------------------------------------
@@ -178,10 +179,16 @@ export async function completeAgentRun(
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */
 export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Promise<void> {
+  // Validate HERE, at the write boundary, so a malformed trace fails loudly at
+  // write-time rather than when a reader parses the jsonb back. Every producer
+  // (done / cancelled / failed) funnels through this one call, so this is the
+  // only place the guarantee has to hold — and parsing also strips any stray
+  // key before it is frozen into the document.
+  const parsed = RunTraceSchema.parse(trace);
   await db
     .insert(t.runTraces)
-    .values({ runId, trace })
-    .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
+    .values({ runId, trace: parsed })
+    .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace: parsed } });
 }
 
 export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {

@@ -18,6 +18,7 @@ export interface SkillEditorTab {
 export const TABS: SkillEditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
   { key: "preview", labelKey: "editor.tabs.preview", icon: "Eye" },
+  { key: "context", labelKey: "editor.tabs.context", icon: "FileText" },
   { key: "versions", labelKey: "editor.tabs.versions", icon: "History" },
 ];
 

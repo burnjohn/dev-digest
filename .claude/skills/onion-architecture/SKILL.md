@@ -56,8 +56,8 @@ that sentence, made checkable.
 
 ### `platform/` is not one ring — it splits
 
-Seven files are the pure R1 kernel: `errors` · `resilience` · `model-router` · `price-book` ·
-`trace-builder` · `run-logger` · `config`. Three own real I/O and belong in a new
+Six files are the pure R1 kernel: `errors` · `resilience` · `model-router` · `price-book` ·
+`run-logger` · `config`. Three own real I/O and belong in a new
 **`platform/infra/`** (R4): `jobs.ts` (a durable queue over the `jobs` table), `sse.ts` (a
 process-global `EventEmitter`), `prompts.ts` (a `node:fs` template loader). `container.ts` is R6.
 

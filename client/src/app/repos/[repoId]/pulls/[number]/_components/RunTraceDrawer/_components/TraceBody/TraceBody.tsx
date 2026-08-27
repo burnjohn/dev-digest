@@ -19,6 +19,11 @@ import { Row, Stat } from "../atoms";
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
+  // `specs_manifest` is `.nullish()` — an older trace without the key renders
+  // exactly as it did before this array existed (REQ-27).
+  const missingSpecPaths = (trace.specs_manifest ?? [])
+    .filter((entry) => entry.status === "missing")
+    .map((entry) => entry.path);
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -38,14 +43,21 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Row>
           <Row label={t("trace.config.specsRead")}>
             <div style={s.specsWrap}>
-              {trace.specs_read.length === 0 ? (
+              {trace.specs_read.length === 0 && missingSpecPaths.length === 0 ? (
                 <span style={s.specsNone}>{t("trace.config.none")}</span>
               ) : (
-                trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
-                    {sp}
-                  </span>
-                ))
+                <>
+                  {trace.specs_read.map((sp, i) => (
+                    <span key={`read-${i}`} className="mono" style={s.spec}>
+                      {sp}
+                    </span>
+                  ))}
+                  {missingSpecPaths.map((sp, i) => (
+                    <Badge key={`missing-${i}`} color="var(--warn)" bg="var(--warn-bg)" icon="XCircle" mono>
+                      {sp}
+                    </Badge>
+                  ))}
+                </>
               )}
             </div>
           </Row>

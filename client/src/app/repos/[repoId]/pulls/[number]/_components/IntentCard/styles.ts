@@ -20,21 +20,22 @@ export const s = {
     background: "var(--bg-elevated)",
     padding: 18,
     // Fills the remaining space under SectionLabel/the stale strip, and
-    // scrolls in the rare case its own content (a long summary + long
-    // in/out-of-scope lists) exceeds the slot's max height — IntentCard has
-    // no single dominant list to isolate the way BlastCard's symbolList is,
-    // so the whole card is the scroll container here.
+    // scrolls once its content (summary + in/out-of-scope lists + the RISK
+    // AREAS slot) exceeds the slot's max height — which, since the risk areas
+    // moved in on 2026-08-26, is the normal case rather than a rare one. The
+    // whole card is the scroll container: PrBriefCard/styles.ts `riskList`
+    // deliberately does NOT scroll on its own, or the wheel would be trapped
+    // over the rows.
     display: "flex",
     flexDirection: "column",
     flex: "1 1 auto",
     minHeight: 0,
     overflowY: "auto",
   } satisfies CSSProperties,
-  errorCard: {
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    background: "var(--bg-elevated)",
-    padding: 18,
+  // The error branch's alert row. It is NOT the bordered box any more: since
+  // 2026-08-26 that branch renders inside `card` above, so the row can share
+  // the box with the `children` slot beneath it (IntentCard.tsx).
+  errorRow: {
     display: "flex",
     alignItems: "center",
     gap: 12,
@@ -124,4 +125,16 @@ export const s = {
     marginBottom: 10,
   } satisfies CSSProperties,
   staleNoticeIcon: { flexShrink: 0 } satisfies CSSProperties,
+  /** Rule between the scope grid and the `children` slot (RISK AREAS). Border
+      LONGHANDS only — this file sets `borderLeftColor` on `s.summary`, and a
+      `border`/`borderTop` shorthand anywhere in the same style system is the
+      rerender-warning trap documented above and in client/INSIGHTS.md
+      2026-08-10. */
+  divider: {
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: "var(--border)",
+    margin: "16px 0 14px",
+    flexShrink: 0,
+  } satisfies CSSProperties,
 } as const;

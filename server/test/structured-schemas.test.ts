@@ -5,6 +5,7 @@ import {
   ConventionExtraction,
   ConventionFileSelection,
 } from '../src/modules/conventions/service.js';
+import { RiskBriefGeneration } from '../src/vendor/shared/contracts/risk-brief.js';
 
 /**
  * Every structured call this server makes goes out with `strict: true`
@@ -73,6 +74,7 @@ const SENT_WITH_STRICT: [string, z.ZodTypeAny][] = [
   ['ConventionFileSelection', ConventionFileSelection],
   ['ConventionExtraction', ConventionExtraction],
   ['ConventionDedup', ConventionDedup],
+  ['RiskBriefGeneration', RiskBriefGeneration],
 ];
 
 describe('structured schemas are OpenAI strict-mode compatible', () => {

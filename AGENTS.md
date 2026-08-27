@@ -47,17 +47,25 @@ rules live in the agent files and are not restated here.
 | When the work is… | Dispatch | Note |
 |---|---|---|
 | Finding something out — in this project or on the public internet | [`researcher`](.claude/agents/researcher.md) | Read-only. Returns a cited report, never a file. |
-| Deciding *how* to build something — decomposition into tasks | [`planner`](.claude/agents/planner.md) | Writes `docs/plans/NN-slug.md` and nothing else. |
+| Deciding *what* to build and what "done" means — before any plan exists | [`spec-creator`](.claude/agents/spec-creator.md) | Interviews on blockers first, then writes `<pkg>/specs/SPEC-NN-<slug>.md` with EARS acceptance criteria and a design review. Its own improvement ideas stay in the report until you accept them. |
+| Deciding *how* to build something — decomposition into tasks | [`implementation-planner`](.claude/agents/implementation-planner.md) | Validates the requirements it is given, asks whether to run multi-agent or single-agent, then writes `docs/plans/NN-slug.md` and nothing else. |
 | Writing the code for **one** task block | [`implementer`](.claude/agents/implementer.md) | N-up in parallel only on disjoint `Owned paths`. |
-| Checking a finished implementation | [`plan-verifier`](.claude/agents/plan-verifier.md) **then** [`architecture-reviewer`](.claude/agents/architecture-reviewer.md) | Completeness first, structure second — see below. |
+| Running a finished plan end to end — waves, review, fixes, verification | [`run-plan`](.claude/skills/run-plan/SKILL.md) — a **skill**, not an agent | The parent session runs it. Drives `implementer` waves, then the architecture review→fix→re-review loop, then `plan-verifier`. Never writes a spec or a plan, never commits. |
+| Checking a finished implementation | [`architecture-reviewer`](.claude/agents/architecture-reviewer.md) **then** [`plan-verifier`](.claude/agents/plan-verifier.md) | Structure first, completeness last — see below. |
 | Writing tests for code that already exists | [`test-writer`](.claude/agents/test-writer.md) | Never edits the file under test. |
-| Writing a spec, design note, or README | [`doc-writer`](.claude/agents/doc-writer.md) | Documents what already exists. `docs/plans/**` is not its surface. |
+| Writing a design note, a README, or a spec for something that already shipped | [`doc-writer`](.claude/agents/doc-writer.md) | Documents what already exists. `docs/plans/**` is not its surface, and neither is a file carrying a `Spec ID:` line. |
 
-**The verification pair runs in that order, and the first leg has a precondition.**
-`plan-verifier` answers *was every `REQ` actually shipped* by walking the plan's own coverage matrix,
-so it needs `docs/plans/NN-*.md` to exist. Work dispatched through the short leg — task block inline,
-no plan file — has no matrix to walk: go straight to `architecture-reviewer`. Completeness before
-structure; there is no point judging the shape of a requirement nobody implemented.
+**The verification pair runs in that order, and the second leg has two preconditions.**
+`architecture-reviewer` judges structure and runs first, so remediation happens before anything is
+graded complete. `plan-verifier` answers *was every `REQ` actually shipped* by walking the plan's own
+coverage matrix, so (1) it needs `docs/plans/NN-*.md` to exist, and (2) it must run **last** — its
+contract caps code inspection at `PARTIAL`, so only a passing test buys `VERIFIED` and running it
+before the tests are in returns `INCOMPLETE` by construction. Work dispatched through the short leg
+— task block inline, no plan file — has no matrix to walk: run `architecture-reviewer` alone.
+
+The full post-wave order is [docs/plans/README.md](docs/plans/README.md) §"After the waves land":
+coverage triage (free) → `architecture-reviewer` → remediation → `test-writer` at flagged gaps only
+→ `plan-verifier` → remediation. The [`run-plan`](.claude/skills/run-plan/SKILL.md) skill executes it.
 
 **What is never delegated.** Committing, pushing, integration of parallel work, the `pr-self-review`
 gate, and the end-of-session `INSIGHTS.md` append stay with the parent session. No agent commits.

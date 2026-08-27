@@ -1,24 +1,39 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
+  "toolbar": {
+    "upload": "Upload document",
+    "refresh": "Refresh"
+  },
+  "type": {
+    "specs": "specs",
+    "docs": "docs",
+    "insights": "insights"
+  },
+  "footerCount": "{count, plural, one {# document} other {# documents}}",
+  "footerRefreshed": "refreshed {rel} ago",
+  "footerRefreshedNow": "refreshed just now",
+  "bounded": "Showing the first {bound, number} files — the walk was bounded.",
+  "oversized": "Oversized",
+  "usedBy": "{count, plural, one {Used by # agent} other {Used by # agents}}",
+  "usedByDisabledSkill": "{count, plural, one {(# via a disabled skill)} other {(# via a disabled skill)}}",
+  "heading": {
+    "agent": "Project context — {n} of {total} attached",
+    "skill": "Project context to use — {n} attached"
+  },
+  "skillSubtitle": "Any agent using this skill inherits these documents.",
+  "filterPlaceholder": "Filter documents…",
+  "orderHint": "Order matters — earlier docs appear earlier in the assembled ## Project context block. Toggle to attach.",
+  "injectedNote": "Injected as an untrusted block (## Project context) into every run.",
+  "serializesAs": "SERIALIZES AS",
+  "tokenEstimate": "{count}t",
+  "overWindowWarning": "Attached documents use {tokens}t — over 25% of this model's {window}-token context window.",
+  "saveFailed": "Couldn’t save your context attachments — {message}",
+  "preview": "Preview",
+  "previewAriaLabel": "Preview {name}",
+  "loading": "Loading project context…",
   "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "title": "No project context documents yet",
+    "body": "Add markdown files under any specs, docs or insights folder in this repository. Every agent or skill you attach them to reads them as grounding context."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
-  },
-  "editor": {
-    "loadError": "Couldn’t load spec",
-    "save": "Save",
-    "saving": "Saving…"
-  }
+  "error": "Couldn’t load project context — {message}. Try refreshing."
 }

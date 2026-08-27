@@ -97,12 +97,12 @@ describe("RunHistory — outcome badge", () => {
 
   it("a settled run shows the 'N tok · $X' line", () => {
     renderRuns([run({ status: "done", tokens_in: 9000, tokens_out: 119, cost_usd: 0.0013 })]);
-    expect(screen.getByText("9,119 tok · $0.0013")).toBeInTheDocument();
+    expect(screen.getByText("9,119t · $0.0013")).toBeInTheDocument();
   });
 
   it("a settled run with no token/cost data omits the tok·$ line", () => {
     renderRuns([run({ status: "done", tokens_in: null, tokens_out: null, cost_usd: null })]);
-    expect(screen.queryByText(/tok ·/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\dt ·/)).not.toBeInTheDocument();
   });
 });
 
