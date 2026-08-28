@@ -22,15 +22,23 @@
 name: evals
 
 on:
-  pull_request:
-    paths:
-      - '.claude/skills/**'
-      - '.claude/agents/**'
-      - 'CLAUDE.md'
-      - 'AGENTS.md'
-      - '**/AGENTS.md'
-      - 'evals/**'
-      - '.github/workflows/evals.yml'
+  # MANUAL ONLY. The `pull_request` trigger below is commented out deliberately — evals cost real
+  # tokens on every PR that touches a skill, an agent, or the harness, and this repo does not want
+  # that bill automatically. Uncomment the block to turn per-PR scoping back on; nothing else needs
+  # to change, and the `detect` job still carries the diff-scoping branch that reads `github.base_ref`.
+  #
+  # Note the consequence while it is off: a manual run has no diff to scope by, so `detect` falls
+  # through to "run every suite that has evals" — the full bill, not a narrowed one.
+  #
+  # pull_request:
+  #   paths:
+  #     - '.claude/skills/**'
+  #     - '.claude/agents/**'
+  #     - 'CLAUDE.md'
+  #     - 'AGENTS.md'
+  #     - '**/AGENTS.md'
+  #     - 'evals/**'
+  #     - '.github/workflows/evals.yml'
   workflow_dispatch:
     inputs:
       tool_model:
