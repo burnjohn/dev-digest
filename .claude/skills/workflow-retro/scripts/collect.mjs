@@ -6,8 +6,9 @@
  * document with per-agent facts. It computes nothing subjective: every number here is
  * summed from disk, so the skill's prose can cite evidence instead of recollection.
  *
- * Node, not bash, on purpose: `jq` is not installed on this machine and the repo root
- * contains spaces. Same reasoning as `.claude/hooks/pr-gate.mjs`.
+ * Node, not bash, on purpose: `jq` is not installed on this machine, the repo root contains
+ * spaces, and how the harness spawns a `.sh` script on Windows is not something this file
+ * controls. Node is guaranteed present (four Node packages) and parses JSON natively.
  *
  * Usage:
  *   node .claude/skills/workflow-retro/scripts/collect.mjs [--session <id>] [--project <slug>]

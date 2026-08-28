@@ -5,15 +5,16 @@ Answers one question: **may this change be pushed?**
 Not what could be better about it — that is `/code-review`, and this skill delegates to it
 rather than reimplementing it.
 
-> `/code-review` tells you what is wrong. `pr-self-review` decides whether you may ship it.
+> `/code-review` tells you what is wrong. `pr-self-review` tells you whether it is ready to ship.
+
+**As of 2.0.0 this skill enforces nothing.** It is invoked by hand and returns a verdict; the
+`gate.json` artifact and the `PreToolUse` hook that once denied `git push` are gone. See the
+changelog for why.
 
 - `SKILL.md` — the rules (loaded when the skill triggers)
 - `references/routing-table.md` — the path→skill→group map, match semantics, worked example
 - `references/mechanical-checks.md` — H1–H18 as copy-pasteable commands
 - `references/report-template.md` — every report section with its required shape
-- `../../hooks/pr-gate.mjs` — the `PreToolUse` deny hook
-- `../../hooks/pr-gate.test.mjs` — 30 assertions over that hook (`node .claude/hooks/pr-gate.test.mjs`)
-- `../../settings.json` — hooks block only
 
 Scope is **local, not-yet-pushed changes**. A PR that already exists belongs to the built-in
 `/code-review <target>`.
@@ -47,17 +48,14 @@ run on an open PR.
 - **Findings are `Finding` objects**, field for field, enum for enum. A finding from this
   review pastes into the product's pipeline unchanged, and vice versa.
 - **A hallucinated CRITICAL costs more than a missed one.** A false block teaches the user to
-  reach for `--override`; after the third time the gate is decorative. A missed problem costs
+  discount the verdict; after the third time the review is decorative. A missed problem costs
   one review comment. Two defences follow from that asymmetry: the mechanical grounding gate
   ported from `reviewer-core/src/grounding.ts`, and an adversarial re-check of every surviving
   CRITICAL with no skills loaded.
 - **Deterministic checks before any LLM call.** A type error makes the whole review moot;
   learning that in 20 seconds for $0 beats learning it in 4 minutes for $0.40.
-- **Skipped ≠ failed.** Docker down means `checksSkipped`, reported loudly, blocking nothing.
-  A gate that cannot be earned gets ripped out by the root.
-- **The hook fails open.** Anything this script gets wrong allows the push and warns on
-  stderr. A broken gate that bricks `git push` gets `settings.json` deleted within the hour,
-  taking the working gate with it.
+- **Skipped ≠ failed.** Docker down means the check is reported as skipped, loudly, and blocks
+  nothing. A verdict that cannot be earned gets ignored.
 - **Zero generic bug taxonomy.** No off-by-one checklist, no OWASP list. That knowledge lives
   in `docs/agent-prompts/*.md`, the `security` skill, and the built-in `code-review`; a fourth
   copy would drift within a month.
@@ -66,20 +64,21 @@ run on an open PR.
 
 ## Points of disagreement
 
-**The hook is Node, not bash.** The repo's own scripts are bash and every other automation
-here follows suit. This one does not, for two reasons that outweigh consistency: the repo root
-contains spaces, and how the harness spawns a `.sh` hook on Windows is not something this file
-controls. A shell hook here is a quoting bug waiting for its moment. Node is guaranteed present
-(four Node packages), cross-platform, and parses JSON natively.
+**Enforcement was removed in 2.0.0, and the argument for it is worth keeping.** Versions
+1.x shipped three layers: the verdict, a `gate.json` artifact keyed on `headSha` **plus** a
+working-tree digest, and a `PreToolUse` hook that denied `gh pr create` / `gh pr ready` /
+`git push` outright. The reasoning was sound for what it assumed — a verdict that evaporates
+between sessions is persuasion, not enforcement, and a gate keyed on `headSha` alone is
+defeated by fixing nothing and pushing anyway.
 
-**The gate is keyed on the working tree, not just `headSha`.** This makes the gate go STALE on
-every edit, which is more friction than a commit-keyed gate. It is deliberate: a gate keyed on
-`headSha` alone is defeated by fixing nothing and pushing anyway. The friction is the feature,
-and `--fix` (§10) and `--since-last-review` exist to pay for it.
+What it got wrong was the premise. This skill is run **by hand**, by the repo owner, at the
+moment they decide to review. Nothing invokes it unattended, so nothing needed to outlive the
+session. The three layers bought staleness bugs, an override protocol with a 20-character
+justification, and a second implementation of one hash — to enforce a rule on the one person
+who had already chosen to follow it. The cost was real and the benefit was assumed.
 
-**Deleting `.claude/settings.json` is documented as a supported exit.** An escape hatch that
-must be discovered is an escape hatch that teaches tricks. Whoever wants out should leave
-through the door.
+The lesson generalizes past this skill: **persistence is only worth its complexity when
+something runs without a human present.**
 
 **No linter is proposed, anywhere.** The obvious reading of "there is no local gate" is "add
 ESLint". This skill explicitly refuses to suggest it — including as a review finding — because
@@ -119,39 +118,10 @@ cited location on **2026-08-15**.
 
 ## Verification performed
 
-The deliverable is documentation plus one executable hook, so verification splits: the prose
-is claim-checked against the tree, the hook is tested.
-
-### The hook: 30/30, and one real bug caught
-
-`node .claude/hooks/pr-gate.test.mjs` — **30 assertions, all passing**, run in the order
-§13-D of the source plan demands (invisibility *before* blocking):
-
-- **8 unrelated commands** (`ls`, `git status`, `pnpm test`, `cd client && pnpm typecheck`,
-  `git commit`, `echo`, `gh pr list`, `git pull --rebase`) → silent, zero output.
-- **3 help forms** (`gh pr create --help`, `git push --help`, `gh pr ready -h`) → allowed.
-- **8 push forms with no gate** → denied, including `cd client && git push`,
-  `GIT_TRACE=1 git push`, and `git -c core.pager=cat push`.
-- Fresh `approve` → allowed. Fresh `request_changes` → denied, and the reason names the
-  CRITICAL and offers the override command.
-- Stale by worktree digest → denied as `STALE`. Stale by `headSha` → denied.
-- **Corrupt `gate.json` → allowed**, with a warning on stderr. Fail-open holds.
-- Override valid → allowed; override under 20 chars → denied; override bound to an older
-  digest → denied.
-
-**A real bug was found this way and it is worth recording**, because it is exactly the failure
-this design is most vulnerable to. The first version computed the digest as
-`parts.join(' ')` — and a literal **NUL byte** ended up inside those quotes on disk. The
-consequence: the hook's digest never matched a digest computed anywhere else, so *every* gate
-read `STALE`, forever, with an error message that confidently blamed the user's working tree.
-Nothing in the output pointed at the hash. Two fixes, both shipped:
-
-1. `workingTreeDigest` now **length-prefixes** each part (`h.update(String(part.length)).update(part)`)
-   rather than joining on a separator literal — there is no single-character string left to
-   corrupt.
-2. The hook exposes `node .claude/hooks/pr-gate.mjs --digest`, and `SKILL.md` §8 requires
-   phase 5 to stamp `gate.json` from it. **Two implementations of one hash is one too many**,
-   and the only symptom of disagreement is a permanently stale gate.
+The deliverable is documentation, claim-checked against the tree. The hook-test results that
+stood here covered `.claude/hooks/pr-gate.mjs`, removed in 2.0.0; what they proved (30/30, plus
+one real hash bug the tests caught before it shipped) is recorded in the 1.0.0 changelog and no
+longer describes anything runnable.
 
 ### Claims checked against the tree
 
@@ -193,7 +163,7 @@ Nothing in the output pointed at the hash. Two fixes, both shipped:
    it: six files under `client/src/vendor/shared/**` are modified, `findings.ts` is modified on
    the server side, and `sync-vendor.sh --check` reports **in sync**. That is the intended
    workflow. The naive rule would fire a false CRITICAL on the user's most common
-   multi-package change — the single best way to train someone to `--override` reflexively.
+   multi-package change — the single best way to train someone to ignore the verdict.
    H2 now fires **only** when `--check` fails.
 2. **`server/package.json` is not `skip-worktree` in this clone.** `TESTING.md` documents it
    as such, and the plan carried that forward as fact, warning that the file would never appear
@@ -233,21 +203,30 @@ session and try:
 If `pr-self-review` does not load, tune the `description`. **Do not rely on the skill firing on
 its own until this passes.**
 
-**No end-to-end run has happened.** Phases 0, 1 and the hook are tested; phases 2–5 have never
-executed as a whole, so no `gate.json` or report has been produced by the real pipeline (the
-ones in the test suite are hand-built fixtures). In particular the false-positive calibration
+**No end-to-end run has happened.** Phases 0 and 1 are tested; phases 2–5 have never executed
+as a whole, so no report has been produced by the real pipeline. In particular the false-positive calibration
 the plan asks for — running against three known-good merged commits and expecting **zero**
 CRITICAL — is **not done**. Until it is, treat a CRITICAL from this skill as a claim to check,
 not a verdict to trust.
 
-**`.claude/settings.json` is newly created and its hook is not yet live in any session.** The
-hook was driven directly (stdin payload in, JSON decision out) rather than through the harness.
-The payload shape and the `permissionDecision` response format are as documented, but the
-end-to-end wiring is unconfirmed until a session restarts with this settings file present.
-
 ---
 
 ## Changelog
+
+### 2.0.0 — 2026-08-28
+
+**Enforcement removed. The skill now advises; it does not block.**
+
+- Deleted `.claude/hooks/pr-gate.mjs` and `.claude/hooks/pr-gate.test.mjs`, and the hooks block
+  in `.claude/settings.json` that registered them.
+- `SKILL.md` §8 "The blocking mechanism" → "What the verdict means": the `gate.json` artifact,
+  the `workingTreeDigest` freshness scheme, the `PreToolUse` layer and both escape hatches
+  (`--override`, deleting `settings.json`) are gone. The verdict no longer persists, so a
+  re-run after a fix is a fresh judgement rather than a re-validation.
+- `--override` removed from the flag list; `--since-last-review` (§10, still unbuilt) now
+  states plainly that it needs its own persistence.
+- Rationale: the skill is invoked manually by the repo owner. Enforcement that survives between
+  sessions earns its complexity only when something runs unattended, and nothing here does.
 
 ### 1.0.0 — 2026-08-15
 

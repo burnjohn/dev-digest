@@ -129,7 +129,7 @@ rationale, and give the fix verbatim: `./scripts/sync-vendor.sh` (server is cano
 > modified, `server/src/vendor/shared/contracts/findings.ts` is modified, and
 > `sync-vendor.sh --check` reports **in sync**. That is the intended workflow — edit
 > canonical, run the script — and flagging it would make H2 fire on every correct contract
-> change. A false CRITICAL here would train the user to `--override` on their most common
+> change. A false CRITICAL here would train the user to ignore the verdict on their most common
 > multi-package change.
 
 Fire **only** when the client copy is not byte-identical to canonical:

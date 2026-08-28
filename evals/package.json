@@ -1,0 +1,37 @@
+{
+  "name": "@devdigest/evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Evals for the DevDigest Claude Code harness (skills + subagents + workflow). vitest + Claude Agent SDK, on the Claude Code subscription — no API token, no external services.",
+  "scripts": {
+    "eval": "vitest run",
+    "eval:skills": "vitest run skills",
+    "eval:agents": "vitest run agents",
+    "eval:workflow": "vitest run workflow",
+    "eval:quality": "tsx src/skill-quality.ts",
+    "eval:compare": "tsx src/compare.ts",
+    "eval:repeat": "tsx src/repeat.ts",
+    "eval:delta": "tsx src/delta.ts",
+    "eval:benchmark": "tsx src/records/benchmark.ts",
+    "eval:scaffold": "tsx src/scaffold.ts",
+    "proxy:up": "scripts/litellm-proxy.sh up",
+    "proxy:down": "scripts/litellm-proxy.sh down",
+    "proxy:wait": "scripts/litellm-proxy.sh wait",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.198",
+    "openai": "^4.77.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "gray-matter": "^4.0.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

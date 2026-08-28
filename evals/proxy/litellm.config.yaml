@@ -1,0 +1,32 @@
+# LiteLLM translating proxy for the eval tool tiers (agentTask / workflowTask).
+#
+# WHY THIS EXISTS
+# The Claude Agent SDK only speaks the Anthropic Messages wire protocol (POST /v1/messages).
+# OpenRouter's native "Anthropic Skin" serves that shape ONLY for anthropic/* slugs, so cheap
+# non-Anthropic models (DeepSeek, Gemini Flash, Llama, …) can't back the tool tiers directly.
+#
+# LiteLLM's proxy accepts BOTH shapes on one port:
+#   - POST /v1/messages          (Anthropic format)  ← the Agent SDK, via ANTHROPIC_BASE_URL
+#   - POST /chat/completions      (OpenAI format)     ← the content tier's direct OpenAI client
+# and translates each to the target model on OpenRouter. Point OPENROUTER_BASE_URL at this proxy
+# (http://localhost:4000) and every eval tier can run on any OpenRouter model, cheaply, on CI.
+#
+# The wildcard route forwards whatever EVAL_MODEL / EVAL_JUDGE_MODEL you pass straight through to
+# OpenRouter, so you never edit this file to try a new model — e.g. EVAL_MODEL=deepseek/deepseek-chat
+# arrives here as "deepseek/deepseek-chat" and is dispatched as "openrouter/deepseek/deepseek-chat".
+
+model_list:
+  - model_name: "*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+
+litellm_settings:
+  # Deterministic evals: never retry-with-jitter behind our back; the runners own retries.
+  drop_params: true
+
+general_settings:
+  # No master_key on purpose: this is an ephemeral local/CI gateway. It runs in "no-auth" mode,
+  # so the bearer token the SDK forwards (ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY) is ignored and
+  # the proxy authenticates to OpenRouter with OPENROUTER_API_KEY from its own environment.
+  # Do NOT expose this port publicly.

@@ -11,6 +11,8 @@ delete existing entries; correct a stale one by adding a new dated entry *(durin
 capture — the periodic pass under **Keep the log healthy** is the one sanctioned
 time to prune or merge)*.
 
+## When to write
+
 **Module → file:**
 
 | You're working in…              | Write to                                       |
@@ -35,6 +37,8 @@ problems (network blips, flaky runs), or pure personal style preferences.
 the end of any substantive session (~>30 min, or any session with a real problem, decision,
 or surprise). Skip trivial config tweaks — signal quality beats volume.
 
+## How to write
+
 **Before writing, re-read the target file and dedupe by meaning** — if the same lesson is
 already logged (even worded differently), don't add a duplicate. If your finding *refines*
 an existing entry, add a dated note that sharpens it rather than a near-duplicate; correct
@@ -55,7 +59,9 @@ Bad (vague): "be careful with async." Bad (not transferable): "fixed a bug on li
 Good: "Promise.all() on ingest times out past ~30 items — use Promise.allSettled() in
 batches of 10 (repo-intel ingest pipeline)."
 
-**Keep the log healthy (periodic maintenance, not every session):**
+## Keep the log healthy
+
+*(Periodic maintenance, not every session.)*
 - **Prune monthly.** Re-read and delete/supersede entries a dependency upgrade, refactor, or
   new convention made stale — an outdated note is worse than none. This is the sanctioned
   time to edit existing entries.
