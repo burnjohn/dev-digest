@@ -1,0 +1,28 @@
+# Ephemeral LiteLLM translating proxy for the eval tool tiers. See litellm.config.yaml for why.
+#
+#   OPENROUTER_API_KEY=sk-or-... docker compose -f evals/proxy/docker-compose.yml up
+#
+# or use the wrapper that reads the key from ~/.devdigest/secrets.json for you:
+#   pnpm --dir evals proxy:up      # foreground
+#   pnpm --dir evals proxy:down    # stop
+#
+# Exposes http://localhost:4000 speaking BOTH Anthropic (/v1/messages) and OpenAI
+# (/chat/completions) formats. Point OPENROUTER_BASE_URL at it to route every eval tier there.
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: devdigest-eval-litellm
+    ports:
+      - "4000:4000"
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in the environment}
+    volumes:
+      - ./litellm.config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    healthcheck:
+      # The image ships Python but not necessarily curl; hit the liveliness endpoint via urllib.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
