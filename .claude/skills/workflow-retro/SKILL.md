@@ -64,7 +64,7 @@ reported, and what a next run should do differently.
 ```
 
 **This skill never starts itself.** It is not wired to `SessionEnd`, `SubagentStop` or `Stop`; the
-repo has exactly one hook (`PreToolUse` → `pr-gate.mjs`) and this skill adds none. It is not
+repo registers no hooks at all, and this skill adds none. It is not
 chained from `run-plan`. It is not triggered by "wrap up", "what did we learn", or the end of a
 session — those belong to `engineering-insights`, and the two must not race for the same moment.
 

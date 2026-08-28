@@ -5,19 +5,6 @@
       "Edit(/.claude/hooks/**)"
     ]
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/pr-gate.mjs"
-          }
-        ]
-      }
-    ]
-  },
   "env": {
 		"ENABLE_TOOL_SEARCH": "true"
   }

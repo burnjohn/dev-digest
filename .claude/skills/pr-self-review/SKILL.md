@@ -6,10 +6,10 @@ description: "Reviews local, not-yet-pushed changes against this repo's own rule
   work before the PR', or 'перевір мої зміни перед PR'. Scopes the diff (branch vs main merge-base
   plus staged, unstaged and untracked), routes each file to the repo's own skills, runs the
   CI-equivalent checks the change actually triggers, applies the H1-H18 hard rules, grounds and
-  adversarially verifies every CRITICAL, then writes a gate file that decides whether the push may
-  proceed. Use this even when the user only says 'I'm about to push'."
+  adversarially verifies every CRITICAL, then issues a pass / request_changes verdict and writes a
+  report. Use this even when the user only says 'I'm about to push'."
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # pr-self-review
@@ -54,7 +54,7 @@ merge-base with `main`, plus staged, unstaged, and untracked files.
 If the user names a PR number, this skill is the wrong tool. Say so in one line and hand off.
 
 **Flags:** `--fast` (skip everything Docker-dependent) · `--e2e` (add the hermetic e2e lane) ·
-`--fix` (§10) · `--override "<reason>"` (§8) · `--since-last-review` (§10).
+`--fix` (§10) · `--since-last-review` (§10).
 
 ---
 
@@ -69,7 +69,7 @@ Five phases. Subagents run in phase 3 and nowhere else.
 | 2 | inline | deterministic pre-gate (§5) — typecheck/tests; **short-circuits** |
 | 3 | **parallel** | one subagent per matched group |
 | 4 | inline | grounding gate + adversarial verification of every CRITICAL |
-| 5 | inline | report + write `gate.json` |
+| 5 | inline | report |
 
 A failure in phase 1 or 2 stops the run before any LLM call. A type error makes the whole
 review moot — learning that in 20 seconds for $0 beats learning it in 4 minutes for $0.40.
@@ -139,7 +139,8 @@ from `main`.
 **Limits.** There is **no file-count or line-count ceiling.** A large diff is *batched*, never
 truncated: split each group's files into chunks of ~25 and spawn one subagent per chunk (still
 max 5 concurrent, still in group-priority order). The first push of a long-lived branch is
-legitimately 80+ files, and a cap that turns "big" into "unpushable" only teaches `--override`.
+legitimately 80+ files, and a cap that turns "big" into "unreviewable" only teaches people to
+skip the review entirely.
 
 The cap this replaced existed to stop a huge diff from being pushed out of a subagent's context
 by the 4–6k lines of skill bodies loaded ahead of it (§4). Batching addresses that directly —
@@ -301,8 +302,8 @@ real H7, and no `git diff` will ever show it.
 **H2 is narrower than it looks, deliberately.** It fires only when `sync-vendor.sh --check`
 *fails*. A byte-identical client copy is by definition the script's output and cannot be
 distinguished from one — flagging it would make H2 fire on every correct contract change, and
-a false CRITICAL on the user's most common multi-package edit is how `--override` becomes a
-habit. See `references/mechanical-checks.md` § H2 for the tree evidence.
+a false CRITICAL on the user's most common multi-package edit is how the whole review becomes
+something you learn to skim past. See `references/mechanical-checks.md` § H2 for the tree evidence.
 
 ---
 
@@ -384,129 +385,31 @@ line has not been verified and must be demoted before the report is written.
 ### The position that settles every borderline case
 
 **A hallucinated CRITICAL costs more than a missed one.** A false block teaches the user to
-reach for `--override`, and after the third time the gate is decorative. A missed problem
+discount the verdict, and after the third time the review is decorative. A missed problem
 costs one review comment. When the two errors are not symmetric, do not treat them as if
 they were.
 
 ---
 
-## 8. The blocking mechanism
+## 8. What the verdict means
 
-Three layers. All three are needed — layer (i) alone is persuasion, not enforcement, and it
-evaporates between sessions.
+On `request_changes`, do not run `gh pr create`, `gh pr ready`, or `git push` for this branch
+until the findings are addressed and the review is re-run. That is the whole mechanism, and it
+is deliberately persuasion rather than enforcement.
 
-### (i) The skill's verdict
+**This skill is invoked manually**, by the repo owner, at the moment they choose to review.
+Nothing here runs unattended, so nothing needs to survive between sessions.
 
-On `request_changes`, do not run `gh pr create`, `gh pr ready`, or `git push` for this
-branch. Cheap, honest, zero installation.
+An earlier revision added two enforcement layers and both were removed: a `gate.json` artifact
+keyed on a `headSha` + working-tree digest, and a `PreToolUse` hook (`.claude/hooks/pr-gate.mjs`)
+that denied the push commands outright. They existed to make a verdict outlive the session that
+produced it. That is the right design for an automated gate and the wrong one for a command a
+human types — it bought staleness bugs, an override protocol, and a second hash implementation
+in exchange for enforcing a rule its only user had already decided to follow.
 
-### (ii) The gate artifact — memory
-
-`.devdigest/cache/pr-self-review/gate.json` (already git-ignored via `.devdigest/cache/`):
-
-```json
-{ "schemaVersion": 1, "verdict": "request_changes", "branch": "…",
-  "baseSha": "…", "headSha": "…", "workingTreeDigest": "sha256(…)",
-  "reviewedAt": "…", "coverage": "full", "criticalCount": 2, "criticals": [],
-  "checksRun": [], "checksSkipped": [{ "id": "…", "reason": "docker daemon not reachable" }],
-  "reportPath": "…", "override": null }
-```
-
-**Freshness is the whole point.** A gate keyed only on `headSha` is trivially defeated: fix
-nothing, amend nothing, and the green gate still stands. So the key is `headSha` **plus**
-`workingTreeDigest`, a sha256 over five parts — `git status --porcelain=v2 -z`, `git diff`,
-`git diff --cached`, the untracked path list (`git ls-files -o --exclude-standard -z`), and
-those paths' blob hashes (`git hash-object --stdin-paths`).
-
-Both diffs are required, and this was verified rather than assumed: `--porcelain=v2` reports
-the HEAD and index blob hashes but **not** the worktree content hash, so editing an
-already-modified file leaves the status output byte-identical. Without the diffs in the
-digest, the most common edit in a fix cycle would be invisible.
-
-The last two parts cover **untracked** files, which the first three miss entirely — the same
-bug one ring out, and also verified rather than assumed. Both diffs ignore untracked files;
-`--porcelain=v2` emits a bare `? <path>` with **no** blob hash; and default `-unormal`
-collapses a wholly-untracked directory to a **single** entry, so adding a file inside one
-does not move the digest either. That is fail-open on exactly the file class §3 goes out of
-its way to scope in: stamp an `approve`, rewrite any untracked file completely, and the gate
-still reads FRESH. Two notes for anyone changing this:
-
-- `-uall` on the status call fixes only the directory collapse, **not** the missing content
-  hash. It is not sufficient on its own.
-- Both new parts are load-bearing. The path list alone leaves in-place rewrites invisible;
-  the blob list alone leaves a pure rename invisible (same content, same set of hashes).
-
-`--exclude-standard` keeps `.devdigest/cache/` out of the digest, which is load-bearing in
-the other direction: if `gate.json` were hashed, writing a fresh gate would perturb the value
-it had just recorded and *every* gate would read STALE.
-
-**Do not compute the digest yourself.** Phase 5 stamps `gate.json` from the hook's own
-implementation:
-
-```bash
-node .claude/hooks/pr-gate.mjs --digest    # → {"headSha":"…","branch":"…","workingTreeDigest":"…"}
-```
-
-Two implementations of one hash is one too many. When they disagree, the *only* symptom is
-that every gate reads STALE forever, and nothing in the output says why — which is exactly
-how the first version of this hook failed (see `README.md` → Verification).
-
-Any edit ⇒ `STALE` ⇒ treated as "no gate". The consequence is intentional: after fixing a
-finding you must re-run. That is why the `--fix` cycle in §10 is a necessity, not a luxury.
-
-### (iii) The `PreToolUse` hook — enforcement
-
-`.claude/settings.json` (a new file, **hooks block only**) registers a `Bash` matcher running
-`node .claude/hooks/pr-gate.mjs`.
-
-**The hook is Node, not bash — the most important decision here.** A `.sh` hook on Windows
-depends on how the harness spawns it, and the repo root contains spaces: a shell hook is a
-quoting bug waiting for its moment. Node is guaranteed present (four Node packages),
-cross-platform, and parses JSON natively.
-
-`pr-gate.mjs` behaviour:
-
-1. Read the payload from stdin; take `tool_input.command`.
-2. No match on `gh pr create` / `gh pr ready` / `git push` — allowing for `cd … &&` prefixes,
-   `git -c …`, and env prefixes — ⇒ **exit 0, silently**. The hook must be invisible on
-   99.9% of calls, or it gets deleted.
-3. Match ⇒ read `gate.json`. Deny when it is absent; when `verdict === "request_changes"`
-   without a valid override; or when `headSha`/`workingTreeDigest` disagree (STALE).
-
-   **`approve` and `comment` both pass — only `request_changes` denies.** This follows
-   directly from §7: a CRITICAL is "the ONLY level that blocks merge", and the verdict is a
-   pure function of the findings, so `comment` means *WARNING/SUGGESTION only* — exactly the
-   case §7 lists under "Does not block". Several mechanical rules (H3, H5, H12, H17, H18) are
-   WARNING **by design** and must not stop a push.
-
-   Use an allow-list (`new Set(['approve','comment'])`), not `!== 'request_changes'`, so an
-   unknown or malformed verdict still fails closed.
-
-   On a non-`approve` pass, or when `coverage` is `"partial"`, write one line to **stderr**
-   saying so and allow. A silent allow is how a coverage gap becomes invisible; a *blocking*
-   one is how the gate gets ripped out. Never write to stdout — the hook must stay silent on
-   the happy path.
-
-   > **Regression note, 2026-08-24.** This read `verdict !== "approve"` until a live run hit
-   > it: a branch with zero CRITICALs and one WARNING (a stray `mcp/pnpm-lock.yaml`) was
-   > refused a push. It survived because `pr-gate.test.mjs` covers `approve` and
-   > `request_changes` but **never `comment`** — the third enum value was untested. The deny
-   > branch was itself the evidence: on a `comment` verdict it renders "0 blocking issue(s)"
-   > and "(see the report)", because it was written assuming criticals exist. **Any change
-   > here needs a `comment` → ALLOW case in `pr-gate.test.mjs`.**
-4. Deny via `permissionDecisionReason` carrying the verdict, the blocking CRITICAL titles,
-   the report path, and the exact override command.
-5. **Fail open on internal error.** If the script itself throws, exit 0 with a warning on
-   stderr. A broken gate that bricks `git push` gets `settings.json` deleted within the hour,
-   taking the working gate with it.
-
-### Two escape hatches, both explicit
-
-- `/pr-self-review --override "<reason>"` writes `override` into `gate.json`. The reason is
-  **mandatory, ≥20 characters**. The override is bound to the same `workingTreeDigest`, so it
-  dies the moment the code changes — you cannot override once and coast.
-- Delete `.claude/settings.json`. Documented outright: *a gate you can only escape by a trick
-  teaches people tricks.* Whoever wants out should leave through the door.
+The practical consequence: **the verdict does not persist.** Re-running after a fix is a fresh
+judgement, not a re-validation of a stored one — which is what you want, since a fix can
+introduce a finding of its own.
 
 ---
 
@@ -548,8 +451,8 @@ body and the local gate can never disagree about what needed to run.
    false-positive reduction available — `server/INSIGHTS.md` already documents traps a naive
    reviewer would flag wrongly.
 4. **The `--fix` cycle.** After a blocked run, `/pr-self-review --fix` applies fixes for
-   **CRITICAL only** and **must** re-run the whole gate — `workingTreeDigest` just changed, so
-   by construction the gate is STALE. Never auto-fix WARNING or SUGGESTION; that turns review
+   **CRITICAL only** and **must** re-run the whole review — the code just changed, and a fix can
+   introduce a finding of its own. Never auto-fix WARNING or SUGGESTION; that turns review
    into uninvited refactoring.
 5. **Cost limits declared up front.** Max 5 *concurrent* subagents, ~25 files per subagent,
    5-minute pre-gate, with `--fast` to skip the Docker lanes. There is no cap on total files or
@@ -562,12 +465,13 @@ body and the local gate can never disagree about what needed to run.
 7. **`engineering-insights` at the tail** — but hard-gated. Invoke it only after a run that
    produced a CRITICAL, an override, or a mechanical failure. Ungated, it yields one padding
    entry per review, which that skill's own "never pad" rule forbids.
-8. **`--since-last-review`.** `gate.json` keeps the previous `workingTreeDigest`; on re-run,
-   review only what changed since, carrying unresolved findings forward. Turns the fix cycle
-   from O(full review) into O(delta).
+8. **`--since-last-review`.** Review only what changed since the last run, carrying unresolved
+   findings forward — O(delta) instead of O(full review). It needs somewhere to remember the
+   previous state, which this skill deliberately no longer has (§8); paying for that persistence
+   is the feature's real cost, not an implementation detail.
 9. **Non-`main` base detection.** Alongside `origin` there is `upstream`
    (`ai-agentic-engineering-neo/dev-digest`). A PR to `upstream` has a different merge-base.
-   Ask once, cache the answer in `gate.json`.
+   Ask once per review.
 
 ---
 
@@ -576,7 +480,7 @@ body and the local gate can never disagree about what needed to run.
 **Complement and delegate — never duplicate.**
 
 This skill owns: diff scoping, routing, the deterministic pre-gate, H1–H18, grounding +
-verification, the verdict, `gate.json`, and the push block. It delegates general bug hunting
+verification, and the verdict. It delegates general bug hunting
 to the built-in **`code-review`** (group CORRECT) and vulnerability hunting to the built-in
 **`security-review`** (group SEC, beside the `security` skill). The SEC and CORRECT rows in
 the routing table *are* that delegation.
