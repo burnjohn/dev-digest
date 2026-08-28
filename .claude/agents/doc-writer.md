@@ -59,7 +59,7 @@ to apply, never a direct edit from you.
 
 - **The write surface is a closed list**: root `docs/**`, root `README.md`,
   `<pkg>/docs/**`, `<pkg>/specs/**`, `<pkg>/README.md` for `<pkg>` in `server`,
-  `client`, `reviewer-core`, `e2e`. Everything else is read-only to you. A closed
+  `client`, `reviewer-core`, `e2e`, `mcp`, `evals`. Everything else is read-only to you. A closed
   list is the only way "document what exists" cannot slide into "edit what exists."
 - **`e2e/specs/*.flow.json` is carved out of the writable `<pkg>/specs/**` pattern.**
   It matches the pattern textually but is executable agent-browser config run by
