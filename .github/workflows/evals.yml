@@ -34,9 +34,9 @@ on:
   workflow_dispatch:
     inputs:
       tool_model:
-        description: 'Model for the TOOL tiers (agents + workflow). Must be able to dispatch a subagent.'
+        description: 'Model for the TOOL tiers (agents + workflow). Must dispatch a subagent AND quote rules verbatim.'
         type: string
-        default: google/gemini-2.5-flash
+        default: anthropic/claude-haiku-4.5
       content_model:
         description: 'Model for the CONTENT tier (skills). One-shot, no tools — cheapest wins.'
         type: string
@@ -76,7 +76,7 @@ jobs:
       has_key: ${{ steps.key.outputs.has_key }}
       backend: ${{ inputs.backend || 'openrouter' }}
       content_model: ${{ inputs.content_model || 'deepseek/deepseek-chat' }}
-      tool_model: ${{ inputs.tool_model || 'google/gemini-2.5-flash' }}
+      tool_model: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
       judge_model: ${{ inputs.judge_model || 'google/gemini-2.5-flash' }}
     steps:
       - uses: actions/checkout@v4
@@ -123,7 +123,7 @@ jobs:
           SKIPPED_AGENTS: ${{ steps.detect.outputs.skipped_agents }}
           HAS_KEY: ${{ steps.key.outputs.has_key }}
           CONTENT_MODEL: ${{ inputs.content_model || 'deepseek/deepseek-chat' }}
-          TOOL_MODEL: ${{ inputs.tool_model || 'google/gemini-2.5-flash' }}
+          TOOL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
           JUDGE_MODEL: ${{ inputs.judge_model || 'google/gemini-2.5-flash' }}
         run: |
           {
@@ -243,7 +243,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Tool tier — agents. agentTask runs inside the Claude Agent SDK, which speaks the Anthropic wire
-  # protocol, so a non-Anthropic model needs the bundled LiteLLM translating proxy on :4000.
+  # protocol, so every model here is routed through the bundled LiteLLM proxy on :4000. That is
+  # mandatory for a non-Anthropic slug, and it is used for anthropic/* too: OpenRouter's native
+  # "Anthropic Skin" is documented as serving those directly, but a direct attempt returns
+  # 401 Missing Authentication header (env.ts blanks ANTHROPIC_API_KEY and sets ANTHROPIC_AUTH_TOKEN).
+  # The proxy works for both, so it stays on the path unconditionally.
   # ---------------------------------------------------------------------------
   agents:
     name: agent:${{ matrix.agent }}

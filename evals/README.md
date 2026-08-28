@@ -163,11 +163,16 @@ The tool tiers assert on real tool use (subagent dispatch, doc reads, skill acti
 model has to be capable enough to actually *do* it, not just be reachable. Measured on the bundled
 workflow cases:
 
-| Model | Content + routing/read traces | Subagent **dispatch** (`Agent`→ `architecture-reviewer`) |
-|-------|------------------------------|-----------------------------------------------------------|
-| `google/gemini-2.5-flash` | ✅ | ✅ **recommended** |
-| `deepseek/deepseek-chat` | ✅ | ❌ does the work inline instead of dispatching |
-| `openai/gpt-4.1-mini` | ✅ | ❌ |
+| Model | Content + routing/read traces | Subagent **dispatch** | **Verbatim rule citation** |
+|-------|------------------------------|------------------------|-----------------------------|
+| `anthropic/claude-haiku-4.5` | ✅ | ✅ | ✅ 6/6 first attempt — **the CI default for tool tiers** |
+| `google/gemini-2.5-flash` | ✅ | ✅ | ❌ invents paraphrases; 2/6–6/6, flaky |
+| `deepseek/deepseek-chat` | ✅ | ❌ does the work inline instead of dispatching | — |
+| `openai/gpt-4.1-mini` | ✅ | ❌ | — |
+
+Dispatch alone is not a sufficient bar. The **citation** column is what pushed the tool tiers off
+Flash: `architecture-reviewer` requires every finding to quote the violated rule verbatim, and
+Flash fabricates that quote rather than admitting it cannot find one. See the CI section below.
 
 **Two caveats for the tool tiers on cheap models:**
 
@@ -195,15 +200,44 @@ implicates, so a one-skill PR pays for one skill.
 | Changed in the PR | Job | Model | Proxy |
 |---|---|---|---|
 | `.claude/skills/<n>/**` or `evals/skills/<n>/**` | `skill:<n>`, one matrix leg per skill | `deepseek/deepseek-chat` | no — direct to OpenRouter |
-| `.claude/agents/<n>.md` or `evals/agents/<n>/**` | `agent:<n>`, plus its `-lite` A/B twin | `google/gemini-2.5-flash` | yes — LiteLLM on `:4000` |
-| `CLAUDE.md`, any `AGENTS.md`, any agent, `evals/src/**`, `evals/workflow/**` | `workflow tier` | `google/gemini-2.5-flash` | yes |
+| `.claude/agents/<n>.md` or `evals/agents/<n>/**` | `agent:<n>`, plus its `-lite` A/B twin | `anthropic/claude-haiku-4.5` | yes — LiteLLM on `:4000` |
+| `CLAUDE.md`, any `AGENTS.md`, any agent, `evals/src/**`, `evals/workflow/**` | `workflow tier` | `anthropic/claude-haiku-4.5` | yes |
 | anything matching the workflow's `paths:` | `quality gate` (static) | — | — |
 
 **Why the tiers run different models.** The content tier is one OpenAI-format call with no tools
 and no turn loop (`run-openrouter.ts`, `numTurns: 1`), so it needs no tool-use competence and
-DeepSeek is the cheapest thing that clears it. The tool tiers have to actually *dispatch a
-subagent*, which among the cheap models measured above only `google/gemini-2.5-flash` does. The
-judge stays on Gemini Flash in every tier.
+DeepSeek is the cheapest thing that clears it.
+
+The tool tiers need two capabilities, and the second one is what sets the floor:
+
+1. **Dispatch a subagent.** `google/gemini-2.5-flash` clears this (see the table above); DeepSeek
+   does not.
+2. **Quote a documented rule verbatim.** `architecture-reviewer` carries a hard rule — *"Every
+   finding … quotes the violated rule verbatim"*, *"A rule with no cited source is not a rule."*
+   Flash does **not** hold to it: it finds the right violations but fills the `documented rule`
+   column with plausible paraphrases it invented, so the citation practices fail. Measured across
+   two CI runs it scored 2/6, 4/6, 4/6, 6/6 on that case — genuinely flaky, passing only when a
+   retry happened to land. `anthropic/claude-haiku-4.5` scored **6/6 on the first attempt with no
+   retries**, and the same case is 6/6 on the Claude Code subscription.
+
+So the tool tiers default to `anthropic/claude-haiku-4.5`. The workflow tier passes 12/12 on
+either model, and is in fact *faster* on haiku (280s vs 428s wall) because Flash burns time on
+retries — but both tool tiers stay on one model so their results are comparable to each other.
+
+There is a deeper reason this mattered: `.claude/agents/architecture-reviewer.md` declares
+`model: opus`, and `src/artifacts/load.ts` reads the agent's frontmatter for `tools:` but **not**
+for `model:` — so `agentTask` always runs on `EVAL_MODEL`. The agent tier therefore measures an
+agent's prompt against a model that agent never uses in production. Keeping `EVAL_MODEL` in the
+same family as the declared one keeps that gap narrow.
+
+The judge stays on `google/gemini-2.5-flash` deliberately: with the task model now Anthropic, a
+Google judge is a *different* family, which is exactly what the blind/binary/verbatim-evidence
+design wants for softening self-preference.
+
+> **Token accounting caveat.** Metrics come back `0→0` for anything routed through the LiteLLM
+> proxy — it does not forward usage counts to the SDK. Tool-tier rows in `records.jsonl` therefore
+> carry no token data, and `cost_regression` cannot fire for them. Read real spend off the
+> OpenRouter dashboard, not off the records.
 
 **Switching the model** — one `workflow_dispatch` run, no code change:
 
