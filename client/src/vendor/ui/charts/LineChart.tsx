@@ -12,17 +12,25 @@ import {
 export interface ChartSeries {
   name: string;
   color: string;
-  data: number[];
+  /** `null` (or a missing index) means "not measured" — it renders as a gap,
+      never as `0`. Only a real measurement of zero renders at the axis. */
+  data: (number | null)[];
+  /** Recharts `strokeDasharray` (e.g. `"4 4"`). Lets two series stay
+      distinguishable without relying on color alone. Omit for a solid line. */
+  dash?: string;
 }
 
 export function LineChart({
   series,
-  w = 620,
+  w,
   h = 200,
   yMin = 0.6,
   yMax = 1.0,
 }: {
   series: ChartSeries[];
+  /** Optional width CAP. Omit for a chart that fills its container — the
+      default used to be 620, which silently pinned every consumer to that
+      width even inside a fluid page. */
   w?: number;
   h?: number;
   yMin?: number;
@@ -30,9 +38,10 @@ export function LineChart({
 }) {
   const n = series[0]?.data.length ?? 0;
   const rows = Array.from({ length: n }, (_, i) => {
-    const row: Record<string, number> = { i };
+    const row: Record<string, number | null> = { i };
     series.forEach((s) => {
-      row[s.name] = s.data[i] ?? 0;
+      // `??`, not a truthiness check — a real `0` measurement must survive.
+      row[s.name] = s.data[i] ?? null;
     });
     return row;
   });
@@ -57,6 +66,8 @@ export function LineChart({
               dataKey={s.name}
               stroke={s.color}
               strokeWidth={2}
+              strokeDasharray={s.dash}
+              connectNulls={false}
               dot={false}
               isAnimationActive={false}
             />

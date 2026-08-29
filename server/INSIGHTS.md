@@ -8,6 +8,169 @@ map stays lean by pointing here.
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-29 — `isConfigChange` is a PATCH predicate and is wrong as a RESTORE predicate
+`modules/agents/helpers.ts::isConfigChange` ends with a bare `patch.outputSchema !== undefined`:
+mentioning the field at all counts as a change, because a save that sends it is assumed to be
+setting it. A restore replays the WHOLE snapshot, so every field is always present and that clause
+makes it report "changed" unconditionally — the "restoring the config you already have is a no-op"
+guarantee would never hold and each promote would append an identical snapshot. `isRestoreChange`
+is the separate value-comparison predicate for that path. It also compares `config_json.skills`
+against the current links, which `isConfigChange` cannot see at all: the link set is part of the
+agent's effective prompt (that is why `setSkills` bumps the version), so two configs identical in
+every scalar but differing in their links are NOT the same version.
+
+### 2026-08-29 — restoring an agent version must replace the links BEFORE it snapshots
+`AgentsRepository.snapshotVersion` builds `config_json.skills` by re-reading `skillIdsForAgent(row.id, tx)`
+rather than taking them from its caller. So in `restoreVersion`, writing the snapshot before
+replacing `agent_skills` records the OUTGOING link set against the INCOMING config — a snapshot that
+matches no state the agent was ever in, and one that a later restore of that version would then
+faithfully reproduce. Order is: lock the agent row, replace links, update scalars + version,
+`snapshotVersion` last.
+
+### 2026-08-29 (final on this) — the vacuous-truth rule covers RECALL too; the entry below is stale on that one point
+Extended the same day, so all three metrics fold to 1 on a zero denominator once something was
+produced. Know what recall means under it: `matchMustNotFlag` returns `tp = fn = 0` whatever the
+model does, so a `must_not_flag` case's recall is now a **constant 1 that measures nothing** — unlike
+precision, which still scores 0 when a finding hits a forbidden region. **Do not read 100% recall on
+a single-case run as evidence of anything**; only a set containing at least one `must_find` case has
+a real recall denominator. `scoreWithoutArm` is wrapped too, else an ablation delta would show a
+regression the skill never caused.
+
+### 2026-08-29 (supersedes) — "blank metrics for a `must_not_flag` case BY DESIGN" is NO LONGER TRUE for precision/citation
+Owner decision, reversing the note further down: a unit that RAN and returned no findings said
+nothing wrong and dropped nothing, so precision and citation accuracy are **1**, not `null` —
+`scoring.ts::vacuouslyPerfect`, applied in `scoreWithArm` and `foldBatchAggregate`. **Recall is
+unchanged and still `null`** (a `must_not_flag` case has nothing to find). Kept as a wrapper, never a
+change to `computePrecision`/`computeCitationAccuracy` themselves, because the rule needs a
+precondition — *something was produced*: an errored case and an all-errored batch must keep `null`,
+since folding those to 1 renders a run that never happened as flawless. Rows written before this
+keep their NULLs; the metric is not comparable across the change.
+
+### 2026-08-29 (latest) — inserting a status row ALREADY TERMINAL is a design tool, not just an optimization
+Making a single eval-case run persist a batch of 1 (`EvalsService.runCase` -> `insertCompletedBatch`)
+needed it to count on the dashboard while neither taking the owner's live-batch 409 lock nor being
+reapable — which looks like it needs a `trigger: 'set'|'single'` discriminator column plus a filter in
+every read. It needs neither: run the work FIRST, then insert the row with `status`/`finished_at`
+already set, and it is never `running` for even one round-trip, so both the lock scan and the boot
+reaper (which only ever look for `running`) skip it for free. **When a guard keys off a transient
+status, never being in that status beats being excluded from it by a flag someone must remember to check.**
+
+### 2026-08-29 (latest) — the `?? 0` wire-boundary trap again, this time on `cases_passed` — and the reaper is what springs it
+Sharpens the `cases_total` entry below: the same `toBatchRecord` coalesce hit a second column, because
+`reapStaleRunningBatches` stamps `status: 'failed'` + `finished_at` but leaves `cases_passed` NULL. A
+batch killed by a `tsx watch` reload therefore rendered as **`0/7` with dashed metrics** —
+byte-identical in the UI to a genuinely all-errored batch (e.g. a missing provider key), and the real
+reason lives only in a `console.warn` since neither table has a reason column. **A partial write must
+fill every column the wire layer coalesces, or the coalesce invents a plausible wrong number.**
+
+### 2026-08-29 — every in-process `running` row needs a boot reaper; `agent_runs` had one, `eval_run_batches` did not
+A batch's loop is handed to `setImmediate` inside the API process — nothing queues or resumes it —
+so a restart (a `tsx watch` reload is enough) strands its row at `status: 'running'` forever, and
+the studio then renders that owner's cases as running/queued and keeps `Run all evals` disabled with
+no way back. `reapStaleRunningRuns` had solved exactly this for `agent_runs` in `app.ts`'s boot
+sequence; `EvalsRepository.reapStaleRunningBatches` now sits beside it. **The rule generalizes: any
+status column whose live state is owned by an in-process loop needs a boot sweep, and the sweep must
+stamp `finished_at` too** — a `failed` row with a null finish still reads as in-flight to every query
+that sorts on it.
+
+### 2026-08-29 — a column written only at COMPLETION reads as `0` for the whole run it was meant to describe
+`eval_run_batches.cases_total` was left NULL by `insertBatch` and written by `completeBatch`, and
+`toBatchRecord` coalesces NULL to `0` for its `z.number().int()` field — so `GET /evals/batches/:id`,
+whose whole purpose is polling a RUNNING batch, reported `cases_total: 0` and the studio's progress
+line read `5/0` until the batch ended. The size of the set is known at `startAgentBatch`/
+`startSkillBatch`, so it is now written on the INSERT. Any field a poller reads must be populated when
+the poll STARTS, not when the work finishes — a `?? 0` at the wire boundary turns that into a plausible
+wrong number rather than a visible null.
+
+### 2026-08-29 (fourth, and the first one with a mechanism behind it) — eval-case polarity is back to REQ-4/REQ-5, and a NEGATIVE case is now winnable
+Supersedes the three notes below, which flip-flopped without ever fixing what made the flip
+tempting. `reviews/eval-draft.ts`: accepted -> POSITIVE (`must_find`, padded `expected_output`),
+dismissed -> NEGATIVE (`must_not_flag`, one padded `forbidden_region`). What was missing all along
+is why the previous flip looked reasonable: **nothing fed a dismissal back into the review**, so a
+negative case was unwinnable by construction — `findings.dismissed_at` was written by the UI and
+read by NOBODY (`grep -i dismiss reviewer-core/src` returned zero hits), the runner handed the model
+the same frozen diff, the model re-reported the same defect, and `scoring.ts` scored it a false
+positive on every run forever. Making both arms `must_not_flag` did not fix that; it just relabelled
+it. `pipeline/case-runner.ts` now renders the case's own `forbidden_regions` as a trusted
+do-not-report list (`reviewer-core` `PromptParts.suppressions`), so the case measures whether the
+model OBEYS and can still legitimately fail. Diagnosis note for next time: `precision: 0` with
+`recall: null` on a seeded case means exactly one thing — a finding intersected a forbidden region.
+
+### 2026-08-29 — three-line drift, not a bug: the padded window cuts BOTH ways depending on the arm
+`EXPECTATION_LINE_PADDING = 3` was measured for `must_find`, where widening the window ABSORBS
+citation drift and stops a found bug scoring as a miss. On the `must_not_flag` arm the identical
+constant WIDENS a trap: the live failure was a dismissed finding at line 19, padded to 16-22, and a
+re-run citing the same defect at 22-22 — an intersection of exactly one line. Both behaviours are
+correct and they are the same line of code, so before touching the constant, name which arm you are
+tuning. The suppression list deliberately sends the model the padded range verbatim: it is told
+exactly what the scorer checks.
+
+### 2026-08-29 — `claude-haiku-4.5` via OpenRouter took 131s per eval case; `deepseek-v4-flash` takes 8s
+Measured on ONE unchanged case, back to back: DeepSeek 6-20s at ~$0.0005, Haiku 4.5 **131.3s at
+$0.0063** (~9 output tokens/sec for ~1k tokens — the slowness is the route, not the payload).
+`duration_ms` matched wall clock, so none of it is framework overhead. That figure straddles the
+OpenRouter client's per-attempt `timeout: 90_000` with `maxRetries: 2`
+(`reviewer-core/src/llm/openrouter.ts`, not overridden in `platform/container.ts`), so a run is
+either ~2x the real latency (one aborted attempt + one good one) or an intermittent "error from
+OpenRouter" when every attempt blows 90s. Before blaming a model for flaky evals, time it: the
+`eval_runs.duration_ms`/`cost_usd` columns already carry the evidence. Also: OpenRouter lists `seed`
+as supported for DeepSeek and NOT for Haiku 4.5, so only the cheap one can be pinned for determinism.
+
+### 2026-08-29 (final) — eval-case polarity, settled: scoring is `must_not_flag` for BOTH arms, the label is provenance
+Supersedes both notes below. `reviews/eval-draft.ts` seeds every finding-backed case as
+`must_not_flag` (empty `expected_output`, one padded `forbidden_region`) — red means "the agent still
+reports this", green means it stopped. What differs is only the BANNER, driven by a new
+`eval_cases.seeded_from` column (`'accepted'` → POSITIVE CASE, `'dismissed'` → NEGATIVE CASE);
+`expectation_kind` is `must_not_flag` for both and can never label them apart. Provenance never
+reaches the scorer. Consequences: a reviewer that still catches an accepted finding scores RED, and
+`recall`/`precision` are `null` on every seeded case (no TP/FN → zero denominators), so the dashboard
+headline metrics are blank for them BY DESIGN. Migration `0020_eval_case_seeded_from.sql` must be
+applied before any case is saved — the insert writes the new column.
+
+### 2026-08-29 (later) — CORRECTION: the eval-case polarity flip was REVERTED; the entry below is stale on point (1)
+`reviews/eval-draft.ts` is back to SPEC-03 REQ-4/REQ-5 as originally specified: accepted -> POSITIVE
+(`expected_output`, `must_find`), dismissed -> NEGATIVE (`forbidden_regions`, `must_not_flag`). Both
+windows stay padded. Point (2) of that entry — the `eval_baseline` runner model — still stands.
+Worth remembering as process, not just fact: the flip was proposed, objected to in writing, confirmed
+twice, shipped, and reversed within the hour. When a decision inverts a scoring contract, ship it
+behind its own commit so reverting is one command rather than an archaeology exercise.
+
+### 2026-08-29 — two OWNER decisions that invert what an eval case means — read before trusting a number
+Both were taken deliberately, against a written objection, and both contradict SPEC-03 as shipped.
+(1) **Polarity**: `reviews/eval-draft.ts` now seeds BOTH an accepted and a dismissed finding as
+`must_not_flag` — empty `expected_output`, one padded `forbidden_region`. Red means "the agent still
+reports something here". REQ-4 specified the opposite for the accepted arm. Consequences the owner
+accepted: a correct reviewer scores RED, and `recall`/`precision` are `null` on these cases
+(`must_not_flag` has no TP/FN, so both denominators are 0) — so the Eval Dashboard's headline metrics
+go blank for finding-seeded cases, by construction, not by bug. `input_diff` is frozen, so fixing the
+code never turns such a case green.
+(2) **Runner model**: an agent-owned case runs on the `eval_baseline` feature model
+(`Eval Runner`; briefly `claude-haiku-4.5`, reverted to `deepseek-v4-flash` the same day on latency), NOT `agents.model` — the agent supplies only the
+system prompt. Changing an agent's model no longer moves its eval numbers. Practical fallout for
+tests: an agent-owned eval route test must mock `openrouter`, not the agent's own provider
+(`test/evals-routes.it.test.ts`), the same trap `evals-skill-cases.it.test.ts` already documents.
+
+### 2026-08-29 — a seeded eval case is flaky because the WINDOW is one line wide, not because the model is
+`evals/scoring.ts::matchesExpectation` compares `file` equality plus range **intersection** and
+nothing else — never title, severity or category — and `pass` needs `fn === 0 && fp === 0`, so one
+non-overlapping citation scores as a miss *and* a false positive at once (recall 0 / precision 0).
+Four consecutive runs of one case seeded at `start_line: 19` had the reviewer cite the same rename at
+`16-19`, `16-22`, `20-20`, `19-19`: three passes and one fail off a single line of drift, every run
+having actually found the bug. `reviews/eval-draft.ts` now pads the seeded window
+(`EXPECTATION_LINE_PADDING`) on both the accepted and dismissed arms. When an eval flips, diff the
+run's cited lines against the expectation before suspecting the model — and note OpenRouter sends no
+`seed` and pins no provider (`reviewer-core/src/llm/openrouter.ts`), so `temperature: 0` is not
+determinism.
+
+### 2026-08-29 — in a with/without A/B, a constant shared by BOTH arms still ruins the number
+A skill eval's runner-agent `systemPrompt` was byte-identical in both arms (`baseInput` built once
+and spread in `pipeline/case-runner.ts`), so it *cancelled* in `recall(with) − recall(without)` — and
+was still wrong: it is an **interaction term**, not contamination. A runner prompt already covering
+what the skill teaches drives lift toward 0 for an excellent skill; a weak one inflates it for a
+mediocre one, so two skills measured under different runners are incomparable. Fixed by pinning a
+neutral baseline (SPEC-03 AC-68/AC-72/AC-73, rewritten 2026-08-29). **Check what a shared constant
+*interacts* with, not just whether it cancels.**
+
 ### 2026-08-25 — a runtime guarantee parked in an optional helper silently never runs
 `platform/trace-builder.ts`'s `buildRunTrace` carried the only `RunTraceSchema.parse` of a run trace
 — and had **zero importers**; `run-executor` built the `RunTrace` as a typed object literal on all

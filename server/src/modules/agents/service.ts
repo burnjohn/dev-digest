@@ -67,8 +67,15 @@ export class AgentsService {
     return row ? toAgentDto(row) : undefined;
   }
 
-  /** Delete an agent (and its versions/skill-links, via cascade). */
-  async delete(workspaceId: string, id: string): Promise<boolean> {
+  /**
+   * Delete an agent (and its versions/skill-links, via cascade, plus its
+   * eval_cases/eval_run_batches — REQ-41, done in the repository so this stays
+   * R2). `deletedCases` powers the delete route's optional response field.
+   */
+  async delete(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ deleted: boolean; deletedCases: number }> {
     return this.repo.deleteById(workspaceId, id);
   }
 
@@ -135,6 +142,37 @@ export class AgentsService {
     if (!agent) return undefined;
     const row = await this.repo.getVersion(agentId, version);
     return row ? toAgentVersionDto(row) : undefined;
+  }
+
+  /**
+   * Replay an old config version as a NEW version — the compare modal's
+   * `Promote vN`. Symmetric with `SkillsService.restoreVersion`.
+   *
+   * Returns a discriminated result rather than `undefined` so the route can tell
+   * a missing agent from a missing version. That leaks nothing across tenants: a
+   * foreign agent id fails at the repository's locked SELECT, before any version
+   * is read, so it always answers `agent_not_found`.
+   *
+   * Deliberately does NOT re-run `assertSkillsInWorkspace` over the snapshot's
+   * skill ids. They were gated when they were first linked, and the snapshot is
+   * immutable, so the only way one can now be invalid is that the skill was
+   * deleted since — which the FK catches inside the transaction. Re-validating
+   * here would also mean refusing a user their own prior config, the same
+   * judgement `SkillsRepository.restoreVersion` makes about `MAX_SKILL_BODY_CHARS`.
+   */
+  async restoreVersion(
+    workspaceId: string,
+    id: string,
+    version: number,
+  ): Promise<
+    { ok: true; agent: Agent } | { ok: false; reason: 'agent_not_found' | 'version_not_found' }
+  > {
+    const result = await this.repo.restoreVersion(workspaceId, id, version);
+    if (!result.ok) return result;
+    // Re-read through the list query's shape so `skill_count` is honest: a
+    // restore can change the link set, and `toAgentDto(row)` alone would report 0.
+    const skillCount = (await this.repo.skillIdsForAgent(id)).length;
+    return { ok: true, agent: toAgentDto(result.row, skillCount) };
   }
 
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */

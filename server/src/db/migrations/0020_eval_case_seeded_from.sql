@@ -1,0 +1,1 @@
+ALTER TABLE "eval_cases" ADD COLUMN "seeded_from" text;

@@ -29,6 +29,7 @@ const PRICING: Record<string, Price> = {
   // Unknown slugs fall through to null cost (explicitly flagged), which is safe.
   'z-ai/glm-4.7-flash': { in: 0, out: 0 }, // free baseline for evals
   'deepseek/deepseek-v4-flash': { in: 0.14, out: 0.28 },
+  'anthropic/claude-haiku-4.5': { in: 1.0, out: 5.0 }, // eval_baseline default
   'z-ai/glm-4.7-flashx': { in: 0.15, out: 0.4 },
   'minimax/minimax-m2.5': { in: 0.3, out: 1.2 },
   'z-ai/glm-5.1': { in: 0.6, out: 2.2 },

@@ -6,6 +6,7 @@
    file proves page.tsx's thin wiring around them. */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PrDetail } from "@devdigest/shared";
 
 let currentSearch = "tab=diff";
@@ -24,9 +25,19 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(currentSearch),
 }));
 
-vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries }),
-}));
+// FIX-4: keep the real `QueryClient`/`QueryClientProvider` exports (via
+// `importOriginal`) alongside the stubbed `useQueryClient` — FindingsTab is
+// mocked below so nothing here actually calls a real query hook, but every
+// render still needs a genuine QueryClientProvider ancestor, matching how
+// the app mounts this page (`lib/providers.tsx`), not the bespoke wrapper
+// this file used to get away with omitting entirely.
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries }),
+  };
+});
 
 vi.mock("../../../../../lib/hooks", () => ({
   usePulls: () => ({ data: [{ id: "pr-1", number: 42 }], isLoading: false }),
@@ -128,6 +139,15 @@ const prFixture: PrDetail = {
   diff_source_reason: null,
 };
 
+function renderPage() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <PRDetailPage />
+    </QueryClientProvider>,
+  );
+}
+
 afterEach(() => {
   cleanup();
   currentSearch = "tab=diff";
@@ -143,7 +163,7 @@ afterEach(() => {
 
 describe("PRDetailPage — T9 wiring", () => {
   it("REQ-13: no `order` param renders original order; `order=smart` renders Smart Diff; toggling writes/clears the param", () => {
-    render(<PRDetailPage />);
+    renderPage();
     expect(capturedDiffTabProps.order).toBeNull();
 
     fireEvent.click(screen.getByText("toggle-smart"));
@@ -159,12 +179,12 @@ describe("PRDetailPage — T9 wiring", () => {
 
     cleanup();
     currentSearch = "tab=diff&order=smart";
-    render(<PRDetailPage />);
+    renderPage();
     expect(capturedDiffTabProps.order).toBe("smart");
   });
 
   it("REQ-17: a chip click is a SINGLE router.replace carrying both tab=findings and finding=<id>", () => {
-    render(<PRDetailPage />);
+    renderPage();
     fireEvent.click(screen.getByText("open-finding"));
 
     expect(routerReplace).toHaveBeenCalledTimes(1);
@@ -176,13 +196,13 @@ describe("PRDetailPage — T9 wiring", () => {
 
   it("REQ-18: `?finding=<id>` reaches FindingsTab as targetFindingId", () => {
     currentSearch = "tab=findings&finding=abc-id";
-    render(<PRDetailPage />);
+    renderPage();
     expect(capturedFindingsTabProps.targetFindingId).toBe("abc-id");
   });
 
   it("REQ-26: onTargetResolved with a DIFFERENT id rewrites the finding param; the SAME id performs NO navigation (loop guard)", () => {
     currentSearch = "tab=findings&finding=older-id";
-    render(<PRDetailPage />);
+    renderPage();
 
     fireEvent.click(screen.getByText("resolve-newer"));
     expect(routerReplace).toHaveBeenCalledTimes(1);
@@ -195,7 +215,7 @@ describe("PRDetailPage — T9 wiring", () => {
 
   it("REQ-19: onTargetResolved(null) clears only the `finding` param — tab/trace/order untouched", () => {
     currentSearch = "tab=findings&order=smart&trace=run-1&finding=stale-id";
-    render(<PRDetailPage />);
+    renderPage();
 
     fireEvent.click(screen.getByText("resolve-null"));
     expect(routerReplace).toHaveBeenCalledTimes(1);
@@ -208,7 +228,7 @@ describe("PRDetailPage — T9 wiring", () => {
 
   it("REQ-21/REQ-25: onRunDone invalidates smart-diff alongside pr-active-runs and pr-runs, and refetches reviews", () => {
     currentSearch = "tab=findings";
-    render(<PRDetailPage />);
+    renderPage();
 
     fireEvent.click(screen.getByText("run-done"));
 
@@ -220,7 +240,7 @@ describe("PRDetailPage — T9 wiring", () => {
 
   it("REQ-24: T5's useTabScrollMemory is still wired to the active tab", () => {
     currentSearch = "tab=diff";
-    render(<PRDetailPage />);
+    renderPage();
     expect(scrollMemoryTab).toBe("diff");
   });
 
@@ -228,12 +248,12 @@ describe("PRDetailPage — T9 wiring", () => {
     currentSearch = "tab=findings&finding=abc-id";
 
     reviewsState.isSuccess = false;
-    render(<PRDetailPage />);
+    renderPage();
     expect(capturedFindingsTabProps.runsLoaded).toBe(false);
 
     cleanup();
     reviewsState.isSuccess = true;
-    render(<PRDetailPage />);
+    renderPage();
     expect(capturedFindingsTabProps.runsLoaded).toBe(true);
   });
 });

@@ -65,7 +65,8 @@
       "config": "Config",
       "preview": "Preview",
       "context": "Context",
-      "versions": "Versions"
+      "versions": "Versions",
+      "evals": "Evals"
     },
     "context": {
       "reorder": "Reorder {name} — position {position} of {total}. Use the arrow keys to move it.",

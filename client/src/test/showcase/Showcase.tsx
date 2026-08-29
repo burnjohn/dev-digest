@@ -207,6 +207,7 @@ export function Gallery() {
               { name: "recall", color: "var(--accent)", data: [0.7, 0.74, 0.8, 0.78, 0.85, 0.9] },
               { name: "precision", color: "var(--ok)", data: [0.65, 0.7, 0.72, 0.8, 0.82, 0.88] },
             ]}
+            w={620}
             h={160}
           />
         </div>

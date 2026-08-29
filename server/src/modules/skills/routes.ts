@@ -63,7 +63,11 @@ const UpdateSkillBody = z.object({
   version_message: z.string().max(MAX_VERSION_MESSAGE_CHARS).optional(),
 });
 
-const OkResponse = z.object({ ok: z.boolean() });
+// `count` is optional (REQ-41) — the deleted eval_cases count. A Zod object
+// STRIPS unknown keys, so without widening this here the field is silently
+// dropped from `DELETE /skills/:id`'s response even though both typechecks
+// stay green (`routes.ts:66,127`, server/AGENTS.md-linked plan note).
+const OkResponse = z.object({ ok: z.boolean(), count: z.number().int().nonnegative().optional() });
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -127,9 +131,9 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, response: { 200: OkResponse } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const ok = await service.delete(workspaceId, req.params.id);
-      if (!ok) throw new NotFoundError('Skill not found');
-      return { ok: true };
+      const result = await service.delete(workspaceId, req.params.id);
+      if (!result.deleted) throw new NotFoundError('Skill not found');
+      return { ok: true, count: result.deletedCases };
     },
   );
 

@@ -36,6 +36,21 @@ The `engineering-insights` skill owns the write format; this protocol makes the 
   append any *substantial* new insight via the `engineering-insights` skill. Substantial =
   non-obvious and not already logged. If nothing clears that bar, write nothing — never pad.
 
+## Asking the owner — use the interactive prompt, never prose
+
+**Whenever a decision is genuinely the owner's, ask it through the interactive question tool
+(`AskUserQuestion`), not as a sentence in a reply.** A question buried in prose — especially at the
+end of a long status report, or alongside a table of results — gets missed, and the run then either
+stalls waiting for an answer that will never come or proceeds on an assumption the owner never made.
+
+- This covers anything the owner alone can settle: scope calls, spec changes, accepting a known
+  defect, authorising a protected action (`db:migrate`, a `client/` build, anything touching git).
+- Give real options with their consequences, and mark the recommendation. "What do you want to do?"
+  is not a question, it is a shrug.
+- Batch related decisions into one prompt rather than firing several in a row.
+- Purely informational status — what landed, what is running, what a check returned — stays in prose.
+  The prompt is for decisions, not for narration.
+
 ## Delegation — which agent gets the work
 
 **Delegating is the default, not an escalation.** This section is the repo owner's standing

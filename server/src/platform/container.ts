@@ -16,6 +16,7 @@ import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
+import { parseUnifiedDiff } from '../adapters/git/diff-parser.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
 import { AnthropicProvider } from '../adapters/llm/anthropic.js';
@@ -68,6 +69,15 @@ export class Container {
   readonly auth: AuthProvider;
   readonly jobs: JobRunner;
   readonly runBus: RunBus;
+  /**
+   * FIX-3: `modules/evals/routes.ts` (R5) may not import `adapters/**`
+   * directly (onion-architecture §2, R5's MUST-NOT column) — R6 is the
+   * composition root and is licensed to import everything, so the one
+   * construction site for the stateless `parseUnifiedDiff` function moves
+   * here. A plain member reference, not a lazy getter: there is no adapter
+   * state to construct, unlike `git`/`github`/`llm`.
+   */
+  readonly parseUnifiedDiff = parseUnifiedDiff;
 
   private _git?: GitClient;
   private _github?: GitHubClient;

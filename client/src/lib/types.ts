@@ -47,6 +47,37 @@ export type {
   ContextUploadRequest,
 } from "@devdigest/shared";
 
+/** SPEC-03 Eval Pipeline — case/batch/dashboard contracts `lib/hooks/evals.ts`
+ * and every eval-domain component build on. Supersedes `EvalCaseInput` /
+ * `EvalRunRecord` / `EvalDashboard` / `EvalTrendPoint` (`contracts/eval-ci.ts`)
+ * for this feature's endpoints — those stay unedited for their existing callers
+ * (see `contracts/eval-batch.ts`'s file header). */
+export type {
+  EvalOwnerKind,
+  EvalExpectationKind,
+  EvalExpectedFinding,
+  EvalForbiddenRegion,
+  EvalCaseSource,
+  EvalCaseRecord,
+  EvalCaseDraft,
+  EvalCaseWrite,
+  EvalAblationWithArm,
+  EvalAblationUnavailable,
+  EvalAblationWithoutArm,
+  EvalAblationOutput,
+  EvalCaseRunResult,
+  EvalBatchStatus,
+  EvalBatchRecord,
+  EvalBatchCaseResult,
+  EvalBatchDetail,
+  EvalPromptDiffLine,
+  EvalMetricDelta,
+  EvalBatchComparison,
+  EvalTrendMetric,
+  EvalTrendSeriesPoint,
+  EvalOwnerDashboard,
+} from "@devdigest/shared";
+
 /** UI-only view model for a PR list row (derives display fields from PrMeta). */
 export interface PrRowView {
   number: number;

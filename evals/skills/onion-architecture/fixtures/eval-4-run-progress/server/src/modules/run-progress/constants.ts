@@ -1,0 +1,1 @@
+export const PROGRESS_CHECKPOINT_INTERVAL = 5;

@@ -35,6 +35,14 @@ export interface IntentProvider {
   ): Promise<PrIntentDetail>;
 }
 
+/**
+ * Ceiling on the do-not-report list sent to the model. A PR where dozens of
+ * findings were dismissed would otherwise spend the diff's token budget listing
+ * them; `buildSuppressions` logs whenever it truncates, so a dropped entry is
+ * stated rather than silent.
+ */
+const MAX_SUPPRESSIONS = 50;
+
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
   constructor() {
@@ -327,6 +335,12 @@ export class ReviewRunExecutor {
       // entry (2026-08-17) still holds — what it forbids is the SILENCE, not
       // the skip — so a missing document is recorded as a typed `missing`
       // manifest entry (AC-23/AC-27) rather than dropped unremarked.
+      // ---- Dismissed findings on THIS PR -> prompt `suppressions` slot ------
+      // Read-only, and non-fatal by construction: an empty list omits the slot
+      // entirely, so a review whose author never dismissed anything assembles
+      // exactly the prompt it did before this feature existed.
+      const suppressions = await this.buildSuppressions(pull.id, runLog);
+
       const { specs, specsRead, specsManifest } = await this.buildProjectContext(
         agent.id,
         repo,
@@ -351,6 +365,10 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // Findings the owner already dismissed on this PR — trusted, rendered
+        // un-wrapped beside the diff with a matching system directive. Same
+        // omit-when-empty contract as every slot around it.
+        ...(suppressions.length > 0 ? { suppressions } : {}),
         // L02 — linked, enabled skill bodies in link order. Same omit-when-empty
         // contract: with no skills the assembled prompt is byte-identical to
         // before this feature existed.
@@ -657,6 +675,50 @@ export class ReviewRunExecutor {
    * most one successful filesystem read plus one SHA-256 — over the exact
    * bytes read, never re-derived or normalised — per attached document.
    */
+  /**
+   * Findings the owner DISMISSED on this same pull request, as the trusted
+   * do-not-report list `reviewer-core` renders beside the diff.
+   *
+   * Scope is deliberately ONE pull request. A dismissal is anchored to line
+   * numbers on the diff it was made against, so carrying it to a different PR
+   * needs a stable key (file + rule + symbol) and a staleness policy — an
+   * unsolved design question, not something to improvise here. Within one PR
+   * the anchor is exactly as valid as it was when the owner clicked Dismiss,
+   * which makes re-running an agent stop re-surfacing what was already rejected.
+   *
+   * Location only, never the finding's `title`: a title is model-generated text
+   * derived from an untrusted diff, and this list is rendered in the TRUSTED
+   * half of the prompt (`prompt.ts` SUPPRESSION_DIRECTIVE).
+   *
+   * The window is the finding's own lines, UNPADDED — unlike the eval seed
+   * (`eval-draft.ts` EXPECTATION_LINE_PADDING), whose padding exists because a
+   * mechanical scorer compares ranges. Here the reader is the model, and
+   * widening the window would hand it a licence to stay quiet over lines nobody
+   * dismissed.
+   */
+  private async buildSuppressions(prId: string, runLog: RunLogger): Promise<string[]> {
+    const reviews = await this.repo.reviewsForPull(prId);
+    const seen = new Set<string>();
+    for (const { findings } of reviews) {
+      for (const finding of findings) {
+        if (finding.dismissedAt == null) continue;
+        seen.add(`${finding.file}:${finding.startLine}-${finding.endLine}`);
+      }
+    }
+    const all = [...seen].sort();
+    // Never a silent cap: a truncated list is stated in the run log, so a
+    // suppression that did not reach the model is visible rather than inferred.
+    const suppressions = all.slice(0, MAX_SUPPRESSIONS);
+    if (all.length > suppressions.length) {
+      runLog.info(
+        `Dismissed findings: sending ${suppressions.length} of ${all.length} (capped) as do-not-report locations`,
+      );
+    } else if (suppressions.length > 0) {
+      runLog.info(`Dismissed findings: sending ${suppressions.length} do-not-report location(s)`);
+    }
+    return suppressions;
+  }
+
   private async buildProjectContext(
     agentId: string,
     repo: typeof schema.repos.$inferSelect,

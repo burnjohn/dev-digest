@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 
@@ -78,22 +79,35 @@ function cardFor(title: string): HTMLElement {
   return el as HTMLElement;
 }
 
+// FIX-4: FindingCard (mounted for every finding here) now runs its eval-case
+// query against a real ancestor QueryClient rather than one it creates
+// itself — every finding below is undecided (`accepted_at`/`dismissed_at`
+// both null), so that query stays `enabled: false` and never fetches, but
+// `useQuery` still requires a QueryClientProvider ancestor to exist at all.
+function newQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
 function renderWithIntl(ui: React.ReactElement) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={newQueryClient()}>
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        {ui}
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
   );
 }
 
 /** REQ-18 tree: FindingsPanel under a controllable `TargetFindingContext`. */
 function panelTree(findings: FindingRecord[], target: TargetFindingSignal | null) {
   return (
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <TargetFindingContext.Provider value={target}>
-        <FindingsPanel findings={findings} prId="pr1" />
-      </TargetFindingContext.Provider>
-    </NextIntlClientProvider>
+    <QueryClientProvider client={newQueryClient()}>
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <TargetFindingContext.Provider value={target}>
+          <FindingsPanel findings={findings} prId="pr1" />
+        </TargetFindingContext.Provider>
+      </NextIntlClientProvider>
+    </QueryClientProvider>
   );
 }
 
@@ -248,3 +262,49 @@ describe("FindingsPanel + TargetFindingContext (REQ-33)", () => {
     expect(mutate).toHaveBeenCalledWith({ findingId: "c1", action: "accept", prId: "pr1" });
   });
 });
+
+/* The a/d/r shortcuts obey the same lock the buttons do — a keypress must not
+   reach a transition the card renders as disabled. */
+describe("FindingsPanel keyboard shortcuts respect the decision lock", () => {
+  const ACCEPTED_ONLY = [mk({ id: "c1", title: "Hardcoded secret", accepted_at: "2026-08-28T00:00:00Z" })];
+  const DISMISSED_ONLY = [mk({ id: "c1", title: "Hardcoded secret", dismissed_at: "2026-08-28T00:00:00Z" })];
+
+  it("`d` on an accepted finding fires nothing", () => {
+    renderWithIntl(<FindingsPanel findings={ACCEPTED_ONLY} prId="pr1" />);
+
+    // Mutation: dropping the `decision.dismissDisabled` guard from the handler
+    // — the keypress would then dismiss a finding whose Dismiss button is
+    // rendered disabled.
+    fireEvent.keyDown(window, { key: "d" });
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("`a` on a dismissed finding fires nothing", () => {
+    renderWithIntl(<FindingsPanel findings={DISMISSED_ONLY} prId="pr1" />);
+
+    fireEvent.keyDown(window, { key: "a" });
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("`r` reverts a decided finding", () => {
+    renderWithIntl(<FindingsPanel findings={ACCEPTED_ONLY} prId="pr1" />);
+
+    fireEvent.keyDown(window, { key: "r" });
+    expect(mutate).toHaveBeenCalledWith({ findingId: "c1", action: "revert", prId: "pr1" });
+  });
+
+  it("`r` on an undecided finding fires nothing — there is no decision to undo", () => {
+    renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
+
+    fireEvent.keyDown(window, { key: "r" });
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("the repeatable action still works: `a` on an undecided finding accepts it", () => {
+    renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
+
+    fireEvent.keyDown(window, { key: "a" });
+    expect(mutate).toHaveBeenCalledWith({ findingId: "f1", action: "accept", prId: "pr1" });
+  });
+});
+

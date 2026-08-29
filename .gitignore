@@ -30,3 +30,6 @@ test-results/
 # local lesson planning notes
 /client/pnpm-workspace.yaml
 /server/pnpm-workspace.yaml
+
+# old skill-eval harness run data — same nature as evals/results/, not source
+.claude/skill-eval-runs/

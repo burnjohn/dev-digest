@@ -5,6 +5,7 @@
 import { describe, it, expect, afterEach, beforeAll, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { FindingRecord, ReviewRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 
@@ -89,6 +90,11 @@ function mkRunSummary(o: Partial<RunSummary> & Pick<RunSummary, "run_id">): RunS
   };
 }
 
+// FIX-4: FindingCard's eval-case query now runs against a real ancestor
+// QueryClient instead of one it creates itself — every fixture finding here
+// is undecided (or, for the one test that dismisses one, never expanded),
+// so the query stays `enabled: false`/unmounted and never actually fetches,
+// but `useQuery` still requires a QueryClientProvider ancestor to exist.
 function tabJsx(
   runs: ReviewRecord[],
   targetFindingId: string | null,
@@ -96,25 +102,28 @@ function tabJsx(
   prRuns: RunSummary[] = [],
   runsLoaded: boolean = true,
 ) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <FindingsTab
-        prId="pr1"
-        liveRunIds={[]}
-        reviewRunning={false}
-        lethalTrifecta={[]}
-        runs={runs}
-        runsLoaded={runsLoaded}
-        prRuns={prRuns}
-        prCommits={[]}
-        cancelMutation={{ mutate: vi.fn(), isPending: false } as any}
-        onOpenTrace={() => {}}
-        onDelete={() => {}}
-        onRunDone={() => {}}
-        targetFindingId={targetFindingId}
-        onTargetResolved={onTargetResolved}
-      />
-    </NextIntlClientProvider>
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingsTab
+          prId="pr1"
+          liveRunIds={[]}
+          reviewRunning={false}
+          lethalTrifecta={[]}
+          runs={runs}
+          runsLoaded={runsLoaded}
+          prRuns={prRuns}
+          prCommits={[]}
+          cancelMutation={{ mutate: vi.fn(), isPending: false } as any}
+          onOpenTrace={() => {}}
+          onDelete={() => {}}
+          onRunDone={() => {}}
+          targetFindingId={targetFindingId}
+          onTargetResolved={onTargetResolved}
+        />
+      </NextIntlClientProvider>
+    </QueryClientProvider>
   );
 }
 

@@ -80,6 +80,33 @@ export function useDeleteAgent() {
   });
 }
 
+/**
+ * Replay an old agent config version as a NEW version — the eval compare
+ * modal's `Promote vN`. The agents-side twin of `useRestoreSkillVersion`.
+ *
+ * Posts a version NUMBER, never a config: the server reads the snapshot itself,
+ * under the same row lock a save takes. Sending the config from this cache is
+ * exactly the lost update the endpoint exists to prevent — and it is also why no
+ * `staleTime` guard is needed, since a stale version list can only fail to offer
+ * a newer version, never write a wrong one.
+ *
+ * A restore IS a save, so it invalidates what `useUpdateAgent` does. It also
+ * invalidates `["evals", "batches"]`: promoting bumps the agent's version, and the
+ * eval drill-in labels every batch by the `owner_version` it ran at.
+ */
+export function useRestoreAgentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      api.post<Agent>(`/agents/${id}/restore`, { version }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.setQueryData(["agent", data.id], data);
+      qc.invalidateQueries({ queryKey: ["evals", "batches"] });
+    },
+  });
+}
+
 /** Dynamic model list for a provider (editor model picker). */
 export function useProviderModels(provider: Provider | null | undefined) {
   return useQuery({

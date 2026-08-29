@@ -1,6 +1,12 @@
 {
   "dashboard": {
     "defaultTitle": "Eval Dashboard",
+    "subtitle": "Regression harness across all reviewer agents · pick an agent to see its runs",
+    "agentsSection": "Agents",
+    "allAgentRuns": "Recent eval runs · all agents",
+    "runAllAgents": "Run all agents",
+    "runningAllAgents": "Running…",
+    "noAgentsToRun": "Add an agent before running the set",
     "loading": "Loading eval metrics…",
     "casesSummary": "{count, plural, one {# eval case} other {# eval cases}} · gold set · {runs, plural, one {# run} other {# runs}}",
     "configure": "Configure eval cases →",
@@ -20,12 +26,14 @@
       "citation": "Citation"
     },
     "table": {
-      "ranAt": "Ran at",
       "recall": "Recall",
       "precision": "Precision",
       "citation": "Citation",
       "pass": "Pass",
-      "cost": "Cost"
+      "cost": "Cost",
+      "agent": "Agent",
+      "date": "Date",
+      "version": "Version"
     },
     "pass": "pass",
     "fail": "fail"
@@ -33,16 +41,24 @@
   "caseEditor": {
     "newCase": "New eval case",
     "caseTitle": "Eval case · {name}",
+    "subtitle": "Simulate a PR and assert the expected output",
+    "subtitleFromFinding": "Seeded from an accepted finding · assert the expected output",
     "runCase": "Run case",
     "running": "Running…",
     "save": "Save",
     "saving": "Saving…",
+    "saved": "Saved",
     "nameLabel": "Name",
     "namePlaceholder": "stripe-key-leak",
     "inputLabel": "Input",
     "tabs": {
       "diff": "Diff",
-      "prMeta": "PR meta"
+      "files": "Files",
+      "code": "Code",
+      "newFile": "New file",
+      "modifiedFile": "Modified file",
+      "prMeta": "PR meta",
+      "prMetaDisabledReason": "PR metadata is not fed to the reviewer"
     },
     "diffPlaceholder": "--- a/src/config.ts\n+++ b/src/config.ts\n@@ -10,6 +10,7 @@\n+  stripeKey: \"sk_live_...\"",
     "titleLabel": "Title",
@@ -55,7 +71,38 @@
     "invalidJson": "invalid JSON",
     "lastRunPassed": "Last run passed",
     "lastRunFailed": "Last run failed",
-    "resultSummary": "recall {recall}% · precision {precision}% · citation {citation}% · {duration}s"
+    "resultSummary": "{passed}/{total} passed · {duration}s · {cost}",
+    "banner": {
+      "positiveLabel": "POSITIVE CASE",
+      "negativeLabel": "NEGATIVE CASE",
+      "positiveBody": "MUST find \"{title}\" at {file}:{line}",
+      "negativeBody": "MUST NOT flag"
+    },
+    "actualOutputLabel": "Actual output",
+    "neverRunYet": "Never run yet",
+    "codeInput": {
+      "filenameLabel": "Filename",
+      "filenamePlaceholder": "src/index.ts",
+      "beforeLabel": "Before",
+      "afterLabel": "After",
+      "previewGeneratedDiff": "Preview generated diff",
+      "noDiffYet": "No diff yet — save the case to generate one.",
+      "emptyAfterWarning": "After is empty — this case has no code for the reviewer to see.",
+      "subTabsAriaLabel": "Code source"
+    },
+    "actualOutput": {
+      "withSkillLabel": "With skill",
+      "withoutSkillLabel": "Without skill",
+      "liftLabel": "Lift",
+      "notRun": "Not run",
+      "erroredPrefix": "Errored",
+      "metricsLine": "recall {recall}% · precision {precision}% · citation {citation}%",
+      "recallOnlyLine": "recall {recall}%",
+      "findingsCount": "{n, plural, one {# finding} other {# findings}}"
+    },
+    "runOnSave": "Run on save",
+    "findingSkeleton": "Finding skeleton",
+    "deleteConfirmTitle": "Delete this eval case?"
   },
   "evalsTab": {
     "metricsTitle": "Eval metrics",
@@ -68,10 +115,52 @@
     "passed": "passed",
     "failed": "failed",
     "recallSuffix": " · recall {recall}%",
+    "ablationSuffix": " · With skill {withPct} / Without skill {withoutPct}",
+    "ablationUnmeasured": "—",
+    "resultCount": "expected {n, plural, one {# finding} other {# findings}}, got {m}",
     "run": "Run",
     "running": "Running…",
+    "queued": "Queued",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "runAllEvals": "Run all evals",
+    "emptySetReason": "Add an eval case before running the set",
+    "inFlightReason": "A batch is already running for this agent",
+    "tracesPassedLabel": "TRACES PASSED",
+    "viewFullDashboard": "View full dashboard →",
+    "mustFindBadge": "Must find",
+    "mustNotFlagBadge": "Must not flag",
+    "passingSuffix": "passing",
+    "deleteConfirmPrefix": "Delete eval case",
+    "deleteConfirmSuffix": "? This also deletes its runs.",
+    "loadError": "Couldn't load eval cases.",
+    "noCasesReason": "Add an eval case first.",
+    "deleteConfirmTitle": "Delete this eval case?"
+  },
+  "compareModal": {
+    "title": "Compare runs",
+    "trigger": "Compare",
+    "subtitle": "Metric deltas and prompt diff on the gold set",
+    "sameVersion": "Both runs used the same prompt version — nothing to diff.",
+    "diffLabel": "diff",
+    "citation": "CITATION",
+    "legendOld": "old",
+    "legendNew": "new",
+    "promote": {
+      "action": "Promote v{version}",
+      "title": "Promote v{version}?",
+      "body": "This writes that version's config forward as a new version. Nothing in the history is overwritten.",
+      "confirm": "Promote",
+      "success": "Promoted v{from} as v{version}.",
+      "noop": "That version is already current — nothing to promote.",
+      "error": "Couldn't promote that version.",
+      "sameVersionDisabled": "Both runs used the same version"
+    }
+  },
+  "turnIntoCase": {
+    "label": "Turn into eval case",
+    "disabledUndecided": "Accept or dismiss this finding first to turn it into an eval case",
+    "disabledNoDiff": "No stored diff is available for this file"
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",

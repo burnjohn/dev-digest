@@ -17,6 +17,7 @@ export const FeatureModelId = z.enum([
   'risk_brief',
   'conformance',
   'conventions',
+  'eval_baseline',
 ]);
 export type FeatureModelId = z.infer<typeof FeatureModelId>;
 
@@ -87,6 +88,30 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     // `CHEAP.openai`). Settings → Feature Models overrides it per workspace.
     defaultProvider: 'openai',
     defaultModel: 'gpt-4o-mini',
+  },
+  {
+    id: 'eval_baseline',
+    label: 'Eval Runner',
+    description: 'Runs every eval case — an agent case, and both arms of a skill case.',
+    // An eval case runs on THIS model, never the owning agent's own model
+    // (`evals/service.ts`) — the agent supplies only the system prompt, so the
+    // grader is held fixed while agents change. Owner decision, 2026-08-29.
+    //
+    // Stayed on `deepseek-v4-flash` after MEASURING the alternative: one and the
+    // same case took 6-20s at ~$0.0005 here, and 131s at $0.0063 on
+    // `anthropic/claude-haiku-4.5` — ~9 output tokens/sec, which also collides
+    // with the OpenRouter client's 90s per-attempt timeout
+    // (`reviewer-core/src/llm/openrouter.ts`) and surfaces as an intermittent
+    // provider error after its retries. DeepSeek also lists `seed` as a
+    // supported parameter and Haiku does not, so it is the one that can be
+    // pinned for determinism later. The citation drift that motivated trying a
+    // bigger model is handled instead by the padded expectation window
+    // (`reviews/eval-draft.ts`). Settings → Feature Models overrides per workspace.
+    //
+    // For a SKILL case this remains AC-73's baseline, where model strength moves
+    // `recall(with)` and `recall(without)` together and cancels in the lift.
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
 ];
 

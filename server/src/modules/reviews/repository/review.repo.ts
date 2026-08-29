@@ -136,6 +136,25 @@ export async function setFindingAccepted(
   return row;
 }
 
+/**
+ * Revert a decision: clear BOTH timestamps so the finding is undecided again.
+ * `setFindingAccepted(id, null)` would happen to do the same thing today (it
+ * nulls `dismissedAt` unconditionally), but relying on that reads as a bug and
+ * breaks the moment either setter stops clearing its sibling — a revert is its
+ * own transition, so it gets its own statement.
+ */
+export async function clearFindingDecision(
+  db: Db,
+  findingId: string,
+): Promise<FindingRow | undefined> {
+  const [row] = await db
+    .update(t.findings)
+    .set({ acceptedAt: null, dismissedAt: null })
+    .where(eq(t.findings.id, findingId))
+    .returning();
+  return row;
+}
+
 export async function setFindingDismissed(
   db: Db,
   findingId: string,

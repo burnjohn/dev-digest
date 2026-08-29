@@ -282,13 +282,54 @@ export class SkillsRepository {
    * Delete a skill. `skill_versions` and `agent_skills` both cascade
    * (`0000_init.sql`), so this silently unlinks the skill from every agent —
    * which is why the service exposes `usageCount` for the confirm dialog.
+   *
+   * Also deletes every `eval_cases` / `eval_run_batches` row owned by this
+   * skill (REQ-41), in the SAME transaction as the skill delete — a failure
+   * leaves neither half applied. Symmetric with `AgentsRepository.deleteById`:
+   * this stays in R3 because `SkillsService` (R2) may not import `db/schema*`
+   * or another module's `modules/evals/repository.ts`. `eval_cases` goes first
+   * (its `eval_runs` cascade with it), then `eval_run_batches`.
+   *
+   * Both eval tables are scoped by `workspaceId` AND `ownerId`, exactly like the
+   * skill delete below, so a cross-workspace id matches zero rows in all three
+   * deletes and nothing is touched.
+   *
+   * Returns `deletedCases` (the count for the response's optional field) and
+   * `deleted` (false if no such skill existed in the workspace).
    */
-  async deleteById(workspaceId: string, id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(t.skills)
-      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
-      .returning({ id: t.skills.id });
-    return rows.length > 0;
+  async deleteById(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ deleted: boolean; deletedCases: number }> {
+    return this.db.transaction(async (tx) => {
+      const deletedCases = await tx
+        .delete(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerKind, 'skill'),
+            eq(t.evalCases.ownerId, id),
+          ),
+        )
+        .returning({ id: t.evalCases.id });
+
+      await tx
+        .delete(t.evalRunBatches)
+        .where(
+          and(
+            eq(t.evalRunBatches.workspaceId, workspaceId),
+            eq(t.evalRunBatches.ownerKind, 'skill'),
+            eq(t.evalRunBatches.ownerId, id),
+          ),
+        );
+
+      const rows = await tx
+        .delete(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+        .returning({ id: t.skills.id });
+
+      return { deleted: rows.length > 0, deletedCases: deletedCases.length };
+    });
   }
 
   /** Body snapshots for a skill, newest version first. */

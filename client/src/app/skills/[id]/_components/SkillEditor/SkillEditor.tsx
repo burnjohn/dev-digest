@@ -8,6 +8,7 @@ import { Tabs } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
 import { ConfigTab } from "./_components/ConfigTab";
 import { ContextTab } from "./_components/ContextTab";
+import { EvalsTab } from "./_components/EvalsTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { TABS } from "./constants";
@@ -47,6 +48,7 @@ export function SkillEditor({
         {tab === "preview" && <PreviewTab skill={skill} />}
         {tab === "context" && <ContextTab skill={skill} />}
         {tab === "versions" && <VersionsTab key={skill.id} skill={skill} />}
+        {tab === "evals" && <EvalsTab key={skill.id} skill={skill} />}
       </div>
     </div>
   );

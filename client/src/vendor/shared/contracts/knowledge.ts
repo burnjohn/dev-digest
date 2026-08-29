@@ -332,3 +332,23 @@ export const AgentVersion = z.object({
   created_at: z.string(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;
+
+/**
+ * Body of `POST /agents/:id/restore` — write an OLD version's config forward as
+ * a new one (the eval compare modal's `Promote vN`).
+ *
+ * The client sends a version NUMBER, never a config. `agent_versions` rows are
+ * append-only — nothing in the repository ever UPDATEs one — so a version number
+ * is a permanently stable handle on immutable config: a stale version cache can
+ * never cause a wrong write, only a failure to offer a newer version. That is
+ * what lets this endpoint carry no `If-Match` and no precondition.
+ *
+ * A restore does NOT rewind the counter. It replays `AgentVersionConfig` (the
+ * whole snapshot, linked skill ids included — that snapshot *is* the agent's
+ * identity for eval reproducibility) as the next version, so history is never
+ * overwritten. Restoring the config the agent already has is a no-op.
+ */
+export const AgentRestoreRequest = z.object({
+  version: z.number().int().positive(),
+});
+export type AgentRestoreRequest = z.infer<typeof AgentRestoreRequest>;

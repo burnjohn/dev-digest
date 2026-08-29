@@ -56,6 +56,13 @@ export interface ReviewInput {
   skills?: string[];
   /** Curated memory items. */
   memory?: string[];
+  /**
+   * Findings the repository owner dismissed as false positives, each rendered as
+   * `<file>:<start>-<end>`. TRUSTED and first-party - `assemblePrompt` renders
+   * them un-wrapped and adds a matching system directive. Omit (or pass empty)
+   * and the assembled prompt is byte-identical to before this existed.
+   */
+  suppressions?: string[];
   /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
   specs?: string[];
   /**
@@ -138,6 +145,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     system: input.systemPrompt,
     skills: input.skills,
     memory: input.memory,
+    suppressions: input.suppressions,
     specs: input.specs,
     callers: input.callers,
     repoMap: input.repoMap,

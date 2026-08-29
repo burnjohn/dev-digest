@@ -3,7 +3,8 @@ import type { Db, Transaction } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
-import { isConfigChange } from './helpers.js';
+import { AgentVersionConfig } from '@devdigest/shared';
+import { isConfigChange, isRestoreChange } from './helpers.js';
 
 /**
  * A2 — agents data-access. Owns `agents`, `agent_versions`, and the
@@ -87,15 +88,58 @@ export class AgentsRepository {
     return row;
   }
 
-  /** Delete an agent (scoped to workspace). Versions/skill-links cascade;
-   *  agent_runs keep their history with agent_id set null. Returns false if
-   *  no such agent existed in the workspace. */
-  async deleteById(workspaceId: string, id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
-      .returning({ id: t.agents.id });
-    return rows.length > 0;
+  /**
+   * Delete an agent (scoped to workspace) AND every `eval_cases` / `eval_run_batches`
+   * row owned by it (REQ-41), in ONE transaction — a failure leaves neither half
+   * applied. `agent_versions` / `agent_skills` cascade via FK; `agent_runs` keep
+   * their history with `agent_id` set null.
+   *
+   * Lives here, not in `modules/evals/repository.ts`: R2 (`AgentsService`) may
+   * not import another module's anything, so the eval side of this delete has to
+   * be R3 code that already has `db/**` on its import allowlist — this repository.
+   * `eval_cases` goes first (its `eval_runs` cascade with it), then
+   * `eval_run_batches` — the forward order needs no FK rescue, unlike the reverse.
+   *
+   * Both eval tables are scoped by `workspaceId` AND `ownerId`, exactly like the
+   * agent delete below, so a cross-workspace id matches zero rows in all three
+   * deletes and nothing is touched — the transaction still returns `deleted: false`.
+   *
+   * Returns `deletedCases` (the count for the response's optional field) and
+   * `deleted` (false if no such agent existed in the workspace).
+   */
+  async deleteById(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ deleted: boolean; deletedCases: number }> {
+    return this.db.transaction(async (tx) => {
+      const deletedCases = await tx
+        .delete(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerKind, 'agent'),
+            eq(t.evalCases.ownerId, id),
+          ),
+        )
+        .returning({ id: t.evalCases.id });
+
+      await tx
+        .delete(t.evalRunBatches)
+        .where(
+          and(
+            eq(t.evalRunBatches.workspaceId, workspaceId),
+            eq(t.evalRunBatches.ownerKind, 'agent'),
+            eq(t.evalRunBatches.ownerId, id),
+          ),
+        );
+
+      const rows = await tx
+        .delete(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+        .returning({ id: t.agents.id });
+
+      return { deleted: rows.length > 0, deletedCases: deletedCases.length };
+    });
   }
 
   /** Insert an agent AND record version 1 in agent_versions (immutable snapshot). */
@@ -334,6 +378,87 @@ export class AgentsRepository {
         .returning();
       if (updated) await this.snapshotVersion(updated, nextVersion, tx);
       return nextVersion;
+    });
+  }
+
+  /**
+   * Write an OLD version's config forward as a NEW version, under the same row
+   * lock a save takes. Backs `POST /agents/:id/restore` (the compare modal's
+   * `Promote vN`).
+   *
+   * The snapshot is read server-side, INSIDE the transaction, from the immutable
+   * `(agent_id, version)` row — never taken from the caller. That is the whole
+   * point of the endpoint: a client that posted a config it had cached could
+   * write forward a prompt the user never saw if someone saved in between.
+   *
+   * The agent row is locked FIRST because the version bump is a read-modify-write
+   * — the same reason `setSkills` locks it. `agent_skills` is replaced from
+   * `config_json.skills` BEFORE `snapshotVersion` runs, because that method
+   * re-reads the links to build the new snapshot; snapshotting first would record
+   * the outgoing link set against the incoming config.
+   *
+   * `isRestoreChange` (NOT `isConfigChange` — see its doc) makes restoring the
+   * config the agent already has a no-op: no bump, no snapshot, no link churn.
+   * That keeps "every snapshot differs from its predecessor" true.
+   *
+   * Skill ids come from a snapshot this workspace wrote, so they were already
+   * gated by `AgentsService.assertSkillsInWorkspace` when first linked; a skill
+   * deleted since then fails the FK and rolls the whole restore back rather than
+   * half-applying it.
+   */
+  async restoreVersion(
+    workspaceId: string,
+    id: string,
+    targetVersion: number,
+  ): Promise<
+    { ok: true; row: AgentRow } | { ok: false; reason: 'agent_not_found' | 'version_not_found' }
+  > {
+    return this.db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+        .for('update');
+      // A foreign id fails HERE, before any version is read, so cross-tenant
+      // probing can never tell "wrong workspace" from "no such agent".
+      if (!existing) return { ok: false as const, reason: 'agent_not_found' as const };
+
+      const [snapshotRow] = await tx
+        .select()
+        .from(t.agentVersions)
+        .where(and(eq(t.agentVersions.agentId, id), eq(t.agentVersions.version, targetVersion)));
+      if (!snapshotRow) return { ok: false as const, reason: 'version_not_found' as const };
+
+      const snapshot = AgentVersionConfig.parse(snapshotRow.configJson);
+      const currentSkillIds = await this.skillIdsForAgent(id, tx);
+      if (!isRestoreChange(existing, snapshot, currentSkillIds)) {
+        return { ok: true as const, row: existing };
+      }
+
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, id));
+      if (snapshot.skills.length > 0) {
+        await tx
+          .insert(t.agentSkills)
+          .values(snapshot.skills.map((skillId, i) => ({ agentId: id, skillId, order: i })));
+      }
+
+      const nextVersion = existing.version + 1;
+      const [row] = await tx
+        .update(t.agents)
+        .set({
+          provider: snapshot.provider,
+          model: snapshot.model,
+          systemPrompt: snapshot.system_prompt,
+          outputSchema: (snapshot.output_schema ?? null) as object | null,
+          strategy: snapshot.strategy,
+          ciFailOn: snapshot.ci_fail_on,
+          repoIntel: snapshot.repo_intel,
+          version: nextVersion,
+        })
+        .where(eq(t.agents.id, id))
+        .returning();
+      await this.snapshotVersion(row!, nextVersion, tx);
+      return { ok: true as const, row: row! };
     });
   }
 }

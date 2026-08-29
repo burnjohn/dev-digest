@@ -6,6 +6,153 @@ way, and what to do about it. [AGENTS.md](AGENTS.md) stays lean by pointing here
 
 <!-- Format: ### YYYY-MM-DD — short title, then 1–3 lines. -->
 
+### 2026-08-29 — a `useQuery` below an early return only crashes on a COLD mount; a warm cache and green unit tests both hide it
+The skill `EvalsTab` called `useEvalBatch` (a `useQuery`) *after* its `if (isLoading)` / `if (isError)` returns, so
+the loading→loaded transition rendered more hooks than the render before it and React threw
+`Rendered more hooks than during the previous render` into the error boundary. It looked intermittent because a
+warm React Query cache skips the loading branch entirely — navigating in from another tab worked, a direct
+`/skills/:id?tab=evals` load did not — and the component's own 10 passing tests never exercised it either.
+Every `use*` query hook belongs ABOVE the first conditional return, even when its argument is only computed later;
+when a tab "sometimes" dies, load its URL directly rather than clicking into it.
+
+### 2026-08-29 — two `Modal`s open at once is not a nesting problem, it is a `document` listener problem
+`vendor/ui/kit/Modal.tsx` binds its Escape/Tab handler on **`document`**, not on its own dialog, and
+portals to `<body>` — so a confirm `Modal` opened from inside another one gives you two live traps:
+one Escape fires BOTH `onClose`s (the confirm and the screen behind it vanish together), and on Tab
+the outer handler sees `dialog.contains(active) === false` for the portaled inner and yanks focus
+back, fighting the inner handler that does the same in reverse. `VersionsTab` gets away with its
+confirm `Modal` only because its parent is a tab, not a dialog. When the parent IS a dialog, put the
+confirmation in that dialog's own `footer` and swap the footer's contents on a `confirming` flag —
+`CompareModal`'s `Promote vN` does this. Same file as the 2026-08-29 opacity/portal entry, different
+failure.
+
+### 2026-08-29 — a restore endpoint's no-op is invisible in its response; you need the version from BEFORE the call
+`POST /skills/:id/restore` and `POST /agents/:id/restore` both answer `200` with the entity whether
+they wrote a new version or decided nothing changed, so "did that do anything?" is only answerable
+against the version the owner held beforehand — which is what `VersionsTab` compares
+(`saved.version === skill.version`). Comparing the response to the version you ASKED for looks
+equivalent and is not: promote v20 once and v21 is current, promote v20 again and the no-op answers
+21, which is `> 20` and reads as a fresh success. `CompareModal` gets `owner_kind`/`owner_id` from
+the comparison and calls `useAgent`/`useSkill` (the inactive one passed `null`, so `enabled: false`
+and no request) purely to hold that number.
+
+### 2026-08-29 — a "do it for all N" button must catch PER ITERATION; one rejection kills the whole sweep
+`for (…) { await m.mutateAsync(x) }` looks like N independent calls but is one promise chain: the
+`/evals` `Run all agents` stopped at agent one, because `POST /evals/batches` 400s (`no_cases`) for an
+agent with no eval cases and that workspace's first row is exactly such an agent — four agents never
+ran and the only clue was a single toast. Wrap each iteration in its own `try/catch`; nothing is
+hidden by doing so, since `lib/providers.tsx`'s `MutationCache.onError` toasts every rejection
+globally whether or not the caller catches it. Related to the entry below on `isPending`: the same
+sweep must also track busy in LOCAL state, as one observer follows only its latest call.
+
+### 2026-08-29 — per-row busy state for a LIST comes from `useMutationState`, never from `isPending`/`variables`
+One `useMutation` observer tracks only its LATEST call: `mutate` again while the first is in flight
+re-points `isPending`/`variables` at the new mutation and detaches the observer from the old one, so a
+row spinner derived from `variables` jumps to the row clicked second, and "disable everything while
+`isPending`" is the workaround that hides it. `useMutationState({ filters: { mutationKey, status:
+'pending' } })` reads the mutation CACHE instead and returns every in-flight call's variables —
+`useRunEvalCase` returns that as `runningIds`, so several eval cases can run at once and each spins on
+its own row. Mutation-level `onSuccess` still fires for a detached mutation (only per-call
+`mutate(vars, { onSuccess })` callbacks are lost), so every concurrent run still invalidates the list.
+
+### 2026-08-29 — a busy control needs the kit's `loading`, not `disabled` — and a queue needs a THIRD state
+`vendor/ui` `Button` has a `loading` prop that swaps the configured icon for a spinning `RefreshCw`
+(`ddspin` keyframes in `vendor/ui/styles.css`) and disables the button; `disabled` alone with an
+unchanged label is what made the agent `EvalsTab`'s `Run` read as a dead click for a seconds-long
+round trip, while the skill `EvalsTab`, which already passed `loading`, did not. A row waiting its turn
+in a sequential batch is NOT running — `EvalsTab` gives it a still `Clock` + `Queued` instead, because
+spinning every row would claim N live LLM calls where the server (by design) has exactly one.
+
+### 2026-08-29 — a write-modal that by spec stays OPEN after saving owes its own confirmation
+`EvalCaseEditor` deliberately never closes on save (REQ-11: stay put to see the run result), so the
+confirmation was left to callers via `onSaved` — and all three call sites (`FindingCard`, agent and
+skill `EvalsTab`) pass only `onClose`. With `Run on save` off the screen was byte-identical before
+and after a successful `POST /evals/cases`, so Save read as a no-op. When a dialog is specified to
+stay open after a write, the confirmation obligation moves INSIDE it — an optional callback nobody
+passes is not a delivery mechanism.
+
+### 2026-08-29 — derive a "saved" indicator from a serialized payload comparison, not a dirty flag
+`EvalCaseEditor` builds its `EvalCaseWrite` at render (not inside `persist`) and keeps
+`savedPayload = JSON.stringify(payload)` from the last successful write; `isSaved` is just
+`savedCaseId !== null && savedPayload === payloadKey`. It withdraws itself on an edit to ANY field
+with no onChange wiring, no `useEffect` and no timer — a boolean `saved` flag keeps claiming "saved"
+over edited-since content, and a `setTimeout` note is a fake-timer hazard in the jsdom suite.
+
+### 2026-08-29 — `window.confirm` is invisible to the Browser pane: the click silently does nothing
+The agent `EvalsTab` per-case delete gates on `window.confirm` (its `onDelete`), unlike the skill
+`EvalsTab` and `EvalCaseEditor`, which both use a `Modal`. Driven from the Browser pane it looks
+like a dead button — no dialog renders and no DELETE fires. Stub it first (`javascript_tool`:
+`window.confirm = () => true`), and prefer the `Modal` confirm in new code so the flow is drivable.
+
+### 2026-08-29 — the agent-editor TAB shell already pads; a tab that adds its own is double-inset
+`AgentEditor/styles.ts` `body` is `padding: 28`, so a tab's own `padding: "24px 28px 44px"` stacks
+on top of it — `ContextTab`, `SkillsTab` and (until now) `EvalsTab` all pay ~52px of horizontal
+inset while `ConfigTab`, which sets none, is the one that renders correctly. This is the INVERSE of
+the 2026-08-17 "`AppFrame`'s `<main>` has NO padding" entry and easy to get backwards: that rule is
+about a *page* dropped into `AppShell`, not about a *tab* inside an editor that already has a padded
+body. A tab wrap should set vertical spacing only, and never `maxWidth` if it is meant to be fluid.
+
+### 2026-08-29 — a NULL-defaulted server field can contradict the data it summarizes; reconcile, don't read it raw
+`eval_cases.expectation_kind` is derived server-side (`evals/scoring.ts` `deriveExpectationKind`),
+but `evals/helpers.ts` coalesces a NULL column to `'must_not_flag'` *regardless of the findings
+stored beside it* — so a legacy row can arrive as `must_not_flag` while `expected_output` is
+non-empty, and a UI reading the field raw renders a `MUST NOT FLAG` pill next to a `CRITICAL` badge.
+When a served field is a summary OF other fields in the same payload, derive from (or reconcile
+against) the underlying data — `EvalsTab/helpers.ts` `expectationKindOf` is the worked example, and
+a test that sets the two in conflict is what pins it.
+
+### 2026-08-29 — a query keyed by the resource id alone serves the WRONG body when the response depends on that resource's mutable state
+`useFindingEvalDraft` used `["eval-draft", findingId]`, but `GET /findings/:id/eval-draft` stamps
+`seeded_from` from `accepted_at`/`dismissed_at` — the only thing `EvalCaseEditor` labels its
+POSITIVE/NEGATIVE banner from. So accept → open (POSITIVE) → revert → dismiss → open re-served the
+accept-time entry inside `providers.tsx`'s `staleTime: 30_000` and opened POSITIVE for a dismissed
+finding. **Invalidating on the write is NOT a sufficient fix here**: a stale-but-present entry keeps
+`isSuccess`/`data` populated during the background refetch, so a fast click still reads the old body —
+put the state in the KEY (`["eval-draft", id, decidedAs]`), which starts the new state at
+`data: undefined`. Refines the "the resource IS the cache key" convention in that hook's doc comment:
+the key must cover everything the RESPONSE varies on, not just the row it is fetched for.
+
+### 2026-08-29 — putting a disabled control's REASON in `aria-label` renames it, breaking exact-name `getByRole` in other suites
+Adding the revert flow to `FindingCard` disabled Dismiss on an accepted finding and named it
+`Dismiss — Revert the acceptance first…` so the reason is announced, not hover-only. That silently
+broke a `FindingCard.test.tsx` case querying `getByRole("button", { name: "Dismiss" })` — RTL matches
+a string name EXACTLY, and this repo queries buttons that way in dozens of places, including suites
+for components that only render the control transitively. Query a control whose name can gain a
+reason with a prefix regex (`/^Dismiss/`), and grep the whole client for the literal name before
+changing one. Same family as the 2026-08-17 `FormField required` note, different mechanism: that one
+is label TEXT folding the `*` in, this one is an `aria-label` overriding the visible text entirely.
+
+### 2026-08-29 — a `Modal` rendered inside a dimmed card is painted at the card's alpha — portal, don't raise z-index
+`FindingCard` sets `opacity: .6` on an accepted/dismissed card, and its "Turn into eval case"
+button (which only enables *because* the finding is decided) rendered `EvalCaseEditor`'s `Modal` as
+a DOM child of that card. `opacity < 1` groups the whole subtree into one composited layer and
+creates a stacking context, so the dialog came out see-through with page content over it — while
+`getComputedStyle` still reported `rgb(28,28,28)` and `elementsFromPoint` still put the dialog on
+top, so the DOM "looks" correct. Raising `z-index` does nothing (the context is the cage).
+`vendor/ui/kit/Modal.tsx` now `createPortal`s to `document.body`; `Drawer.tsx` has the same shape
+and the same exposure if it is ever mounted from a dimmed subtree.
+
+### 2026-08-29 — the FIRST `useQuery` inside a reused leaf breaks every consumer's test, and `enabled: false` does not save you
+`useQueryClient()` throws `No QueryClient set in QueryClientProvider` *before* it ever looks at the
+query's own `enabled`, so gating the query does not help. Adding an eval-draft hook to `FindingCard`
+broke all four suites that render that tree standalone (`FindingCard`, `FindingsPanel`,
+`FindingsTab`, `pulls/[number]/page`) — none had a provider ancestor, because nothing under it had
+ever called `useQuery`. Wrap those suites in a `QueryClientProvider` (copy `reviews.test.tsx`'s
+shape); a **local** provider inside the component "fixes" the tests but isolates its cache, so its
+mutations invalidate nothing the app reads.
+
+### 2026-08-29 — Recharts `ResponsiveContainer` renders 0×0 under jsdom, so chart assertions pass vacuously
+`getBoundingClientRect()` returns all zeros in jsdom, `ResponsiveContainer` settles on
+`width/height = 0`, and the child chart emits **no SVG at all** — a test asserting on paths or
+`stroke-dasharray` then passes while testing nothing. Stub `Element.prototype.getBoundingClientRect`
+to a fixed size in `beforeEach`/`afterEach`, as `vendor/ui/charts/LineChart.test.tsx` now does.
+
+### 2026-08-29 — `@testing-library/user-event` is NOT installed in `client/`, despite what the skills say
+Absent from `package.json`, `pnpm-lock.yaml` and `node_modules`, while the `react-testing-library`
+skill and several plan red-flag lists instruct `userEvent.setup()`. All 62 existing `*.test.tsx` use
+`fireEvent`, which is the real convention here. Adding it means editing `package.json` + the lockfile
+— both Tier A — so an implementer that hits this must use `fireEvent` and report the gap, not install.
+
 ### 2026-08-27 — `usePrReviews` returns every agent's every run — `reviews[0]` is not "the PR's review"
 `reviewsForPull` returns EVERY historical `reviews` row for EVERY agent, newest-first, and until
 2026-08-27 had no secondary sort key — so `reviews[0]` is whichever agent happened to finish LAST,

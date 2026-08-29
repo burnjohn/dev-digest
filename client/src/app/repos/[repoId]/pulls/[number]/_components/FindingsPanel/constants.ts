@@ -11,8 +11,11 @@ export const SEVERITY_ORDER: Record<string, number> = {
 /** Confidence below this is hidden when "hide low confidence" is on. */
 export const LOW_CONFIDENCE_THRESHOLD = 0.65;
 
-/** Keyboard shortcut → finding action. */
+/** Keyboard shortcut → finding action. `r` reverts a decision, mirroring the
+ * revert control on the card: with a decision standing, `a`/`d` are locked the
+ * same way the buttons are, so the shortcut cannot do what the UI forbids. */
 export const KEY_TO_ACTION: Record<string, FindingActionKind> = {
   a: "accept",
   d: "dismiss",
+  r: "revert",
 };

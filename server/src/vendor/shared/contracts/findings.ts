@@ -89,8 +89,14 @@ export const Review = z.object({
 });
 export type Review = z.infer<typeof Review>;
 
-/** Action taken on a finding (accept/dismiss/learn/reply). */
-export const FindingActionKind = z.enum(['accept', 'dismiss', 'learn', 'reply']);
+/**
+ * Action taken on a finding (accept/dismiss/learn/reply/revert).
+ * `revert` undoes a decision: it clears BOTH `accepted_at` and `dismissed_at`,
+ * returning the finding to undecided. It is the only way out of a decision —
+ * the UI disables the opposite action while one stands, so accept -> revert ->
+ * dismiss is the path, never accept -> dismiss directly.
+ */
+export const FindingActionKind = z.enum(['accept', 'dismiss', 'learn', 'reply', 'revert']);
 export type FindingActionKind = z.infer<typeof FindingActionKind>;
 
 export const FindingAction = z.object({

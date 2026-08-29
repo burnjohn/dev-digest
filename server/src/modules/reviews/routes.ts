@@ -3,6 +3,7 @@ import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   ClassifyIntentRequest,
+  EvalCaseDraft,
   PrIntentDetail,
   RiskBriefRequest,
   RiskBriefResponse,
@@ -17,6 +18,7 @@ import { ReviewService } from './service.js';
 import { BriefService } from './brief-service.js';
 import type { IntentLogger } from './intent-classifier.js';
 import { resolveFeatureModel } from '../_shared/feature-models.js';
+import { evalDraftForFinding } from './eval-draft.js';
 
 /**
  * Adapt pino's object-first `req.log.info(obj, msg)` to `classifyIntent`'s
@@ -45,9 +47,17 @@ function toIntentLogger(base: FastifyBaseLogger): IntentLogger {
  *                                                          `pulls/routes.ts`'s `servePersisted` does
  *   GET    /pulls/:id/intent  → PrIntentDetail | 404    → read-only, NEVER classifies (REQ-10)
  *   POST   /pulls/:id/intent  {force?}                  → get-or-create; force=true re-classifies
- *   POST   /findings/:id/(accept|dismiss)              → finding actions
+ *   POST   /findings/:id/(accept|dismiss|revert)       → finding actions; `revert` clears BOTH
+ *                                                          timestamps, putting the finding back to
+ *                                                          undecided (the client disables the
+ *                                                          opposite action until it is sent)
+ *   GET    /findings/:id/eval-draft                    → pre-filled EvalCaseDraft for
+ *                                                          `Turn into eval case` (SPEC-03 AC-4/AC-5).
+ *                                                          Read-only, persists nothing (REQ-6); 409
+ *                                                          when there is no stored diff or no
+ *                                                          producing agent (REQ-3)
  */
-const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
+const FINDING_ACTIONS = ['accept', 'dismiss', 'revert'] as const;
 export default async function reviewsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
@@ -264,7 +274,24 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     return { ok: true };
   });
 
-  // ---- Finding actions (accept / dismiss) ---------------------------------
+  // ---- Eval-case draft (SPEC-03 AC-4/AC-5, T11) ----------------------------
+  // Pre-fills the `Turn into eval case` editor from a finding. Read-only —
+  // nothing is persisted (REQ-6). 409 when the draft cannot be built: no
+  // stored diff for the finding's file, or the review has no producing agent
+  // (REQ-3). Workspace scoping is enforced inside `buildEvalDraft` via
+  // `findingContext`, answering 404 (never 403) for a cross-workspace finding
+  // (REQ-40) — mirrors the finding-action routes below, which use the same
+  // tenancy pattern.
+  app.get(
+    '/findings/:id/eval-draft',
+    { schema: { params: IdParams, response: { 200: EvalCaseDraft } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return evalDraftForFinding(container.db, workspaceId, req.params.id);
+    },
+  );
+
+  // ---- Finding actions (accept / dismiss / revert) ------------------------
   for (const action of FINDING_ACTIONS) {
     app.post(`/findings/:id/${action}`, { schema: { params: IdParams } }, async (req) => {
       const { workspaceId } = await getContext(container, req);

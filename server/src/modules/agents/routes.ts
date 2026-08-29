@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import { Agent, AgentRestoreRequest, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -24,6 +24,7 @@ const VersionParams = z.object({
  *   PUT    /agents/:id              → update / toggle enabled (versions config)
  *   GET    /agents/:id/versions     → config history (newest first)
  *   GET    /agents/:id/versions/:version → one config snapshot
+ *   POST   /agents/:id/restore        → replay an old version as a new one
  *   GET    /agents/:id/skills       → linked skills (ordered)
  *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
@@ -119,9 +120,11 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
 
   app.delete('/agents/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
-    const ok = await service.delete(workspaceId, req.params.id);
-    if (!ok) throw new NotFoundError('Agent not found');
-    return { ok: true };
+    const result = await service.delete(workspaceId, req.params.id);
+    if (!result.deleted) throw new NotFoundError('Agent not found');
+    // `count` is optional (REQ-41): no `schema.response` is declared on this
+    // route, so nothing strips it, but nothing REQUIRES a caller to read it either.
+    return { ok: true, count: result.deletedCases };
   });
 
   app.get('/agents/:id/versions', { schema: { params: IdParams } }, async (req) => {
@@ -139,6 +142,42 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
       const version = await service.getVersion(workspaceId, req.params.id, req.params.version);
       if (!version) throw new NotFoundError('Agent version not found');
       return version;
+    },
+  );
+
+  /**
+   * Replay an old config version as a NEW version — the eval compare modal's
+   * `Promote vN`. Server-owned for the same two reasons `POST /skills/:id/restore`
+   * is: the config is read from `agent_versions` under the same row lock a save
+   * takes, so a client cannot write forward a stale config it had cached; and the
+   * version bump is computed server-side, so two concurrent promotes cannot land
+   * on the same version number.
+   *
+   * The request carries a version NUMBER, never a config, and that is what makes
+   * the endpoint safe without an `If-Match` or any other precondition:
+   * `agent_versions` rows are append-only — nothing in the repository ever
+   * UPDATEs one — so a version number is a permanently stable handle on immutable
+   * config. A stale version list cannot cause a wrong write; the worst it can do
+   * is fail to offer a newer version.
+   *
+   * Responds with the updated `Agent`, not the new `AgentVersion`: a restore IS a
+   * save, so the client's cache write is identical to `PUT /agents/:id`'s.
+   */
+  app.post(
+    '/agents/:id/restore',
+    { schema: { params: IdParams, body: AgentRestoreRequest, response: { 200: Agent } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const result = await service.restoreVersion(workspaceId, req.params.id, req.body.version);
+      if (!result.ok) {
+        // 404, not 422: the payload is well-formed, the resource is absent —
+        // `platform/errors.ts` draws the line there. It also tells the client to
+        // refetch the version list, which is the actual recovery.
+        throw new NotFoundError(
+          result.reason === 'version_not_found' ? 'Agent version not found' : 'Agent not found',
+        );
+      }
+      return result.agent;
     },
   );
 

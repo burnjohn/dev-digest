@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Toggle, EmptyState, SeverityBadge } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
+import { decisionState } from "../FindingCard/helpers";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { TargetFindingContext } from "../target-finding-context";
 import { KEY_TO_ACTION, LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
@@ -96,7 +97,7 @@ export function FindingsPanel({
     setFocusIdx(0);
   }, [sev, hideLow, targetFinding]);
 
-  // j/k navigation + a/d shortcuts on the focused finding (keyboard).
+  // j/k navigation + a/d/r shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -104,7 +105,19 @@ export function FindingsPanel({
       if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
       else if (KEY_TO_ACTION[e.key] && shown[focusIdx]) {
-        action.mutate({ findingId: shown[focusIdx]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+        const target = shown[focusIdx]!;
+        const act = KEY_TO_ACTION[e.key]!;
+        // The shortcut obeys the SAME lock as the buttons — a keypress must not
+        // reach a transition the card renders as disabled, or `a` on a
+        // dismissed finding silently does what clicking Accept refuses to do.
+        const decision = decisionState({
+          accepted: !!target.accepted_at,
+          dismissed: !!target.dismissed_at,
+        });
+        if (act === "accept" && decision.acceptDisabled) return;
+        if (act === "dismiss" && decision.dismissDisabled) return;
+        if (act === "revert" && !decision.revertVisible) return;
+        action.mutate({ findingId: target.id, action: act, prId });
       }
     };
     window.addEventListener("keydown", handler);

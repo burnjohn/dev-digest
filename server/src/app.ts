@@ -17,6 +17,7 @@ import { Container, type ContainerOverrides } from './platform/container.js';
 import { AppError } from './platform/errors.js';
 import { modules } from './modules/index.js';
 import { ReviewService } from './modules/reviews/service.js';
+import { EvalsRepository } from './modules/evals/repository.js';
 
 // Attach the DI container to every request/instance.
 declare module 'fastify' {
@@ -89,6 +90,19 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
     } catch (err) {
       app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+    }
+    // Same argument, same assumptions, for `eval_run_batches`: a batch's loop
+    // is in-process (`setImmediate`, never a queue), so one left `running` by
+    // a dead process is orphaned and would otherwise freeze that owner's eval
+    // list in "running / queued" forever. Separate try/catch so one reaper
+    // failing does not skip the other.
+    try {
+      const reapedBatches = await new EvalsRepository(db).reapStaleRunningBatches();
+      if (reapedBatches > 0) {
+        app.log.info({ reapedBatches }, 'reaped stale running eval_run_batches on boot');
+      }
+    } catch (err) {
+      app.log.warn({ err: (err as Error).message }, 'stale-batch reaping failed (non-fatal)');
     }
   }
 

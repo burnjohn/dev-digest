@@ -48,4 +48,11 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     defaultProvider: "openai",
     defaultModel: "gpt-4o-mini",
   },
+  {
+    id: "eval_baseline",
+    label: "Eval Runner",
+    description: "Runs every eval case — an agent case, and both arms of a skill case.",
+    defaultProvider: "openrouter",
+    defaultModel: "deepseek/deepseek-v4-flash",
+  },
 ];

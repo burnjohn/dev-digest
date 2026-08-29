@@ -91,3 +91,44 @@ export function isConfigChange(
     patch.outputSchema !== undefined
   );
 }
+
+/**
+ * True when replaying `snapshot` onto `existing` would actually change the
+ * agent — the no-op predicate for `POST /agents/:id/restore`.
+ *
+ * Deliberately NOT `isConfigChange`. That one is a *patch* predicate: it reads
+ * `outputSchema !== undefined` as a change, because a save that mentions the
+ * field at all is assumed to be setting it. A restore always carries every
+ * field, so `isConfigChange` would report "changed" for every restore and the
+ * "restoring the current config is a no-op" guarantee would never hold.
+ *
+ * `currentSkillIds` must be the agent's links in link order: the snapshot's
+ * `skills` array is part of the agent's effective prompt (see `setSkills`), so
+ * two configs identical in every scalar but differing in their link set are NOT
+ * the same version. `isConfigChange` cannot see links at all.
+ *
+ * `output_schema` is opaque jsonb, so it is compared by serialization. Key order
+ * is stable here because both sides originate from the same writer: the snapshot
+ * was serialized from the row it is being compared against. A false "changed"
+ * would only cost one redundant version, never a wrong write.
+ */
+export function isRestoreChange(
+  existing: Pick<
+    AgentRow,
+    'provider' | 'model' | 'systemPrompt' | 'outputSchema' | 'strategy' | 'ciFailOn' | 'repoIntel'
+  >,
+  snapshot: AgentVersionConfig,
+  currentSkillIds: string[],
+): boolean {
+  return (
+    snapshot.provider !== existing.provider ||
+    snapshot.model !== existing.model ||
+    snapshot.system_prompt !== existing.systemPrompt ||
+    snapshot.strategy !== existing.strategy ||
+    snapshot.ci_fail_on !== existing.ciFailOn ||
+    snapshot.repo_intel !== existing.repoIntel ||
+    JSON.stringify(snapshot.output_schema ?? null) !== JSON.stringify(existing.outputSchema ?? null) ||
+    snapshot.skills.length !== currentSkillIds.length ||
+    snapshot.skills.some((id, i) => id !== currentSkillIds[i])
+  );
+}

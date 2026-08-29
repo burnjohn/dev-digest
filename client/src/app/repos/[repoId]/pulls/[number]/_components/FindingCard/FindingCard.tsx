@@ -1,7 +1,8 @@
 /* FindingCard — ported from findings.jsx (createElement → TSX).
    Severity icon+label, category, file:line, confidence, markdown rationale +
-   suggestion, accept/dismiss actions. Accept/dismiss reflect persisted
-   timestamps. */
+   suggestion, accept/dismiss/revert actions. Accept/dismiss reflect persisted
+   timestamps; a standing decision disables the opposite action and exposes a
+   revert control beside itself. */
 "use client";
 
 import React from "react";
@@ -18,10 +19,89 @@ import {
   type Category,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
-import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
-import { lineLabel } from "./helpers";
+import { REVERT_ICON, SEV_COLOR, SEV_COLOR_FALLBACK, TURN_INTO_CASE_ICON } from "./constants";
+import { decisionState, lineLabel, turnIntoCaseState } from "./helpers";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { useFindingEvalDraft } from "@/lib/hooks/evals";
+import { EvalCaseEditor } from "@/components/eval-case-editor";
 import { s } from "./styles";
+
+/**
+ * T15 — REQ-1/2/3: the "Turn into eval case" action, plus its editor.
+ * FindingCard is mounted deep inside every findings list
+ * (FindingsPanel/FindingsTab/ReviewRunAccordion), all of which sit under the
+ * app-wide `QueryClientProvider` from `client/src/lib/providers.tsx` — this
+ * action runs its query and mutations (`useFindingEvalDraft`,
+ * `useCreateEvalCase`/`useUpdateEvalCase` inside `EvalCaseEditor`) against
+ * that SAME client (FIX-4), so a case created here invalidates the ["evals",
+ * …] keys the Evals dashboard actually reads, not a private cache nobody
+ * else sees. Never a `fetch` in the component either — `useFindingEvalDraft`
+ * still owns the request via `lib/api.ts`. */
+function TurnIntoCaseAction({
+  f,
+  pending,
+  accepted,
+  dismissed,
+}: {
+  f: FindingRecord;
+  pending?: boolean;
+  accepted: boolean;
+  dismissed: boolean;
+}) {
+  const tTurnIntoCase = useTranslations("eval.turnIntoCase");
+  const [caseEditorOpen, setCaseEditorOpen] = React.useState(false);
+  const muted = accepted || dismissed;
+
+  /* REQ-1/2/3: fetch the eval-case draft once the finding is decided, so the
+     action's enabled/disabled state is already known BEFORE the user clicks
+     it (REQ-3's "renders it disabled" is a render-time fact, not a
+     click-time discovery) — an undecided finding never fires this at all.
+     `EvalCaseDraft` is never synthesized client-side; T11's `409` (no
+     stored diff, no agent_id, or not decided) is read through this query's
+     `isError`, never re-derived from `f`. */
+  // `decidedAs` keys the draft by the decision it was built from — the server
+  // stamps `seeded_from` from `accepted_at`/`dismissed_at`, so a finding that
+  // is accepted, reverted, then dismissed must NOT reuse the accept-time
+  // draft's cache entry (it would open a POSITIVE editor for a dismissed
+  // finding). Reverting to undecided disables the query, and its `null`
+  // decision is a third key that is never fetched.
+  const draftQuery = useFindingEvalDraft(f.id, {
+    enabled: muted,
+    decidedAs: accepted ? "accepted" : dismissed ? "dismissed" : null,
+  });
+  const turnIntoCase = turnIntoCaseState({ accepted, dismissed, draftAvailable: draftQuery.isSuccess });
+  const turnIntoCaseAccessibleName = turnIntoCase.reasonKey
+    ? `${tTurnIntoCase("label")} — ${tTurnIntoCase(turnIntoCase.reasonKey)}`
+    : undefined;
+
+  return (
+    <>
+      <Button
+        kind="ghost"
+        size="sm"
+        icon={TURN_INTO_CASE_ICON}
+        disabled={pending || turnIntoCase.disabled}
+        aria-label={turnIntoCaseAccessibleName}
+        title={turnIntoCase.reasonKey ? tTurnIntoCase(turnIntoCase.reasonKey) : undefined}
+        onClick={() => {
+          if (turnIntoCase.disabled) return;
+          setCaseEditorOpen(true);
+        }}
+      >
+        {tTurnIntoCase("label")}
+      </Button>
+
+      {caseEditorOpen && draftQuery.data && (
+        <EvalCaseEditor
+          ownerKind={draftQuery.data.owner_kind}
+          ownerId={draftQuery.data.owner_id}
+          initialCase={draftQuery.data}
+          onClose={() => setCaseEditorOpen(false)}
+        />
+      )}
+    </>
+  );
+}
 
 export function FindingCard({
   f,
@@ -95,6 +175,36 @@ export function FindingCard({
   const cardStyle = s.card(!!focused, sevColor, muted);
   if (showHighlight) cardStyle.boxShadow = "0 0 0 2px var(--accent)";
 
+  // Accept/dismiss/revert availability. `decisionState` is pure and lives in
+  // `helpers.ts` so the "one decision locks the other" rule is asserted
+  // directly, not only through a rendered button's `disabled` attribute.
+  const decision = decisionState({ accepted, dismissed });
+  // A disabled control still needs to say WHY: `title` alone is a hover-only
+  // affordance, so the reason also goes into the accessible name. When the
+  // action is available the name stays the plain label (`aria-label`
+  // undefined), which is what the existing `getByRole("button", { name:
+  // "Accept" })` queries read.
+  const acceptName = decision.acceptReasonKey
+    ? `${t("finding.accept")} — ${t(`finding.${decision.acceptReasonKey}`)}`
+    : undefined;
+  const dismissName = decision.dismissReasonKey
+    ? `${t("finding.dismiss")} — ${t(`finding.${decision.dismissReasonKey}`)}`
+    : undefined;
+  // Icon-only, so its accessible name comes entirely from `aria-label`
+  // (client/INSIGHTS.md 2026-08-16: a `vendor/ui` control has no name by
+  // default). Rendered once, placed next to whichever decision stands.
+  const revertButton = decision.revertVisible ? (
+    <Button
+      kind="ghost"
+      size="sm"
+      icon={REVERT_ICON}
+      disabled={pending}
+      aria-label={accepted ? t("finding.revertAccepted") : t("finding.revertDismissed")}
+      title={t("finding.revert")}
+      onClick={() => onAction?.("revert")}
+    />
+  ) : null;
+
   return (
     <div
       ref={rootRef}
@@ -137,27 +247,46 @@ export function FindingCard({
             </div>
           )}
 
+          {/* A standing decision locks the OPPOSITE action — the only way from
+              accepted to dismissed is through the revert control that appears
+              next to whichever decision was taken (`decisionState`). The
+              disabled button keeps rendering rather than disappearing: the row
+              must still show that "Dismiss" is a thing this finding has, and
+              why it is currently unavailable (`title` + accessible name). */}
           <div style={s.actions}>
             <Button
               kind="secondary"
               size="sm"
               icon="Check"
-              disabled={pending}
+              disabled={pending || decision.acceptDisabled}
               active={accepted}
-              onClick={() => onAction?.("accept")}
+              aria-label={acceptName}
+              title={decision.acceptReasonKey ? t(`finding.${decision.acceptReasonKey}`) : undefined}
+              onClick={() => {
+                if (decision.acceptDisabled) return;
+                onAction?.("accept");
+              }}
             >
               {t("finding.accept")}
             </Button>
+            {accepted && revertButton}
             <Button
               kind="ghost"
               size="sm"
               icon="X"
-              disabled={pending}
+              disabled={pending || decision.dismissDisabled}
               active={dismissed}
-              onClick={() => onAction?.("dismiss")}
+              aria-label={dismissName}
+              title={decision.dismissReasonKey ? t(`finding.${decision.dismissReasonKey}`) : undefined}
+              onClick={() => {
+                if (decision.dismissDisabled) return;
+                onAction?.("dismiss");
+              }}
             >
               {t("finding.dismiss")}
             </Button>
+            {dismissed && !accepted && revertButton}
+            <TurnIntoCaseAction f={f} pending={pending} accepted={accepted} dismissed={dismissed} />
           </div>
         </div>
       )}

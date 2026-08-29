@@ -152,7 +152,15 @@ export class SkillsService {
     return result.ok ? { ok: true, skill: toSkillDto(result.row) } : result;
   }
 
-  async delete(workspaceId: string, id: string): Promise<boolean> {
+  /**
+   * Delete a skill, and (REQ-41, in the repository so this stays R2) every
+   * eval_cases/eval_run_batches row it owns. `deletedCases` powers the delete
+   * route's optional response field.
+   */
+  async delete(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ deleted: boolean; deletedCases: number }> {
     return this.repo.deleteById(workspaceId, id);
   }
 

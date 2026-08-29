@@ -41,6 +41,8 @@ export const PromptAssembly = z.object({
   skills: z.string().nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
+  /** Dismissed-findings do-not-report list (trusted, first-party); null when absent. */
+  suppressions: z.string().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */
   callers: z.string().nullish(),
   /** Repo skeleton / map (T3); null when absent. Enables per-slot token

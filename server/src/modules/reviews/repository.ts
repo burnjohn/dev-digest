@@ -131,6 +131,11 @@ export class ReviewRepository {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
   }
 
+  /** Revert a decision — clears `accepted_at` AND `dismissed_at` (T-revert). */
+  clearFindingDecision(findingId: string): Promise<FindingRow | undefined> {
+    return reviewRepo.clearFindingDecision(this.db, findingId);
+  }
+
   // ---- intent -------------------------------------------------------------
 
   /**
