@@ -169,6 +169,7 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 ### Feature-Based Structure
 - Colocate component + hook + helpers + tests per feature
 - Shared utilities go in `utils/` or `components/ui/`
+- For full folder-structure guidance (feature-based layout, constants/utils/services boundaries, Next.js `app/` architecture), see the `ui-architecture` skill
 
 ### File Quality
 - Order: imports, constants, helpers, component, exports
