@@ -2,7 +2,7 @@
 name: pr-self-review
 description: "Reviews the local working changes before a PR is opened, routing this project's own skills to the files each one governs, and refusing to proceed when a blocking finding exists. Deterministic checks (typecheck, tests, dependency-cruiser, migrations, contract drift, secrets) carry the verdict; skill-derived findings are reported alongside as advisory."
 when_to_use: "Before opening a pull request; before pushing a feature branch; when the user says 'review my changes', 'self review', 'can I open the PR', 'check before I push', or runs /pr-self-review. NOT for reviewing a PR that already exists on GitHub — that is /review. NOT for a deep multi-agent audit of a whole branch — that is /code-review. NOT for a security-only pass — that is /security-review."
-version: 1.0.1
+version: 1.0.2
 user-invocable: true
 ---
 

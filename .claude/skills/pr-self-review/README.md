@@ -89,7 +89,7 @@ The skill reports. It cannot stop anything by itself.
 | Layer | Blocks | Status |
 |---|---|---|
 | This skill | nothing — it reports | ✅ built |
-| `PreToolUse` hook on `git push` / `gh pr create` | the agent's push | ⬜ no hooks configured |
+| `PreToolUse` hook on `git push` / `gh pr create` | the agent's push | ✅ built (2026-09-07) — `.claude/settings.json`, personal/local (that file is gitignored in this repo, so this layer is per-machine, not team-wide) |
 | `.git/hooks/pre-push` | any push from this machine | ⬜ none installed |
 | GitHub branch protection + required checks | **the merge button** | ⬜ not verified |
 
@@ -108,15 +108,28 @@ and refuses to apply while either problem exists.
 
 Deliberately shipped as steps 1–6 of the plan's build order. Outstanding:
 
-- The `PreToolUse` hook (plan §2) — add only once the skill has proven itself,
-  or it gets disabled instead of tuned
 - The tuning log (plan §19) — no feedback loop yet, so there is currently no way
   to tell a strict gate from a broken one
 - Client-side boundary enforcement — the server has `pnpm arch`; the client has
   no equivalent, so Phase 1 is thinner on the frontend
   ([improvement-plan](../../../docs/improvement-plan.md) item 6)
+- A real caught case for the `PreToolUse` hook below — not yet observed
+  organically; the hook has only been exercised with a deliberate break so far
 
 ## Changelog
+
+### 1.0.2 — 2026-09-07
+
+Added the `PreToolUse` hook (plan §2, build order step 8): `.claude/settings.json`
+now runs `scripts/pre-push-gate.sh` before every `Bash` tool call; the script
+itself narrows to `git push`/`gh pr create`, skips `main`/`master` and no-op
+pushes, respects `PR_SELF_REVIEW=0`, and otherwise re-runs Phase 1's
+deterministic checks (scoped to the branch's touched paths) — a guaranteed,
+non-LLM version of Phase 1 only, not the skill's full advisory review.
+Verified with a deliberate `server/` typecheck break (blocked, exit 2, error
+surfaced) and a clean run (allowed, exit 0, ~91s for a large multi-package
+diff). `.claude/settings.json` is gitignored in this repo, so this layer is
+currently personal/local, not shared with other contributors.
 
 ### 1.0.1 — 2026-08-02
 
