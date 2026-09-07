@@ -94,6 +94,20 @@ export function useEvalCase(caseId: string | null | undefined) {
   });
 }
 
+/** POST /agents/:id/eval/cases — the hand-authored path for an agent-owned
+ *  case, the mirror of `useCreateSkillEvalCase` below (same body shape, same
+ *  `evalKeys.cases` invalidation). */
+export function useCreateEvalCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, input }: { agentId: string; input: EvalCaseInput }) =>
+      api.post<EvalCase>(`/agents/${agentId}/eval/cases`, input),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: evalKeys.cases(data.owner_id) });
+    },
+  });
+}
+
 /**
  * POST /findings/:id/eval-case (AC-1 … AC-7). Returns `created: false` on the
  * D17 idempotent path (server responded 200, not 201) — the FindingCard toast

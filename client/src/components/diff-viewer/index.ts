@@ -5,3 +5,4 @@
 export { DiffViewer } from "./DiffViewer";
 export { FileCard } from "./FileCard";
 export type { DiffCommentApi } from "./comments";
+export { parseMultiFileDiff, type ParsedDiffFile } from "./helpers";

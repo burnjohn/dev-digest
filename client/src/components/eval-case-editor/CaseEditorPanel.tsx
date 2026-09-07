@@ -6,6 +6,7 @@ import { Modal, Button, TextInput, Textarea, SelectInput, Skeleton, Tabs } from 
 import type { EvalCaseOutcome, EvalExpectationType } from "@devdigest/shared/contracts/knowledge";
 import { useEvalCase, useUpdateEvalCase } from "@/lib/hooks/eval";
 import { useToast } from "@/lib/toast";
+import { DiffInputField } from "./DiffInputField";
 import { EXPECTATION_TYPES } from "./constants";
 import { s } from "./styles";
 
@@ -161,15 +162,13 @@ export function CaseEditorPanel({
             pad="0"
           />
           {inputTab === "diff" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <Textarea value={diff} onChange={setDiff} rows={8} mono />
-              <div style={s.formField}>
-                <label style={s.label} htmlFor="eval-case-files">
-                  {t("caseEditorPanel.filesLabel")}
-                </label>
-                <TextInput id="eval-case-files" value={files} onChange={setFiles} mono />
-              </div>
-            </div>
+            <DiffInputField
+              diff={diff}
+              onDiffChange={setDiff}
+              files={files}
+              onFilesChange={setFiles}
+              filesId="eval-case-files"
+            />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={s.formField}>

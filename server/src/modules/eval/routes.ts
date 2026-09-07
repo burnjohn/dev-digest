@@ -40,11 +40,24 @@ export default async function evalRoutes(appBase: FastifyInstance) {
     return evalCase;
   });
 
-  // ---- Case reads / edit / delete ------------------------------------------
+  // ---- Case reads / hand-authored creation / edit / delete -----------------
   app.get('/agents/:id/eval/cases', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
     return service.listCases(workspaceId, 'agent', req.params.id);
   });
+
+  // The agent-owned mirror of '/skills/:id/eval/cases' below (AC-8's
+  // hand-authored path, same EvalCaseInput body/422s via createAgentCase).
+  app.post(
+    '/agents/:id/eval/cases',
+    { schema: { params: IdParams, body: EvalCaseInput } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(container, req);
+      const evalCase = await service.createAgentCase(workspaceId, req.params.id, req.body);
+      reply.status(201);
+      return evalCase;
+    },
+  );
 
   app.get('/eval/cases/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);

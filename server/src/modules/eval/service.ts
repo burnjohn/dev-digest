@@ -554,6 +554,49 @@ export class EvalService {
     return toEvalCaseDto(row);
   }
 
+  /** The agent-owned mirror of `createSkillCase` just above — same hand-authored
+   *  path (AC-8), same size cap and grounding check, existence-checked via
+   *  `AgentLookup.getById` the way `estimate`/`startRun` already do rather than
+   *  `skillForEval`'s repo-level lookup (agents aren't looked up in this
+   *  module's own repository). */
+  async createAgentCase(
+    workspaceId: string,
+    agentId: string,
+    input: EvalCaseInput,
+  ): Promise<EvalCase> {
+    const agent = await this.agents.getById(workspaceId, agentId);
+    if (!agent) throw new NotFoundError('Agent not found');
+
+    if (Buffer.byteLength(input.input_diff, 'utf8') > MAX_FROZEN_DIFF_BYTES) {
+      throw new AppError(
+        'frozen_diff_too_large',
+        'This file’s diff is too large to freeze as an eval case.',
+        422,
+      );
+    }
+    if (!isExpectationGrounded(input.input_diff, input.expectation)) {
+      throw new AppError(
+        'expectation_not_grounded',
+        'This expectation’s lines do not fall within any hunk of the supplied diff.',
+        422,
+      );
+    }
+
+    const row = await this.repo.insertCase({
+      workspaceId,
+      ownerKind: 'agent',
+      ownerId: agentId,
+      name: input.name,
+      inputDiff: input.input_diff,
+      inputFiles: input.input_files,
+      inputMeta: input.input_meta,
+      expectation: input.expectation,
+      notes: input.notes ?? null,
+      sourceFindingId: null,
+    });
+    return toEvalCaseDto(row);
+  }
+
   async listCases(workspaceId: string, ownerKind: EvalOwnerKind, ownerId: string): Promise<EvalCase[]> {
     const rows = await this.repo.listCasesForOwner(workspaceId, ownerKind, ownerId);
     return rows.map(toEvalCaseDto);

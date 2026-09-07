@@ -1120,6 +1120,44 @@ describe('EvalService.createSkillCase — AC-8, AC-9', () => {
   });
 });
 
+describe('EvalService.createAgentCase — the agent-owned mirror of createSkillCase (AC-8, AC-9)', () => {
+  const input = {
+    name: 'hand-authored',
+    input_diff:
+      'diff --git a/src/config.ts b/src/config.ts\n--- a/src/config.ts\n+++ b/src/config.ts\n@@ -1,2 +1,3 @@\n context\n+  key: "sk_live_x",\n context',
+    input_files: ['src/config.ts'],
+    input_meta: { pr_number: null, title: 't', body: null },
+    expectation: { type: 'must_find' as const, file: 'src/config.ts', start_line: 2, end_line: 2 },
+  };
+
+  it('creates a hand-authored case owned by the agent, with no source finding', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo); // default getById resolves 'agent-1'
+    const evalCase = await service.createAgentCase('ws1', 'agent-1', input);
+    expect(evalCase.owner_kind).toBe('agent');
+    expect(evalCase.owner_id).toBe('agent-1');
+    expect(evalCase.source_finding_id).toBeNull();
+  });
+
+  it('AC-9 — refuses an expectation outside every hunk of the supplied diff, and creates no case', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(
+      service.createAgentCase('ws1', 'agent-1', {
+        ...input,
+        expectation: { ...input.expectation, start_line: 999, end_line: 999 },
+      }),
+    ).rejects.toThrow(AppError);
+    expect(await repo.listCasesForOwner('ws1', 'agent', 'agent-1')).toHaveLength(0);
+  });
+
+  it('404s for an unknown or cross-workspace agent', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(service.createAgentCase('ws1', 'ghost-agent', input)).rejects.toThrow(NotFoundError);
+  });
+});
+
 describe('EvalService.startSkillRun — AC-11, AC-14, AC-15, AC-49, AC-52, D8, D19, AC-53', () => {
   function seedSkillWithCase(repo: FakeEvalRepository, skillOverrides: Partial<SkillForEval> = {}) {
     repo.skillRows.set('skill-1', { ...makeSkill(skillOverrides), workspaceId: 'ws1' });

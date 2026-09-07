@@ -3,23 +3,23 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Modal, Button, TextInput, Textarea, SelectInput, Tabs } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { Agent } from "@devdigest/shared";
 import type { EvalExpectationType } from "@devdigest/shared/contracts/knowledge";
 import { DiffInputField, EXPECTATION_TYPES } from "@/components/eval-case-editor";
-import { useCreateSkillEvalCase } from "@/lib/hooks/eval";
+import { useCreateEvalCase } from "@/lib/hooks/eval";
 import { useToast } from "@/lib/toast";
 import { ApiError } from "@/lib/api";
 import { s } from "./styles";
 
 /**
- * AC-8 — the hand-authored case path. A 422 from AC-9 (diff too large) or
- * AC-10 (expectation ungrounded / invalid field) is surfaced with the
- * server's own stated reason, never a generic error (plan §11).
+ * The agent-owned mirror of `skills/.../EvalsTab/NewSkillCaseModal.tsx` — the
+ * hand-authored case path (`POST /agents/:id/eval/cases`), same 422 surfacing
+ * for AC-9 (diff too large) / AC-10 (expectation ungrounded).
  */
-export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: () => void }) {
+export function NewAgentCaseModal({ agent, onClose }: { agent: Agent; onClose: () => void }) {
   const t = useTranslations("eval");
   const toast = useToast();
-  const create = useCreateSkillEvalCase();
+  const create = useCreateEvalCase();
   const [inputTab, setInputTab] = React.useState<"diff" | "prMeta">("diff");
 
   const [name, setName] = React.useState("");
@@ -38,7 +38,7 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
   const submit = () => {
     create.mutate(
       {
-        skillId: skill.id,
+        agentId: agent.id,
         input: {
           name,
           notes: notes || null,
@@ -75,11 +75,11 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
     <Modal title={t("caseEditor.newCase")} onClose={onClose} width={720}>
       <div style={s.form}>
         <div style={s.formField}>
-          <label style={s.label} htmlFor="skill-new-case-name">
+          <label style={s.label} htmlFor="agent-new-case-name">
             {t("caseEditor.nameLabel")}
           </label>
           <TextInput
-            id="skill-new-case-name"
+            id="agent-new-case-name"
             value={name}
             onChange={setName}
             placeholder={t("caseEditor.namePlaceholder")}
@@ -103,24 +103,24 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
               onDiffChange={setDiff}
               files={files}
               onFilesChange={setFiles}
-              filesId="skill-new-case-files"
+              filesId="agent-new-case-files"
               diffPlaceholder={t("caseEditor.diffPlaceholder")}
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={s.formField}>
-                <label style={s.label} htmlFor="skill-new-case-pr-title">
+                <label style={s.label} htmlFor="agent-new-case-pr-title">
                   {t("caseEditorPanel.prTitleLabel")}
                 </label>
                 <TextInput
-                  id="skill-new-case-pr-title"
+                  id="agent-new-case-pr-title"
                   value={prTitle}
                   onChange={setPrTitle}
                   placeholder={t("caseEditor.titlePlaceholder")}
                 />
               </div>
               <div style={s.formField}>
-                <label style={s.label} htmlFor="skill-new-case-pr-body">
+                <label style={s.label} htmlFor="agent-new-case-pr-body">
                   {t("caseEditorPanel.prBodyLabel")}
                 </label>
                 <Textarea
@@ -138,7 +138,7 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
           <span style={s.label}>{t("caseEditorPanel.expectationTitle")}</span>
           <div style={s.formRow}>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-type">
+              <label style={s.label} htmlFor="agent-new-case-exp-type">
                 {t("caseEditorPanel.expectationType")}
               </label>
               <SelectInput
@@ -151,30 +151,30 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
               />
             </div>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-file">
+              <label style={s.label} htmlFor="agent-new-case-exp-file">
                 {t("caseEditorPanel.expectationFile")}
               </label>
-              <TextInput id="skill-new-case-exp-file" value={expFile} onChange={setExpFile} mono />
+              <TextInput id="agent-new-case-exp-file" value={expFile} onChange={setExpFile} mono />
             </div>
           </div>
           <div style={s.formRow}>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-start">
+              <label style={s.label} htmlFor="agent-new-case-exp-start">
                 {t("caseEditorPanel.expectationStartLine")}
               </label>
               <TextInput
-                id="skill-new-case-exp-start"
+                id="agent-new-case-exp-start"
                 type="number"
                 value={String(expStart)}
                 onChange={(v) => setExpStart(Number(v) || 0)}
               />
             </div>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-end">
+              <label style={s.label} htmlFor="agent-new-case-exp-end">
                 {t("caseEditorPanel.expectationEndLine")}
               </label>
               <TextInput
-                id="skill-new-case-exp-end"
+                id="agent-new-case-exp-end"
                 type="number"
                 value={String(expEnd)}
                 onChange={(v) => setExpEnd(Number(v) || 0)}
@@ -183,22 +183,22 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
           </div>
           <div style={s.formRow}>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-severity">
+              <label style={s.label} htmlFor="agent-new-case-exp-severity">
                 {t("caseEditorPanel.expectationSeverity")}
               </label>
-              <TextInput id="skill-new-case-exp-severity" value={expSeverity} onChange={setExpSeverity} />
+              <TextInput id="agent-new-case-exp-severity" value={expSeverity} onChange={setExpSeverity} />
             </div>
             <div style={s.formField}>
-              <label style={s.label} htmlFor="skill-new-case-exp-category">
+              <label style={s.label} htmlFor="agent-new-case-exp-category">
                 {t("caseEditorPanel.expectationCategory")}
               </label>
-              <TextInput id="skill-new-case-exp-category" value={expCategory} onChange={setExpCategory} />
+              <TextInput id="agent-new-case-exp-category" value={expCategory} onChange={setExpCategory} />
             </div>
           </div>
         </div>
 
         <div style={s.formField}>
-          <label style={s.label} htmlFor="skill-new-case-notes">
+          <label style={s.label} htmlFor="agent-new-case-notes">
             {t("caseEditorPanel.notesLabel")}
           </label>
           <Textarea value={notes} onChange={setNotes} rows={2} />
