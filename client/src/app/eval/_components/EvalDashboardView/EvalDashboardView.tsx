@@ -8,6 +8,7 @@ import { useEvalDashboard } from "@/lib/hooks/eval";
 import { AgentSummaryRow } from "./AgentSummaryRow";
 import { RecentRunsTable } from "./RecentRunsTable";
 import { RunAllModal } from "./RunAllModal";
+import { SkillSummaryRow } from "./SkillSummaryRow";
 import { s } from "./styles";
 
 /**
@@ -20,7 +21,7 @@ import { s } from "./styles";
 export function EvalDashboardView() {
   const t = useTranslations("eval");
   const { data, isLoading, isError, refetch } = useEvalDashboard();
-  const [runAllOpen, setRunAllOpen] = React.useState(false);
+  const [runAllOpenKind, setRunAllOpenKind] = React.useState<"agents" | "skills" | null>(null);
 
   const crumb = [{ label: t("page.crumbSkillsLab") }, { label: t("dashboard.defaultTitle") }];
 
@@ -34,16 +35,33 @@ export function EvalDashboardView() {
 
   return (
     <AppShell crumb={crumb}>
-      {runAllOpen && data && <RunAllModal agents={data.agents} onClose={() => setRunAllOpen(false)} />}
+      {runAllOpenKind && data && (
+        <RunAllModal
+          kind={runAllOpenKind}
+          agents={data.agents}
+          skills={data.skills}
+          onClose={() => setRunAllOpenKind(null)}
+        />
+      )}
       <div style={s.page}>
         <div style={s.header}>
           <div style={s.headerText}>
             <h1 style={s.h1}>{t("dashboard.defaultTitle")}</h1>
             <p style={s.subtitle}>{t("dashboard.perAgentNote")}</p>
           </div>
-          <Button kind="secondary" icon="Play" onClick={() => setRunAllOpen(true)} disabled={isLoading}>
-            {t("run.confirmAll.trigger")}
-          </Button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Button kind="secondary" icon="Play" onClick={() => setRunAllOpenKind("agents")} disabled={isLoading}>
+              {t("run.confirmAll.trigger")}
+            </Button>
+            <Button
+              kind="secondary"
+              icon="Play"
+              onClick={() => setRunAllOpenKind("skills")}
+              disabled={isLoading}
+            >
+              {t("skill.run.runAllTrigger")}
+            </Button>
+          </div>
         </div>
 
         {isLoading && (
@@ -62,6 +80,22 @@ export function EvalDashboardView() {
                 <div style={s.agentList}>
                   {data.agents.map((a) => (
                     <AgentSummaryRow key={a.agent_id} agent={a} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* AC-39/AC-40 — a distinct section, never merged into the agent
+                list above and never presented as a ranking. */}
+            <div style={s.section}>
+              <h2 style={s.h2}>{t("skill.summary.heading")}</h2>
+              <p style={s.subtitle}>{t("skill.summary.caption")}</p>
+              {data.skills.length === 0 ? (
+                <EmptyState icon="FlaskConical" title={t("skill.summary.heading")} body={t("skill.summary.empty")} />
+              ) : (
+                <div style={s.agentList}>
+                  {data.skills.map((sk) => (
+                    <SkillSummaryRow key={sk.skill_id} skill={sk} />
                   ))}
                 </div>
               )}

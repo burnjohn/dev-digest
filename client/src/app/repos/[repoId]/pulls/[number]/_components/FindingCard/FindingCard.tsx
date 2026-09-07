@@ -18,9 +18,11 @@ import {
   type Category,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
+import type { EvalSkillOffer } from "@devdigest/shared/contracts/eval-ci";
 import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
 import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { SkillEvalMenu } from "./SkillEvalMenu";
 import { s } from "./styles";
 
 /**
@@ -44,6 +46,10 @@ export function FindingCard({
   headSha,
   targetFindingId,
   targetFindingNonce,
+  skillEvalOffers,
+  skillEvalOffersLoading,
+  onOpenSkillEvalOffers,
+  onSkillEvalCase,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -57,6 +63,16 @@ export function FindingCard({
    *  the scroll on a repeat click of the same finding's badge. */
   targetFindingId?: string | null;
   targetFindingNonce?: number;
+  /**
+   * specs/15-skill-eval-cases.md AC-1, AC-2 — the skill-owned sibling of
+   * "turn into eval case". `skillEvalOffers` is `undefined` until
+   * `onOpenSkillEvalOffers` has fired at least once (FindingsPanel fetches
+   * lazily, one finding's offers at a time — see its own hook wiring).
+   */
+  skillEvalOffers?: EvalSkillOffer[];
+  skillEvalOffersLoading?: boolean;
+  onOpenSkillEvalOffers?: () => void;
+  onSkillEvalCase?: (skillId: string) => void;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -162,6 +178,15 @@ export function FindingCard({
               >
                 {t("finding.turnIntoEvalCase")}
               </Button>
+            )}
+            {muted && onSkillEvalCase && (
+              <SkillEvalMenu
+                offers={skillEvalOffers}
+                loading={!!skillEvalOffersLoading}
+                disabled={pending}
+                onOpen={() => onOpenSkillEvalOffers?.()}
+                onSelect={onSkillEvalCase}
+              />
             )}
           </div>
         </div>

@@ -2,23 +2,28 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { Button, EmptyState, Icon } from "@devdigest/ui";
-import type { EvalRunRecord } from "@devdigest/shared/contracts/eval-ci";
+import type { EvalSkillRunRecord } from "@devdigest/shared/contracts/eval-ci";
 import { formatCost, relativeTime } from "@/lib/format";
 import { formatMetricPct } from "@/lib/eval-format";
 import { MAX_COMPARE_SELECTION } from "@/components/eval-case-editor";
 import { s } from "./styles";
 
 /**
- * AC-37 — this agent's run history. Checkbox-based two-run selection (AC-32,
- * AC-56: keyboard-operable by default) drives a "Compare" link out to the
- * dedicated `/eval/agents/:id` detail page, which owns the actual compare
- * modal (§9) — this table does not duplicate it inline.
+ * AC-34 — this skill's run history, each row naming its carrier and (AC-52)
+ * whether it bypassed a gate. AC-32/D3 — there is no per-skill detail page
+ * (SPEC-15 resolved decision 3), so the two-run checkbox selection opens
+ * `SkillCompareModal` inline via `onCompare`, rather than navigating out the
+ * way the agent tab's `RunHistory` does.
  */
-export function RunHistory({ agentId, runs }: { agentId: string; runs: EvalRunRecord[] | undefined }) {
+export function SkillRunHistory({
+  runs,
+  onCompare,
+}: {
+  runs: EvalSkillRunRecord[] | undefined;
+  onCompare: (a: string, b: string) => void;
+}) {
   const t = useTranslations("eval");
-  const router = useRouter();
   const [selected, setSelected] = React.useState<string[]>([]);
 
   if (!runs || runs.length === 0) {
@@ -38,7 +43,7 @@ export function RunHistory({ agentId, runs }: { agentId: string; runs: EvalRunRe
   const compare = () => {
     if (selected.length !== MAX_COMPARE_SELECTION) return;
     const [a, b] = selected;
-    router.push(`/eval/agents/${agentId}?compareA=${a}&compareB=${b}`);
+    onCompare(a!, b!);
   };
 
   return (
@@ -67,6 +72,9 @@ export function RunHistory({ agentId, runs }: { agentId: string; runs: EvalRunRe
             <th style={s.th} scope="col">
               {t("dashboard.table.cost")}
             </th>
+            <th style={s.th} scope="col">
+              {t("skill.run.carrierLabel")}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -88,6 +96,14 @@ export function RunHistory({ agentId, runs }: { agentId: string; runs: EvalRunRe
               <td style={s.td}>{formatMetricPct(r.metrics?.precision, na)}</td>
               <td style={s.td}>{formatMetricPct(r.metrics?.citation_accuracy, na)}</td>
               <td style={s.td}>{formatCost(r.cost_usd)}</td>
+              <td style={s.td}>
+                {r.carrier_agent_name ?? "—"}
+                {r.gates_bypassed && (
+                  <span style={s.notice} title={t("skill.gatesBypassedNotice")}>
+                    <Icon.AlertTriangle size={12} />
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -103,8 +119,8 @@ export function RunHistory({ agentId, runs }: { agentId: string; runs: EvalRunRe
   );
 }
 
-/** AC-55 — status carries an icon + text, never colour alone. */
-function StatusCell({ status }: { status: EvalRunRecord["status"] }) {
+/** AC-47 — status carries an icon + text, never colour alone. */
+function StatusCell({ status }: { status: EvalSkillRunRecord["status"] }) {
   const t = useTranslations("eval");
   if (status === "running") {
     return (

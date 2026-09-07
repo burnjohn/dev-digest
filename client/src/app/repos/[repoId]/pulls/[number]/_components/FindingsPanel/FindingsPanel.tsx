@@ -10,7 +10,11 @@ import { FindingCard } from "../FindingCard";
 import type { FindingCardAction } from "../FindingCard";
 import { SEV_COLOR, SEV_COLOR_FALLBACK } from "../FindingCard/constants";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { useCreateEvalCaseFromFinding } from "../../../../../../../lib/hooks/eval";
+import {
+  useCreateEvalCaseFromFinding,
+  useCreateSkillEvalCaseFromFinding,
+  useFindingEvalSkills,
+} from "../../../../../../../lib/hooks/eval";
 import { useToast } from "../../../../../../../lib/toast";
 import { ApiError } from "../../../../../../../lib/api";
 import { KEY_TO_ACTION } from "./constants";
@@ -38,10 +42,18 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const createEvalCase = useCreateEvalCaseFromFinding();
+  const createSkillEvalCase = useCreateSkillEvalCaseFromFinding();
   const toast = useToast();
   const [hideLow, setHideLow] = React.useState(false);
   const [severity, setSeverity] = React.useState<string | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
+
+  // AC-2 — the skill offer list is fetched lazily, one finding at a time:
+  // opening a finding's "turn into skill eval case" menu sets this to that
+  // finding's id, which is the only thing that ever makes `useFindingEvalSkills`
+  // fire a GET (client/CLAUDE.md — reads never trigger work on their own here).
+  const [skillMenuFindingId, setSkillMenuFindingId] = React.useState<string | null>(null);
+  const { data: skillOffers, isLoading: skillOffersLoading } = useFindingEvalSkills(skillMenuFindingId);
 
   // Counts come from the post-hide-low list, so a chip's number always equals
   // the number of cards you get when you click it.
@@ -103,6 +115,27 @@ export function FindingsPanel({
     [action, createEvalCase, prId, t, toast],
   );
 
+  // specs/15-skill-eval-cases.md AC-1, AC-2, D10 — the skill-owned sibling
+  // of `handleAction`'s "turnIntoEvalCase" branch, driven by
+  // `SkillEvalMenu`'s own offer list rather than `FindingCardAction`
+  // (offers are per-skill, not a single fixed action id).
+  const handleSkillEvalCase = React.useCallback(
+    (findingId: string, skillId: string) => {
+      createSkillEvalCase.mutate(
+        { findingId, skillId },
+        {
+          onSuccess: ({ created }) => {
+            toast.success(created ? t("finding.turnIntoEvalCaseCreated") : t("finding.turnIntoEvalCaseExists"));
+          },
+          onError: (err) => {
+            toast.error(err instanceof ApiError ? err.message : t("finding.turnIntoEvalCaseError"));
+          },
+        },
+      );
+    },
+    [createSkillEvalCase, t, toast],
+  );
+
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -159,6 +192,10 @@ export function FindingsPanel({
               targetFindingId={targetFindingId}
               targetFindingNonce={targetFindingNonce}
               onAction={(act) => handleAction(f.id, act)}
+              skillEvalOffers={skillMenuFindingId === f.id ? skillOffers : undefined}
+              skillEvalOffersLoading={skillMenuFindingId === f.id && skillOffersLoading}
+              onOpenSkillEvalOffers={() => setSkillMenuFindingId(f.id)}
+              onSkillEvalCase={(skillId) => handleSkillEvalCase(f.id, skillId)}
             />
           ))
         )}

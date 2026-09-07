@@ -76,11 +76,24 @@ export interface ProjectContextLookup {
   ): Promise<{ documents: { path: string; content: string }[] }>;
 }
 
+/**
+ * specs/15-skill-eval-cases.md AC-43 — declared HERE, by the consumer, not
+ * imported from `modules/eval/*` (`no-cross-module`), mirroring
+ * `modules/agents/service.ts`'s `EvalCleanup`. `container.evalRepo`
+ * satisfies this structurally; wired at `modules/skills/routes.ts`. Optional
+ * so every pre-existing two/three-argument `new SkillsService(...)` in tests
+ * keeps compiling.
+ */
+export interface EvalCleanup {
+  deleteForOwner(workspaceId: string, ownerKind: 'skill' | 'agent', ownerId: string): Promise<void>;
+}
+
 export class SkillsService {
   constructor(
     private repo: SkillsRepository,
     private tokenizer: Tokenizer,
     private projectContext: ProjectContextLookup,
+    private evalCleanup?: EvalCleanup,
   ) {}
 
   /**
@@ -149,8 +162,15 @@ export class SkillsService {
     return row ? toSkillDto(row) : undefined;
   }
 
-  /** Delete a skill; `agent_skills` and `run_skills` cascade with it. */
+  /**
+   * Delete a skill; `agent_skills` and `run_skills` cascade with it at the
+   * DB level. specs/15-skill-eval-cases.md AC-43 — its eval cases (and their
+   * runs) are deleted FIRST, application-side: `eval_cases.owner_id` is
+   * polymorphic with no FK to `skills`, so nothing cascades at the database
+   * level for that table (the SPEC-12 D18 problem, second instance).
+   */
   async delete(workspaceId: string, id: string): Promise<boolean> {
+    await this.evalCleanup?.deleteForOwner(workspaceId, 'skill', id);
     return this.repo.deleteById(workspaceId, id);
   }
 

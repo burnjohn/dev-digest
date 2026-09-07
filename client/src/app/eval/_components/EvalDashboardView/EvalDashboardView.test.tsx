@@ -10,12 +10,17 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/eval",
 }));
 
-let DASHBOARD: EvalDashboard = { agents: [], recent_runs: [] };
+let DASHBOARD: EvalDashboard = { agents: [], recent_runs: [], skills: [] };
 const runAllMutate = vi.fn();
+const runAllSkillsMutate = vi.fn();
 
 vi.mock("@/lib/hooks/eval", () => ({
   useEvalDashboard: () => ({ data: DASHBOARD, isLoading: false, isError: false, refetch: vi.fn() }),
   useRunAllEvals: () => ({ mutate: runAllMutate, isPending: false, data: undefined }),
+  // specs/15-skill-eval-cases.md — RunAllModal now calls a SECOND mutation
+  // hook unconditionally (client/LEARNINGS.md 2026-08-03: a component
+  // calling two mutation hooks breaks a test that only mocked one).
+  useRunAllSkillEvals: () => ({ mutate: runAllSkillsMutate, isPending: false, data: undefined }),
 }));
 
 vi.mock("@/components/app-shell", () => ({
@@ -39,7 +44,7 @@ function renderWithIntl(ui: React.ReactElement) {
 
 describe("EvalDashboardView", () => {
   it("shows the empty state when no agent has eval cases", () => {
-    DASHBOARD = { agents: [], recent_runs: [] };
+    DASHBOARD = { agents: [], recent_runs: [], skills: [] };
     renderWithIntl(<EvalDashboardView />);
     expect(screen.getByRole("heading", { name: evalMessages.dashboard.defaultTitle })).toBeInTheDocument();
     expect(screen.getByText(evalMessages.dashboard.perAgentNote)).toBeInTheDocument();
@@ -81,6 +86,7 @@ describe("EvalDashboardView", () => {
         },
       ],
       recent_runs: [],
+      skills: [],
     };
     renderWithIntl(<EvalDashboardView />);
     expect(screen.getByText("Security Reviewer")).toBeInTheDocument();
@@ -95,10 +101,83 @@ describe("EvalDashboardView", () => {
         { agent_id: "a2", agent_name: "Agent Two", cases_total: 5, latest: null, trend: [] },
       ],
       recent_runs: [],
+      skills: [],
     };
     renderWithIntl(<EvalDashboardView />);
     fireEvent.click(screen.getByRole("button", { name: evalMessages.run.confirmAll.trigger }));
     expect(screen.getByText(evalMessages.run.confirmAll.title)).toBeInTheDocument();
     expect(screen.getByText(/8 case executions/)).toBeInTheDocument();
+  });
+
+  it("lists skills in a distinct section from the agent list, stating their numbers are not a ranking (AC-39, AC-40)", () => {
+    DASHBOARD = {
+      agents: [],
+      recent_runs: [],
+      skills: [
+        {
+          skill_id: "skill-1",
+          skill_name: "secret-leakage-gate",
+          cases_total: 4,
+          carrier_agent_name: "Security Reviewer",
+          latest: null,
+          tokens_per_run: 120,
+        },
+      ],
+    };
+    renderWithIntl(<EvalDashboardView />);
+    expect(screen.getByText(evalMessages.skill.summary.heading)).toBeInTheDocument();
+    expect(screen.getByText(evalMessages.skill.summary.caption)).toBeInTheDocument();
+    expect(screen.getByText("secret-leakage-gate")).toBeInTheDocument();
+  });
+
+  it("states an all-zero lift as a sentence, never a bare zero (AC-41)", () => {
+    DASHBOARD = {
+      agents: [],
+      recent_runs: [],
+      skills: [
+        {
+          skill_id: "skill-1",
+          skill_name: "secret-leakage-gate",
+          cases_total: 4,
+          carrier_agent_name: "Security Reviewer",
+          latest: {
+            id: "run-1",
+            owner_kind: "skill",
+            owner_id: "skill-1",
+            agent_name: null,
+            status: "completed",
+            started_at: "2026-01-01T00:00:00.000Z",
+            finished_at: "2026-01-01T00:01:00.000Z",
+            agent_version: 1,
+            case_ids: ["c1"],
+            metrics: {
+              recall: 1,
+              precision: 1,
+              citation_accuracy: 1,
+              traces_passed: 4,
+              traces_total: 4,
+              cases_errored: 0,
+              duration_ms: 1000,
+              cost_usd: 0.02,
+              per_case: [],
+            },
+            duration_ms: 2000,
+            cost_usd: 0.04,
+            error_reason: null,
+            skill_version: 1,
+            carrier_agent_id: "agent-1",
+            carrier_agent_name: "Security Reviewer",
+            gates_bypassed: false,
+            arm_without: null,
+            lift: { recall: 0, precision: 0, citation_accuracy: 0 },
+            effects: [],
+            effect_counts: { helped: 0, hurt: 0, no_effect_pass: 4, no_effect_fail: 0 },
+          },
+          tokens_per_run: 120,
+        },
+      ],
+    };
+    renderWithIntl(<EvalDashboardView />);
+    expect(screen.getByText(evalMessages.skill.lift.allZero)).toBeInTheDocument();
   });
 });

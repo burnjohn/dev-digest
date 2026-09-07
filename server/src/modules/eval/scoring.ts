@@ -1,4 +1,11 @@
-import type { EvalActualFinding, EvalCaseOutcome, EvalExpectation, EvalRun } from '@devdigest/shared';
+import type {
+  EvalActualFinding,
+  EvalCaseOutcome,
+  EvalExpectation,
+  EvalLift,
+  EvalRun,
+  EvalSkillCaseEffect,
+} from '@devdigest/shared';
 
 /**
  * specs/12-eval-pipeline.md — pure, zero-I/O, zero-LLM scoring (AC-16). This
@@ -148,4 +155,115 @@ export function scoreRun(outcomes: EvalCaseOutcome[], durationMs: number): EvalR
     cost_usd: sumNullable(outcomes.map((o) => o.cost_usd)),
     per_case: outcomes,
   };
+}
+
+// ===========================================================================
+// specs/15-skill-eval-cases.md — the two-arm layer (D3/D4/D5). Pure, zero-I/O,
+// zero-LLM, exactly like everything above. `matches`/`scoreCase`/
+// `errorCaseOutcome`/`scoreRun` are UNCHANGED (D4/AC-17) — the with-arm's
+// metrics are computed by the SAME `scoreRun` call an agent-owned run uses.
+// ===========================================================================
+
+const PAIRED_ARM_FAILED_REASON = 'paired arm failed';
+
+/**
+ * AC-23's real subtlety. `scoreRun` already drops `status === 'errored'` from
+ * its OWN arm, but it cannot know that a case which scored in one arm errored
+ * in the OTHER — such a case is half a comparison and must be excluded from
+ * BOTH arms and from every lift, never scored as a `helped`/`hurt` on one
+ * arm's data alone. Rewrites any case errored in EITHER arm into
+ * `errorCaseOutcome(..., 'paired arm failed')` in BOTH returned arrays before
+ * `scoreRun` runs on each — which is also what makes `cases_errored` (from
+ * `scoreRun`'s own count) the number AC-23 asks the run to record.
+ */
+export function pairArms(
+  withOutcomes: EvalCaseOutcome[],
+  withoutOutcomes: EvalCaseOutcome[],
+): { with: EvalCaseOutcome[]; without: EvalCaseOutcome[] } {
+  const withoutByCaseId = new Map(withoutOutcomes.map((o) => [o.case_id, o]));
+  const pairedWith: EvalCaseOutcome[] = [];
+  const pairedWithout: EvalCaseOutcome[] = [];
+
+  for (const withOutcome of withOutcomes) {
+    const withoutOutcome = withoutByCaseId.get(withOutcome.case_id);
+    const eitherErrored =
+      withOutcome.status === 'errored' || !withoutOutcome || withoutOutcome.status === 'errored';
+    if (eitherErrored) {
+      pairedWith.push(
+        errorCaseOutcome(
+          withOutcome.case_id,
+          withOutcome.name,
+          withOutcome.expectation_type,
+          PAIRED_ARM_FAILED_REASON,
+          withOutcome.duration_ms,
+        ),
+      );
+      pairedWithout.push(
+        errorCaseOutcome(
+          withOutcome.case_id,
+          withOutcome.name,
+          withOutcome.expectation_type,
+          PAIRED_ARM_FAILED_REASON,
+          withoutOutcome ? withoutOutcome.duration_ms : 0,
+        ),
+      );
+    } else {
+      pairedWith.push(withOutcome);
+      pairedWithout.push(withoutOutcome);
+    }
+  }
+
+  return { with: pairedWith, without: pairedWithout };
+}
+
+function liftOf(withValue: number | null, withoutValue: number | null): number | null {
+  return withValue == null || withoutValue == null ? null : withValue - withoutValue;
+}
+
+/** D4/AC-19/AC-22 — per metric, with-arm minus without-arm, over the cases
+ *  scored in both (i.e. computed from `pairArms`' output run through
+ *  `scoreRun`). `null` (never 0) when either side is `null` — a lift over a
+ *  metric with no denominator in either arm is not applicable. */
+export function computeLift(withMetrics: EvalRun, withoutMetrics: EvalRun): EvalLift {
+  return {
+    recall: liftOf(withMetrics.recall, withoutMetrics.recall),
+    precision: liftOf(withMetrics.precision, withoutMetrics.precision),
+    citation_accuracy: liftOf(withMetrics.citation_accuracy, withoutMetrics.citation_accuracy),
+  };
+}
+
+/**
+ * D5 — the closed, deterministic four-value classification, derived from
+ * each case's pass/fail in each (paired) arm: `!without && with → helped`;
+ * `without && !with → hurt`; `with && without → no_effect_pass`;
+ * `!with && !without → no_effect_fail`. Errored (hence unpaired, per
+ * `pairArms`) cases are classified NOT AT ALL — absent from the returned
+ * array, never bucketed as `no_effect_fail`.
+ */
+export function classifyEffects(
+  pairedWith: EvalCaseOutcome[],
+  pairedWithout: EvalCaseOutcome[],
+): EvalSkillCaseEffect[] {
+  const withoutByCaseId = new Map(pairedWithout.map((o) => [o.case_id, o]));
+  const effects: EvalSkillCaseEffect[] = [];
+
+  for (const withOutcome of pairedWith) {
+    if (withOutcome.status !== 'scored' || withOutcome.pass === null) continue;
+    const withoutOutcome = withoutByCaseId.get(withOutcome.case_id);
+    if (!withoutOutcome || withoutOutcome.status !== 'scored' || withoutOutcome.pass === null) {
+      continue;
+    }
+    const withPass = withOutcome.pass;
+    const withoutPass = withoutOutcome.pass;
+    const effect: EvalSkillCaseEffect['effect'] = withPass
+      ? withoutPass
+        ? 'no_effect_pass'
+        : 'helped'
+      : withoutPass
+        ? 'hurt'
+        : 'no_effect_fail';
+    effects.push({ case_id: withOutcome.case_id, name: withOutcome.name, effect });
+  }
+
+  return effects;
 }

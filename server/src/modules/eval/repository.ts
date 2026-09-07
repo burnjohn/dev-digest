@@ -1,5 +1,11 @@
-import { and, desc, eq, lt } from 'drizzle-orm';
-import type { EvalCaseMeta, EvalCaseOutcome, EvalExpectation, EvalOwnerKind } from '@devdigest/shared';
+import { and, desc, eq, lt, asc } from 'drizzle-orm';
+import type {
+  EvalCaseMeta,
+  EvalCaseOutcome,
+  EvalExpectation,
+  EvalOwnerKind,
+  EvalRun,
+} from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
@@ -44,6 +50,11 @@ export interface InsertEvalRun {
   ownerId: string;
   agentVersion: number | null;
   caseIds: string[];
+  /** specs/15-skill-eval-cases.md D6/D2 — set only on a skill-owned run;
+   *  `undefined` (→ column default/null) on every agent-owned run. */
+  skillVersion?: number | null;
+  carrierAgentId?: string | null;
+  gatesBypassed?: boolean;
 }
 
 export interface CompleteEvalRun {
@@ -58,6 +69,9 @@ export interface CompleteEvalRun {
   durationMs: number | null;
   costUsd: number | null;
   errorReason?: string | null;
+  /** D3/clarification 5 — the without-arm's full `EvalRun`, stored only on a
+   *  skill-owned run's completion. */
+  armWithout?: EvalRun | null;
 }
 
 /** Everything `frozen-input.ts`/case-creation needs about a finding, joined
@@ -114,17 +128,34 @@ export class EvalRepository {
     return row;
   }
 
-  /** D17/AC-1's idempotency read — the DB unique index enforces it; this is
-   *  the pre-check that turns a would-be conflict into a 200-with-existing. */
-  async getCaseBySourceFinding(
+  /**
+   * D17/AC-1's idempotency read — the DB unique index enforces it; this is
+   * the pre-check that turns a would-be conflict into a 200-with-existing.
+   *
+   * specs/15-skill-eval-cases.md clarification 2 — OWNER-scoped, not finding-
+   * alone: `eval_cases_source_finding_uq` is composite on
+   * `(source_finding_id, owner_kind, owner_id)` (§2), because SPEC-12 already
+   * writes an agent-owned case from a triaged finding and the same finding
+   * can legitimately become a case for several different skills (each a
+   * separate owner). The agent path uses this too — its owner is derived
+   * from the finding's review either way, so this is behaviour-preserving.
+   */
+  async getCaseBySourceFindingForOwner(
     workspaceId: string,
     findingId: string,
+    ownerKind: EvalOwnerKind,
+    ownerId: string,
   ): Promise<EvalCaseRow | undefined> {
     const [row] = await this.db
       .select()
       .from(t.evalCases)
       .where(
-        and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.sourceFindingId, findingId)),
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.sourceFindingId, findingId),
+          eq(t.evalCases.ownerKind, ownerKind),
+          eq(t.evalCases.ownerId, ownerId),
+        ),
       );
     return row;
   }
@@ -225,6 +256,9 @@ export class EvalRepository {
         agentVersion: values.agentVersion,
         caseIds: values.caseIds,
         status: 'running',
+        ...(values.skillVersion !== undefined ? { skillVersion: values.skillVersion } : {}),
+        ...(values.carrierAgentId !== undefined ? { carrierAgentId: values.carrierAgentId } : {}),
+        ...(values.gatesBypassed !== undefined ? { gatesBypassed: values.gatesBypassed } : {}),
       })
       .returning();
     return row!;
@@ -302,6 +336,7 @@ export class EvalRepository {
         costUsd: values.costUsd,
         errorReason: values.errorReason ?? null,
         finishedAt: new Date(),
+        ...(values.armWithout !== undefined ? { armWithout: values.armWithout } : {}),
       })
       .where(eq(t.evalRuns.id, id));
   }
@@ -333,15 +368,17 @@ export class EvalRepository {
     return rows.length;
   }
 
-  /** Distinct agent ids in this workspace that own at least one eval case
-   *  (AC-40's dashboard row set is driven from `AgentLookup.listEnabled`
-   *  instead — see `service.ts` — this is used only where "has any cases at
-   *  all" needs a cheap existence check). */
-  async agentsWithCases(workspaceId: string): Promise<string[]> {
+  /** Distinct owner ids in this workspace that own at least one eval case
+   *  for the given owner kind (AC-40's agent dashboard row set is driven
+   *  from `AgentLookup.listEnabled` instead — see `service.ts` — this is
+   *  used where "has any cases at all" needs a cheap existence check; the
+   *  skills dashboard section (specs/15-skill-eval-cases.md AC-39) drives
+   *  its row set from this, parameterised to `'skill'`). */
+  async ownersWithCases(workspaceId: string, ownerKind: EvalOwnerKind): Promise<string[]> {
     const rows = await this.db
       .selectDistinct({ ownerId: t.evalCases.ownerId })
       .from(t.evalCases)
-      .where(and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.ownerKind, 'agent')));
+      .where(and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.ownerKind, ownerKind)));
     return rows.map((r) => r.ownerId);
   }
 
@@ -406,4 +443,135 @@ export class EvalRepository {
     const config = row.configJson as { system_prompt?: string } | null;
     return config?.system_prompt;
   }
+
+  // ---- specs/15-skill-eval-cases.md — skill-owned run/case lookups --------
+
+  /** AC-53 — a skill row, workspace-scoped in the WHERE clause itself. Read
+   *  directly regardless of `skills.enabled` (D8's gate bypass, §5) — this
+   *  is the source of the with-arm's rendered block. */
+  async skillForEval(workspaceId: string, skillId: string): Promise<SkillForEval | undefined> {
+    const [row] = await this.db
+      .select({
+        id: t.skills.id,
+        name: t.skills.name,
+        type: t.skills.type,
+        body: t.skills.body,
+        version: t.skills.version,
+        enabled: t.skills.enabled,
+      })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, skillId)));
+    return row;
+  }
+
+  /**
+   * D2/D11/AC-11/AC-49/R5 — the agents currently linked to this skill, with
+   * both gate states and `order` (R5's deterministic auto-carrier tie-break:
+   * lowest `agent_skills.order`, ties broken by agent name). Workspace-
+   * scoped through the `agents` join, so a carrier from another workspace
+   * can never appear in this list (AC-53).
+   */
+  async carriersForSkill(workspaceId: string, skillId: string): Promise<CarrierForSkill[]> {
+    const rows = await this.db
+      .select({
+        agentId: t.agents.id,
+        agentName: t.agents.name,
+        provider: t.agents.provider,
+        model: t.agents.model,
+        systemPrompt: t.agents.systemPrompt,
+        strategy: t.agents.strategy,
+        agentVersion: t.agents.version,
+        order: t.agentSkills.order,
+        linkEnabled: t.agentSkills.enabled,
+        skillEnabled: t.skills.enabled,
+      })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agents.id, t.agentSkills.agentId))
+      .innerJoin(t.skills, eq(t.skills.id, t.agentSkills.skillId))
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agentSkills.skillId, skillId)))
+      .orderBy(asc(t.agentSkills.order), asc(t.agents.name));
+    return rows;
+  }
+
+  /**
+   * D10/AC-2 — the identical `run_skills` → `agent_runs` → `reviews.run_id`
+   * → `findings` join the Stats tab already performs
+   * (`modules/skills/repository.ts` `findingCounts`), read from the OTHER
+   * direction: given a finding, which skills did the run that produced it
+   * actually inject. A review whose run predates `run_skills` (no `run_id`,
+   * or no rows for that run) yields an empty list — AC-2's correct empty
+   * state, not an error.
+   */
+  async skillsInjectedForFinding(
+    workspaceId: string,
+    findingId: string,
+  ): Promise<InjectedSkillForFinding[]> {
+    const rows = await this.db
+      .select({
+        skillId: t.skills.id,
+        skillName: t.skills.name,
+      })
+      .from(t.findings)
+      .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+      .innerJoin(t.runSkills, eq(t.runSkills.runId, t.reviews.runId))
+      .innerJoin(t.skills, eq(t.skills.id, t.runSkills.skillId))
+      .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.reviews.prId))
+      .where(and(eq(t.findings.id, findingId), eq(t.pullRequests.workspaceId, workspaceId)))
+      .orderBy(asc(t.runSkills.order));
+    return rows;
+  }
+
+  /**
+   * AC-33 — a past skill body version, for the compare view's body diff.
+   * `skill_versions` only ever holds SUPERSEDED bodies (the current body is
+   * never archived until superseded — `modules/skills/service.ts`'s own
+   * comment on this) — falls back to the skill's current body when the
+   * requested version IS the current one, so a compare against the
+   * still-current version doesn't need a special case at the call site.
+   */
+  async skillVersionBody(
+    workspaceId: string,
+    skillId: string,
+    version: number,
+  ): Promise<string | undefined> {
+    const skill = await this.skillForEval(workspaceId, skillId);
+    if (!skill) return undefined;
+    if (skill.version === version) return skill.body;
+    const [row] = await this.db
+      .select({ body: t.skillVersions.body })
+      .from(t.skillVersions)
+      .where(and(eq(t.skillVersions.skillId, skillId), eq(t.skillVersions.version, version)));
+    return row?.body;
+  }
+}
+
+/** The subset of a `skills` row a skill-owned eval run needs — read
+ *  directly, bypassing both enable gates (D8, §5). */
+export interface SkillForEval {
+  id: string;
+  name: string;
+  type: 'rubric' | 'convention' | 'security' | 'custom';
+  body: string;
+  version: number;
+  enabled: boolean;
+}
+
+/** One agent linked to a skill, with both gate states — `AgentRecord`'s
+ *  fields plus what the carrier picker (AC-11) and R5's auto-selection need. */
+export interface CarrierForSkill {
+  agentId: string;
+  agentName: string;
+  provider: 'openai' | 'anthropic' | 'openrouter';
+  model: string;
+  systemPrompt: string;
+  strategy: 'single-pass' | 'map-reduce' | 'auto';
+  agentVersion: number;
+  order: number;
+  linkEnabled: boolean;
+  skillEnabled: boolean;
+}
+
+export interface InjectedSkillForFinding {
+  skillId: string;
+  skillName: string;
 }

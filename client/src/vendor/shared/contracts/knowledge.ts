@@ -199,8 +199,8 @@ export const EvalOwnerKind = z.enum(['skill', 'agent']);
 export type EvalOwnerKind = z.infer<typeof EvalOwnerKind>;
 
 /** D3 — a case's expectation type is explicit and closed-vocabulary, never
- *  inferred from the shape of a JSON blob. Only 'agent'-owned cases are ever
- *  written this slice (N3); 'skill' stays reserved. */
+ *  inferred from the shape of a JSON blob. Both 'agent'-owned and (as of
+ *  specs/15-skill-eval-cases.md) 'skill'-owned cases use it identically. */
 export const EvalExpectationType = z.enum(['must_find', 'must_not_flag']);
 export type EvalExpectationType = z.infer<typeof EvalExpectationType>;
 
@@ -293,6 +293,22 @@ export const EvalRun = z.object({
   per_case: z.array(EvalCaseOutcome),
 });
 export type EvalRun = z.infer<typeof EvalRun>;
+
+// ---- Eval — skill-owned (specs/15-skill-eval-cases.md, D5/D3) ----
+/** D5 — a closed, deterministic four-value classification of one case's
+ *  effect across the two arms of a skill-owned run. An errored (hence
+ *  unpaired) case is never classified — it is simply absent from the array
+ *  that carries these, not bucketed as `no_effect_fail`. */
+export const EvalCaseEffect = z.enum(['helped', 'hurt', 'no_effect_pass', 'no_effect_fail']);
+export type EvalCaseEffect = z.infer<typeof EvalCaseEffect>;
+
+/** One case's effect classification within a skill-owned run (AC-20/AC-35). */
+export const EvalSkillCaseEffect = z.object({
+  case_id: z.string(),
+  name: z.string(),
+  effect: EvalCaseEffect,
+});
+export type EvalSkillCaseEffect = z.infer<typeof EvalSkillCaseEffect>;
 
 // ---- Memory ----
 export const MemoryScope = z.enum(['repo', 'global', 'team']);

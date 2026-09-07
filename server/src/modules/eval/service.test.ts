@@ -24,9 +24,16 @@ class FakeEvalRepository {
     return this.findings.get(findingId);
   }
 
-  async getCaseBySourceFinding(workspaceId: string, findingId: string): Promise<EvalCaseRow | undefined> {
+  async getCaseBySourceFindingForOwner(
+    workspaceId: string,
+    findingId: string,
+    ownerKind: string,
+    ownerId: string,
+  ): Promise<EvalCaseRow | undefined> {
     void workspaceId;
-    return [...this.cases.values()].find((c) => c.sourceFindingId === findingId);
+    return [...this.cases.values()].find(
+      (c) => c.sourceFindingId === findingId && c.ownerKind === ownerKind && c.ownerId === ownerId,
+    );
   }
 
   async filePatch(prId: string, path: string): Promise<string | null | undefined> {
@@ -50,7 +57,12 @@ class FakeEvalRepository {
     sourceFindingId?: string | null;
   }): Promise<EvalCaseRow> {
     if (values.sourceFindingId) {
-      const clash = await this.getCaseBySourceFinding(values.workspaceId, values.sourceFindingId);
+      const clash = await this.getCaseBySourceFindingForOwner(
+        values.workspaceId,
+        values.sourceFindingId,
+        values.ownerKind,
+        values.ownerId,
+      );
       if (clash) {
         const err = new Error('duplicate key value violates unique constraint');
         (err as { code?: string }).code = '23505';
@@ -151,6 +163,10 @@ class FakeEvalRepository {
       citationAccuracy: null,
       durationMs: null,
       costUsd: null,
+      skillVersion: null,
+      carrierAgentId: null,
+      gatesBypassed: false,
+      armWithout: null,
     } as EvalRunRow;
     this.runs.set(id, row);
     return row;

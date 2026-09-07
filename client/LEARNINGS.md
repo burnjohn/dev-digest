@@ -338,6 +338,25 @@ run is NOT this bug — this repo has no hook-level tests at all (see the
 `useToast()` entry below), so that filter finding nothing is expected, not a
 silent failure.
 
+**2026-09-07 — a THIRD confirmed instance (plans/15-skill-eval-cases.md's own
+client verification block), and this time the trailing `"**"` itself is
+broken, independent of brackets entirely.** Running `vitest run
+"src/app/skills/**" "src/app/eval/**" "src/components/eval-case-editor/**"
+"src/lib/hooks/**"` — none of which contain a bracketed segment — printed
+`No test files found` for the whole command, exactly like the bracket case
+above. To isolate the cause, `vitest run "src/app/agents/**"` and `vitest run
+"src/vendor/ui/kit/**"` were run directly: both are bracket-free directories
+with real, long-established `*.test.tsx` files (`AgentEditor.test.tsx`,
+`Dropdown.test.tsx`), and BOTH also returned zero matches under vitest
+2.1.9. Dropping the trailing `"**"` and passing the bare directory
+(`vitest run src/app/agents`, no glob suffix at all) found and ran every test
+under it correctly. So the `2026-08-21` entry's framing — "brackets are the
+character-class problem, plain `**` directory globs are fine" — is not
+narrow enough: in this vitest version, `"<dir>/**"` as a CLI positional arg
+matches nothing at all, bracketed or not, and a plan's Verification section
+that hands you a `"path/**"` pattern needs translating to the bare directory
+form before "no test files found" can be trusted as a real signal.
+
 **2026-08-22 — the bug is scoped ENTIRELY to vitest's own CLI positional-arg
 glob filter, never to the module graph itself.** Confirmed while building
 Phase B2 (plans/13-multi-agent-review.md): a literal bracket directory name

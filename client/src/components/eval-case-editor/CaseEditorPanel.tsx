@@ -10,22 +10,32 @@ import { EXPECTATION_TYPES } from "./constants";
 import { s } from "./styles";
 
 /**
- * AC-39 — WHEN a user opens a case: name, frozen input split into diff /
- * files / PR metadata, the expectation in an editable form, and its outcome
- * in the latest run that covered it. AC-12/AC-13: name, notes, frozen input
- * and expectation are all editable here; the server re-validates on save
- * (frozen-input.ts) and 422s a rejected edit with a stated reason.
+ * AC-39 (agent) / AC-36 (skill) — WHEN a user opens a case: name, frozen
+ * input split into diff / files / PR metadata, the expectation in an
+ * editable form, and its outcome in the latest run that covered it. AC-12/
+ * AC-13: name, notes, frozen input and expectation are all editable here;
+ * the server re-validates on save (frozen-input.ts) and 422s a rejected edit
+ * with a stated reason.
  *
  * Recommendation followed (plan §8): a panel inside the tab, not a route —
  * AC-39 says "opens a case", never "navigates to".
+ *
+ * `withoutOutcome` is an additive, optional prop (client/LEARNINGS.md
+ * 2026-08-21 — gated on `!== undefined`, not truthiness, so a `null`
+ * without-arm outcome — e.g. this case errored out of the pair — still
+ * renders the side-by-side layout with its own "no outcome" message). The
+ * agent tab's call site never supplies it and renders exactly as before this
+ * widening (specs/15-skill-eval-cases.md plan §11, AC-36's side-by-side arms).
  */
 export function CaseEditorPanel({
   caseId,
   outcome,
+  withoutOutcome,
   onClose,
 }: {
   caseId: string;
   outcome: EvalCaseOutcome | null;
+  withoutOutcome?: EvalCaseOutcome | null;
   onClose: () => void;
 }) {
   const t = useTranslations("eval");
@@ -123,7 +133,20 @@ export function CaseEditorPanel({
 
         <div style={s.formField}>
           <span style={s.label}>{t("caseEditorPanel.outcomeTitle")}</span>
-          <OutcomeSummary outcome={outcome} />
+          {withoutOutcome !== undefined ? (
+            <div style={s.formRow}>
+              <div style={s.formField}>
+                <span style={s.label}>{t("skill.withArm")}</span>
+                <OutcomeSummary outcome={outcome} />
+              </div>
+              <div style={s.formField}>
+                <span style={s.label}>{t("skill.withoutArm")}</span>
+                <OutcomeSummary outcome={withoutOutcome} />
+              </div>
+            </div>
+          ) : (
+            <OutcomeSummary outcome={outcome} />
+          )}
         </div>
 
         <div style={s.formField}>

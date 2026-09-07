@@ -5,6 +5,7 @@ import {
   EvalOwnerKind,
   EvalExpectation,
   EvalCaseMeta,
+  EvalSkillCaseEffect,
   Conformance,
   Provider,
   CiFailOn,
@@ -44,6 +45,27 @@ export const EvalCaseFromFindingInput = z.object({
 });
 export type EvalCaseFromFindingInput = z.infer<typeof EvalCaseFromFindingInput>;
 
+/**
+ * specs/15-skill-eval-cases.md AC-2 — GET /findings/:id/eval-skills' offer
+ * list: only skills a run's recorded injected-skill set actually contained,
+ * never every skill linked to the finding's agent. `has_case` lets the
+ * client grey out an action that would just return the existing case
+ * (AC-1's idempotency, made visible before the click, not just handled after).
+ */
+export const EvalSkillOffer = z.object({
+  skill_id: z.string(),
+  skill_name: z.string(),
+  has_case: z.boolean(),
+});
+export type EvalSkillOffer = z.infer<typeof EvalSkillOffer>;
+
+/** POST /findings/:id/skill-eval-case request body (R3 — a separate route
+ *  from the agent path, never a widened `EvalCaseFromFindingInput`). */
+export const EvalSkillCaseFromFindingInput = z.object({
+  skill_id: z.string().uuid(),
+});
+export type EvalSkillCaseFromFindingInput = z.infer<typeof EvalSkillCaseFromFindingInput>;
+
 export const EvalRunStatus = z.enum(['running', 'completed', 'errored']);
 export type EvalRunStatus = z.infer<typeof EvalRunStatus>;
 
@@ -70,6 +92,48 @@ export const EvalRunRecord = z.object({
 });
 export type EvalRunRecord = z.infer<typeof EvalRunRecord>;
 
+/**
+ * specs/15-skill-eval-cases.md D4/AC-19/AC-22 — the with-arm value minus the
+ * without-arm value, per metric, over the cases scored in both arms. `null`
+ * (never 0) whenever either side is `null` — a lift over a metric that has no
+ * denominator in one arm is not applicable, not zero.
+ */
+export const EvalLift = z.object({
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+});
+export type EvalLift = z.infer<typeof EvalLift>;
+
+/**
+ * D6/AC-24/AC-52 — a skill-owned run's record. An EXTENSION of
+ * `EvalRunRecord` (never a parallel shape), so a skill run is still an
+ * `EvalRunRecord` everywhere the base shape is rendered (AC-18) — the base
+ * fields (`metrics` etc.) hold the WITH-arm's values by construction (R1).
+ * `arm_without` is the full without-arm `EvalRun` (including its own
+ * `per_case`) — AC-36's side-by-side view needs the complete finding sets,
+ * not just the aggregate metrics.
+ */
+export const EvalSkillRunRecord = EvalRunRecord.extend({
+  skill_version: z.number().int().nullable(),
+  carrier_agent_id: z.string().nullable(),
+  carrier_agent_name: z.string().nullable(),
+  /** D8/AC-52 — true when either enable gate was off for this skill/carrier
+   *  at run time, so the with-arm injected a body not currently active in a
+   *  real review. Must be shown on every surface presenting this run. */
+  gates_bypassed: z.boolean(),
+  arm_without: EvalRun.nullable(),
+  lift: EvalLift.nullable(),
+  effects: z.array(EvalSkillCaseEffect),
+  effect_counts: z.object({
+    helped: z.number().int(),
+    hurt: z.number().int(),
+    no_effect_pass: z.number().int(),
+    no_effect_fail: z.number().int(),
+  }),
+});
+export type EvalSkillRunRecord = z.infer<typeof EvalSkillRunRecord>;
+
 /** AC-24/AC-25 — stated before any execution starts. */
 export const EvalRunEstimate = z.object({
   agents_total: z.number().int(),
@@ -77,6 +141,40 @@ export const EvalRunEstimate = z.object({
   executions_total: z.number().int(),
 });
 export type EvalRunEstimate = z.infer<typeof EvalRunEstimate>;
+
+/**
+ * specs/15-skill-eval-cases.md AC-11 — one option in the carrier picker.
+ * Carries both gate states so the surface can state the D8 bypass (AC-11/
+ * AC-52) without a second round-trip.
+ */
+export const EvalSkillCarrier = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  skill_enabled: z.boolean(),
+  link_enabled: z.boolean(),
+});
+export type EvalSkillCarrier = z.infer<typeof EvalSkillCarrier>;
+
+/** POST /skills/:id/eval/runs request body (D2/D11 — the carrier is a
+ *  required, per-run, recorded parameter, never an implementation detail). */
+export const EvalSkillRunInput = z.object({
+  carrier_agent_id: z.string().uuid(),
+});
+export type EvalSkillRunInput = z.infer<typeof EvalSkillRunInput>;
+
+/**
+ * AC-11/AC-25 — stated before any execution starts. `executions_total` is
+ * `2 × cases_total` (D3's ablation cost), not `cases_total` — the number
+ * SPEC-15 is explicit must never be understated.
+ */
+export const EvalSkillRunEstimate = z.object({
+  cases_total: z.number().int(),
+  executions_total: z.number().int(),
+  carrier_agent_id: z.string(),
+  carrier_agent_name: z.string(),
+  gates_bypassed: z.boolean(),
+});
+export type EvalSkillRunEstimate = z.infer<typeof EvalSkillRunEstimate>;
 
 /** Response of `POST /agents/:id/eval/runs` — the start response (Q3: the
  *  client polls `GET /eval/runs/:id` for completion, no SSE). */
@@ -142,10 +240,29 @@ export const EvalAgentSummary = z.object({
 });
 export type EvalAgentSummary = z.infer<typeof EvalAgentSummary>;
 
-/** GET /eval/dashboard — workspace-level (AC-40, AC-41); NOT repo-scoped. */
+/**
+ * specs/15-skill-eval-cases.md AC-39/D13/D14 — one row per skill owning ≥1
+ * case, for the dashboard's OWN skills section (never merged into
+ * `EvalAgentSummary`'s list — N9/AC-40). `tokens_per_run` is D13's whole
+ * point: the skill's real per-run token cost, read alongside its lift.
+ */
+export const EvalSkillSummary = z.object({
+  skill_id: z.string(),
+  skill_name: z.string(),
+  cases_total: z.number().int(),
+  carrier_agent_name: z.string().nullable(),
+  latest: EvalSkillRunRecord.nullable(),
+  tokens_per_run: z.number().int().nullable(),
+});
+export type EvalSkillSummary = z.infer<typeof EvalSkillSummary>;
+
+/** GET /eval/dashboard — workspace-level (AC-40, AC-41); NOT repo-scoped.
+ *  `skills` is purely additive (AC-42) — `agents`/`recent_runs` keep their
+ *  exact pre-existing shapes. */
 export const EvalDashboard = z.object({
   agents: z.array(EvalAgentSummary),
   recent_runs: z.array(EvalRunRecord),
+  skills: z.array(EvalSkillSummary),
 });
 export type EvalDashboard = z.infer<typeof EvalDashboard>;
 
@@ -192,6 +309,37 @@ export const EvalCompare = z.object({
   ),
 });
 export type EvalCompare = z.infer<typeof EvalCompare>;
+
+/**
+ * specs/15-skill-eval-cases.md R3/AC-32/AC-33 — a SEPARATE contract from
+ * `EvalCompare` (never a widened agent one — AC-42's "behaves exactly as
+ * before" would otherwise be broken by even a null-valued added key).
+ * `carrier_differs` is AC-32's second axis (alongside the inherited
+ * case-set-difference handling); `skill_body_diff` reuses `EvalCompare.
+ * prompt_diff`'s line shape (AC-33).
+ */
+export const EvalSkillCompare = z.object({
+  old: EvalSkillRunRecord,
+  new: EvalSkillRunRecord,
+  common_case_ids: z.array(z.string()),
+  only_in_old: z.array(z.string()),
+  only_in_new: z.array(z.string()),
+  carrier_differs: z.boolean(),
+  deltas: z.object({
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
+  }),
+  lift_deltas: z.object({
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
+  }),
+  skill_body_diff: z.array(
+    z.object({ kind: z.enum(['added', 'removed', 'context']), text: z.string() }),
+  ),
+});
+export type EvalSkillCompare = z.infer<typeof EvalSkillCompare>;
 
 // ===========================================================================
 // Compose Review

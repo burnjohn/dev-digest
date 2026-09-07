@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "verify:l03": "vitest run src/modules/reviews/smart-diff.test.ts",
-    "verify:l06": "vitest run src/modules/eval/scoring.test.ts src/modules/eval/frozen-input.test.ts test/eval-contract-parity.test.ts test/contracts.test.ts test/eval.it.test.ts",
+    "verify:l06": "vitest run src/modules/eval/scoring.test.ts src/modules/eval/frozen-input.test.ts src/modules/eval/executor.test.ts test/eval-contract-parity.test.ts test/contracts.test.ts test/eval.it.test.ts",
     "verify:l07": "vitest run src/modules/ci/ test/ci-export.it.test.ts test/ci-contract-parity.test.ts test/ci-ingest.it.test.ts",
     "arch": "depcruise src --ignore-known",
     "arch:all": "depcruise src",

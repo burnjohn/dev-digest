@@ -17,8 +17,15 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
 // `useFindingAction`; every existing test here must stub it too
 // (client/LEARNINGS.md: a component calling two mutation hooks breaks a test
 // that only mocked one).
+//
+// specs/15-skill-eval-cases.md — a THIRD (mutation) and a fourth (query) hook
+// are now called unconditionally too: `useCreateSkillEvalCaseFromFinding`
+// (the skill-owned sibling of "turn into eval case") and
+// `useFindingEvalSkills` (the offer-list read behind the skill menu).
 vi.mock("../../../../../../../lib/hooks/eval", () => ({
   useCreateEvalCaseFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateSkillEvalCaseFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
+  useFindingEvalSkills: () => ({ data: undefined, isLoading: false }),
 }));
 
 const mockToastSuccess = vi.fn();

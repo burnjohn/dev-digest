@@ -3,7 +3,7 @@ import { reviewPullRequest } from '@devdigest/reviewer-core';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
 import { renderSkillBlock, type RenderableSkill } from '../_shared/skill-render.js';
 import { EVAL_TASK_LINE } from './constants.js';
-import type { AgentRecord } from './ports.js';
+import type { AgentRecord, LinkedSkillForRun } from './ports.js';
 import type { ScoredFinding } from './scoring.js';
 
 /**
@@ -16,7 +16,10 @@ import type { ScoredFinding } from './scoring.js';
  * resolution — this path never calls `projectContextService`), `callers`,
  * `repoMap`, `intent`, `intentInScope`, `intentOutOfScope`, `memory`,
  * `sessionId`. Nothing here touches `container.repoIntel`, a checkout, or the
- * `pull_requests` intent columns.
+ * `pull_requests` intent columns. specs/15-skill-eval-cases.md D9 keeps this
+ * absolute for skill-owned runs too: a skill's own project-context documents
+ * (`SkillsService.preview`'s `project_context_block`) are NEVER injected —
+ * only `block` (the skill's rendered prompt text) is ever in scope here.
  */
 
 export interface EvalCaseForExecution {
@@ -78,4 +81,51 @@ export class EvalExecutor {
       assembly: outcome.assembly,
     };
   }
+}
+
+/**
+ * specs/15-skill-eval-cases.md §5 — AC-16's load-bearing invariant. No
+ * signature change to `runCase`/`ReviewRunExecutor` is needed: the two arms
+ * of one case are two `runCase` calls differing ONLY in `skillBlocks`
+ * (everything else — agent, llm, evalCase — is byte-identical between the
+ * calls), so this helper's whole job is building that one differing array
+ * correctly, twice.
+ *
+ * `carrierLinks` is the carrier's FULL linked-skill set (both gate states,
+ * `order`) — NOT `SkillLookup.enabledSkills`' already gate-ANDed list.
+ * `withoutArm` respects each OTHER skill's own normal two-gate rule (so the
+ * arms differ by nothing but the skill under test — D7); `withArm` is built
+ * FROM `withoutArm` (never re-filtered independently) so the other blocks'
+ * relative ORDER is provably identical between the two arms, then splices in
+ * `skillUnderTest` — whose body is read directly via `EvalRepository.
+ * skillForEval` and passed in here already resolved, bypassing BOTH enable
+ * gates regardless of their state (D8) — at its `agent_skills.order`
+ * position among the survivors, or appended when no link exists at all
+ * (`linkOrder === null`).
+ */
+export function buildArms(
+  carrierLinks: LinkedSkillForRun[],
+  skillUnderTest: RenderableSkill & { id: string },
+  linkOrder: number | null,
+): { withArm: RenderableSkill[]; withoutArm: RenderableSkill[] } {
+  const survivors = carrierLinks
+    .filter((l) => l.id !== skillUnderTest.id && l.linkEnabled && l.skillEnabled)
+    .slice()
+    .sort((a, b) => a.order - b.order);
+
+  const withoutArm: RenderableSkill[] = survivors.map(({ name, type, body }) => ({
+    name,
+    type,
+    body,
+  }));
+
+  const withArm = withoutArm.slice();
+  if (linkOrder === null) {
+    withArm.push(skillUnderTest);
+  } else {
+    const insertAt = survivors.filter((l) => l.order < linkOrder).length;
+    withArm.splice(insertAt, 0, skillUnderTest);
+  }
+
+  return { withArm, withoutArm };
 }

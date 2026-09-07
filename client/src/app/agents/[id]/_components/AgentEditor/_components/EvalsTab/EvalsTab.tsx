@@ -14,9 +14,8 @@ import {
 } from "@/lib/hooks/eval";
 import { useToast } from "@/lib/toast";
 import { ApiError } from "@/lib/api";
+import { CaseList, CaseEditorPanel } from "@/components/eval-case-editor";
 import { MetricTiles } from "./MetricTiles";
-import { CaseList } from "./CaseList";
-import { CaseEditorPanel } from "./CaseEditorPanel";
 import { RunHistory } from "./RunHistory";
 import { s } from "./styles";
 

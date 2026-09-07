@@ -98,7 +98,7 @@
   "editor": {
     "version": "v{version}",
     "runEvals": "Run on evals",
-    "runEvalsTooltip": "Skill evals arrive in L06 — the runner is not built yet.",
+    "runEvalsTooltip": "Open this skill's Evals tab.",
     "tabs": {
       "config": "Config",
       "preview": "Preview",
@@ -166,8 +166,8 @@
   },
   "evals": {
     "title": "Evals",
-    "emptyTitle": "Skill evals arrive in L06",
-    "emptyBody": "Eval cases already accept a skill owner in the schema; running them is a later lesson. Nothing here is wired yet."
+    "emptyTitle": "No eval cases yet",
+    "emptyBody": "Create a case by hand, or turn a triaged finding this skill was injected into into a case, to measure this skill's effect with a two-armed run."
   },
   "stats": {
     "usedBy": "USED BY",

@@ -16,7 +16,12 @@
     "turnIntoEvalCase": "Turn into eval case",
     "turnIntoEvalCaseCreated": "Eval case created.",
     "turnIntoEvalCaseExists": "An eval case already exists for this finding.",
-    "turnIntoEvalCaseError": "Could not create an eval case for this finding."
+    "turnIntoEvalCaseError": "Could not create an eval case for this finding.",
+    "turnIntoSkillEvalCase": "Turn into skill eval case",
+    "skillEvalCaption": "A skill's presence in this run is not proof it caused this finding.",
+    "skillEvalLoading": "Loading…",
+    "skillEvalEmpty": "No skills were present in the review that produced this finding.",
+    "skillEvalHasCase": "already has a case"
   },
   "trifecta": {
     "lethal": "LETHAL TRIFECTA — ALL 3 PRESENT",
