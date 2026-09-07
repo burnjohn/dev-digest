@@ -28,6 +28,7 @@ export function TrendChart({ trend }: { trend: EvalTrendPoint[] }) {
             data: trend.map((p) => p.citation_accuracy ?? 0),
           },
         ]}
+        points={trend.map((p) => ({ version: p.agent_version, cost: p.cost_usd }))}
       />
       <table style={s.visuallyHidden}>
         <caption>{t("dashboard.metricTrend")}</caption>
