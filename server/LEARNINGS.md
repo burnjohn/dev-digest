@@ -617,6 +617,59 @@ caps would be a backwards dependency (adapters are outer-ring; a module-
 specific constant isn't a port), so the two stay independently declared with a
 comment cross-referencing each other for consistency instead.
 
+### 2026-09-07 — `@stryker-mutator/core@10.0.0` pulls in a broken Babel 8 tree; pin to `9.6.1`, and a `pnpm install --force` does NOT clean up the wreckage
+
+Set up mutation testing on `src/modules/eval/scoring.ts` (`stryker.config.json`,
+`stryker.vitest.config.ts` — a narrowed vitest config scoping `include` to just
+`scoring.test.ts` so a mutation run stays under a minute instead of re-running
+the full ~745-test suite per mutant). `pnpm add -D @stryker-mutator/core
+@stryker-mutator/vitest-runner` resolved `^10.0.0` (latest), which pulls in
+`@babel/core@8.0.1` transitively (Stryker's own instrumenter depends on Babel
+presets/plugins with loose ranges) — Babel 8 at this dist-tag has an internal
+ESM/CJS interop bug (`@babel/plugin-proposal-decorators`'s ESM build required
+via CJS from `@babel/core`), so every mutation run crashed with
+`ERR_REQUIRE_ESM` before instrumenting anything.
+
+**Do not try to fix this with `pnpm.overrides`.** Pinning just `@babel/core` +
+`@babel/plugin-proposal-decorators` to `^7.x` left OTHER Babel packages in the
+same tree (`@babel/preset-typescript`, `@babel/preset-react`, `@babel/helper-
+create-class-features-plugin`, …) still resolving independently to `8.0.1`
+(their own ranges weren't covered by the override), producing a split-brain
+7/8 install and a DIFFERENT crash (`@babel/helper-compilation-targets`
+requiring a `lru-cache` whose export shape didn't match what it expected).
+**The fix that actually worked: downgrade to `@stryker-mutator/core@9.6.1` +
+`@stryker-mutator/vitest-runner@9.6.1`** (the last pre-10.x release) — its
+Babel tree resolves uniformly to `7.29.7`, no overrides needed.
+
+Even after downgrading, the crash didn't go away on the first retry — `pnpm
+install` (with or without `--force`) reuses/relinks existing on-disk nested
+`node_modules/` directories under `node_modules/@babel/*` rather than purging
+ones a prior (bad) install left behind; 18 stale nested `node_modules` dirs
+survived three separate `pnpm add`/`pnpm install --force` cycles, each still
+pointing at Babel-8-era packages (confirmed via `node -e "require.resolve('lru-
+cache', {paths:[...]})"`, which resolved to a completely different file than
+`pnpm why lru-cache` reported). **The only fix that reliably cleared it: `rm
+-rf node_modules && pnpm install`** — a full wipe, not a targeted one. If a
+future dependency swap in `server/` produces a `require`/interop error that
+persists across `pnpm install --force`, suspect stale nested `node_modules`
+before suspecting the lockfile or the new package itself.
+
+Mutation score on `scoring.ts`: 150/161 mutants killed (93.17%) after adding
+one boundary test for `matches()`'s range-intersection — the existing "wide
+finding overlapping by one line" test only covered the overlap landing on the
+*finding's* low end (`start_line < end_line`, overlap at `end_line`); nothing
+covered a finding whose overlap lands on its own `start_line` (starts exactly
+on the expectation's `end_line` and extends past it), which is a different
+branch of the `Math.min`/`Math.max` normalization in `matches()` — that gap
+alone left two independent mutants (a `Math.min`→`Math.max` swap and a
+`<=`→`<` swap, both on the same two lines) surviving simultaneously. The
+remaining 11 survivors are lower-value: dead-ish branches in `classifyEffects`
+guarded by conditions the paired-case invariant from `pairArms` already makes
+unreachable in practice, and one `traces_passed` mutant equivalent to "count
+scored cases" vs "count passing cases" that no existing fixture happens to
+distinguish — left as open follow-up, not fixed here (task scope was "kill
+one").
+
 ## Recurring Errors & Fixes
 
 ### 2026-07-28 — `.nullable()` on a shared contract breaks every fixture that builds it

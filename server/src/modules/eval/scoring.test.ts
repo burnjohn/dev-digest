@@ -52,6 +52,16 @@ describe('matches', () => {
   it('matches a wide finding overlapping the expectation by one line', () => {
     expect(matches(finding({ start_line: 1, end_line: 10 }), mustFind)).toBe(true);
   });
+
+  // Mutation testing (server/LEARNINGS.md 2026-09-07) found this boundary
+  // untested: the prior "wide finding" case above only exercises the overlap
+  // landing on the FINDING'S end_line (its low end, since start_line < end_line
+  // there). A finding whose overlap instead lands on its own start_line — i.e.
+  // it starts exactly on the expectation's end_line and extends past it — hits
+  // a different branch of `fLo`/`fHi`'s min/max normalization.
+  it('matches a finding that starts exactly on the expectation end line and extends past it', () => {
+    expect(matches(finding({ start_line: 12, end_line: 20 }), mustFind)).toBe(true);
+  });
 });
 
 describe('scoreCase — AC-17', () => {

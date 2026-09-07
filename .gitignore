@@ -8,6 +8,8 @@ build/
 .next/
 out/
 coverage/
+reports/
+.stryker-tmp/
 *.tsbuildinfo
 .env
 .env.local
