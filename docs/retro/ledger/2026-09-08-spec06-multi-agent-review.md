@@ -22,9 +22,41 @@ the required column set and re-scoped to SPEC-06 alone.
 
 | Date | Workflow | Plan | Agents | Cost Est | Cache % | Parallelism | Bottleneck | Duplications | Gaps | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 2026-08-26 | SPEC-06 Multi-Agent Review — live 3-agent run on PR #491 | plans/13-multi-agent-review.md | 3 (General, Security, Performance) | $0.00165 total (3 agents, `deepseek/deepseek-v4-flash` via OpenRouter) | not measured — no prompt-cache-hit metric is captured anywhere in `reviews/`/`ci/` for this run (only unrelated repo-skeleton caching exists in `run-executor.ts:565`) | 3 concurrent; batch wall-clock 210.8s vs solo ~23s — **not** 3×, per the lab's own instruction not to assume a linear ratio | Security reviewer — 210.8s vs General 15.4s / Performance 41.6s; one outlier LLM call dominated the whole batch | 6 of 7 findings conflicted across agents (e.g. one location: General flagged WARNING, Security and Performance both recorded "did not flag") | `feat/multi-agent-review` was built directly on what became the merge branch, not in the prescribed `../devdigest-review` worktree — caught only by a manual session audit, not by tooling | Feature merged to `main` (PR #14); this reconciliation branch's own retro was not — that gap is what this entry closes |
+| 2026-08-26 | SPEC-06 Multi-Agent Review — live 3-agent run on PR #491 | plans/13-multi-agent-review.md | 3 (General, Security, Performance) | $0.00165 total (3 agents, `deepseek/deepseek-v4-flash` via OpenRouter) | **13.8%** overall (1,024 / 7,397 prompt tokens across the 3 agents) — see "Cache % — live verification" below | 3 concurrent; batch wall-clock 210.8s vs solo ~23s — **not** 3×, per the lab's own instruction not to assume a linear ratio | Security reviewer — 210.8s vs General 15.4s / Performance 41.6s; one outlier LLM call dominated the whole batch | 6 of 7 findings conflicted across agents (e.g. one location: General flagged WARNING, Security and Performance both recorded "did not flag") | `feat/multi-agent-review` was built directly on what became the merge branch, not in the prescribed `../devdigest-review` worktree — caught only by a manual session audit, not by tooling | Feature merged to `main` (PR #14); this reconciliation branch's own retro was not — that gap is what this entry closes |
 
 ## Supporting detail
+
+**Cache % — live verification (2026-09-08, this session):** the original
+2026-08-26 run predates any cache-hit instrumentation, so Cache % couldn't
+be recovered from it. Re-ran the same live 3-agent batch against the same
+`acme/payments-api#491` PR twice this session with temporary instrumentation
+in `reviewer-core/src/llm/openrouter.ts` (logged the raw OpenRouter
+`usage.prompt_tokens_details` to a scratch file, removed immediately after —
+`git diff reviewer-core/` is empty on this branch). First run (no
+instrumentation, baseline sanity check): 57.8s total, $0.0018361 — consistent
+with the original $0.00165 figure, confirming this is the same PR/agent set.
+Second run (instrumented) measured real `prompt_tokens_details.cached_tokens`
+per agent call:
+
+| Agent | Prompt tokens | Cached tokens | Cache % |
+|---|---|---|---|
+| Security Reviewer | 2,775 | 1,024 | 36.9% |
+| Performance Reviewer | 2,527 | 0 | 0% |
+| General Reviewer | 2,095 | 0 | 0% |
+| **Total** | **7,397** | **1,024** | **13.8%** |
+
+Only one of the three agents got a cache hit, despite all three sharing the
+same diff/repo-map prefix in their prompts. Likely cause: `run-executor.ts:357`
+builds `sessionId` as `${repo}#{pr}:{agent.name}` — **one distinct session
+per agent**, not one shared session for the batch — so OpenRouter's sticky
+routing (keyed on `session_id`) has no guarantee of sending all three agents'
+requests to the same warm provider replica. This matches OpenRouter's own
+caveat that DeepSeek cache hits "may vary depending on how requests are
+structured and routed." A shared `session_id` for the whole batch (all
+agents on one PR) would likely raise this substantially, at the cost of the
+routing isolation the current per-agent scheme presumably exists for — not
+something to change without checking why D-P4/the run-executor chose
+per-agent sessions in the first place.
 
 **Cost/duration control (1 agent vs 3):** solo General-only run ~23s
 (diff 17ms + intent 9.5s + review ~14s); batch of 3 was 210.8s total, not
