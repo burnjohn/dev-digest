@@ -69,6 +69,10 @@ high-confidence guidance unless it's obviously stale.
   after pulling schema changes.
 - Secrets never live in git or the DB — `~/.devdigest/secrets.json` (mode `0600`)
   is the one source, with `process.env` as fallback.
+- Local Postgres is **shared across every git worktree** — one `docker
+  compose` instance, not one per worktree. Two worktrees generating
+  migrations independently (`pnpm db:generate`) will collide on the next
+  `idx` if both touch schema in the same lesson/branch pair.
 
 ## Do-not-touch / edit-with-care
 
@@ -90,6 +94,11 @@ high-confidence guidance unless it's obviously stale.
   that folder (mechanism #3 — AUTO). There's a known VS Code-extension bug
   (#24987) where this doesn't always trigger. If module-specific rules seem
   ignored, open that module's `CLAUDE.md` via the Map above explicitly.
+- After merging two branches whose specs both reference reusing the same
+  shared component from different call sites, run `pnpm typecheck` before
+  trusting a conflict-free `git merge` — a clean merge only proves no two
+  branches touched the same lines, not that cross-file references between
+  them still resolve.
 
 ## Before you finish
 

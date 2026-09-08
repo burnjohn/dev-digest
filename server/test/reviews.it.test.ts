@@ -119,6 +119,23 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
         git: new MockGitClient({ diff: DIFF }),
         llm: {
           [provider]: new MockLLMProvider(provider, { structured }),
+          // server/LEARNINGS.md 2026-08-04 entry (+2026-08-21/2026-09-08
+          // addenda) — review_intent's FEATURE_MODELS default is
+          // openrouter/deepseek-v4-flash, so every executeRuns batch's
+          // intent-resolution step calls container.llm('openrouter') too,
+          // regardless of which provider the agent under test uses. Left
+          // un-mocked, that's a real, un-hermetic network call racing
+          // waitForPrRuns's fixed timeout — the documented flake. Mocked the
+          // same way multi-agent.it.test.ts already does.
+          openrouter: new MockLLMProvider('openai', {
+            structuredBySchema: {
+              IntentExtraction: {
+                summary: 'Hardcodes a Stripe secret in config.',
+                in_scope: ['src/config.ts'],
+                out_of_scope: [],
+              },
+            },
+          }),
         },
       },
     });
