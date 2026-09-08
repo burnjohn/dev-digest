@@ -1,4 +1,4 @@
-name: evals
+name: eval-agents
 
 on:
   push:
@@ -7,19 +7,19 @@ on:
       - 'CLAUDE.md'
       - '.claude/**'
       - 'evals/**'
-      - '.github/workflows/evals.yml'
+      - '.github/workflows/eval-agents.yml'
   pull_request:
     paths:
       - 'CLAUDE.md'
       - '.claude/**'
       - 'evals/**'
-      - '.github/workflows/evals.yml'
+      - '.github/workflows/eval-agents.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: evals-${{ github.event.pull_request.number || github.ref }}
+  group: eval-agents-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -37,12 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      skills: ${{ steps.detect.outputs.skills }}
       agents: ${{ steps.detect.outputs.agents }}
-      run_workflow: ${{ steps.detect.outputs.run_workflow }}
-      recalibrate_all: ${{ steps.detect.outputs.recalibrate_all }}
       has_openrouter_key: ${{ steps.secret_check.outputs.has_openrouter_key }}
-      skipped_skills: ${{ steps.detect.outputs.skipped_skills }}
       skipped_agents: ${{ steps.detect.outputs.skipped_agents }}
     steps:
       - uses: actions/checkout@v4
@@ -76,16 +72,10 @@ jobs:
       - name: Publish Detection Summary
         run: |
           {
-            echo "## Eval Scope"
+            echo "## Eval Scope — Agents"
             echo ""
-            echo "- skills: `${{ steps.detect.outputs.skills }}`"
             echo "- agents: `${{ steps.detect.outputs.agents }}`"
-            echo "- workflow: `${{ steps.detect.outputs.run_workflow }}`"
-            echo "- recalibrate all benchmarks: `${{ steps.detect.outputs.recalibrate_all }}`"
             echo "- OpenRouter key available: `${{ steps.secret_check.outputs.has_openrouter_key }}`"
-            if [ -n "${{ steps.detect.outputs.skipped_skills }}" ]; then
-              echo "- skipped skills (no evals): `${{ steps.detect.outputs.skipped_skills }}`"
-            fi
             if [ -n "${{ steps.detect.outputs.skipped_agents }}" ]; then
               echo "- skipped agents (no evals): `${{ steps.detect.outputs.skipped_agents }}`"
             fi
@@ -120,75 +110,6 @@ jobs:
       - run: pnpm typecheck
 
       - run: pnpm eval:quality
-
-  skill-benchmark:
-    name: Skill Benchmark (${{ matrix.skill }})
-    needs: [detect, quality]
-    if: needs.detect.outputs.skills != '[]' && needs.detect.outputs.has_openrouter_key == 'true'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        skill: ${{ fromJson(needs.detect.outputs.skills) }}
-    defaults:
-      run:
-        working-directory: evals
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm typecheck
-
-      - run: pnpm proxy:up
-
-      - run: pnpm proxy:wait
-
-      - name: Benchmark Skill vs Baseline
-        run: pnpm eval:benchmark skills/${{ matrix.skill }} -n $EVAL_BENCHMARK_RUNS
-
-      - name: Publish Benchmark Summary
-        if: always()
-        run: |
-          latest="$(ls -td results/benchmarks/* 2>/dev/null | head -n1 || true)"
-          if [ -n "$latest" ] && [ -f "$latest/benchmark.md" ]; then
-            {
-              echo "## Skill Benchmark: \`${{ matrix.skill }}\`"
-              echo ""
-              cat "$latest/benchmark.md"
-              echo ""
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "## Skill Benchmark: \`${{ matrix.skill }}\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "_No benchmark report generated._" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: skill-benchmark-${{ matrix.skill }}
-          path: evals/results
-          if-no-files-found: ignore
-
-      - if: always()
-        run: pnpm proxy:down
 
   agent-benchmark:
     name: Agent Benchmark (${{ matrix.agent }})
@@ -253,65 +174,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-benchmark-${{ matrix.agent }}
-          path: evals/results
-          if-no-files-found: ignore
-
-      - if: always()
-        run: pnpm proxy:down
-
-  workflow:
-    name: Workflow Evals
-    needs: [detect, quality]
-    if: needs.detect.outputs.run_workflow == 'true' && needs.detect.outputs.has_openrouter_key == 'true'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: evals
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm typecheck
-
-      - run: pnpm proxy:up
-
-      - run: pnpm proxy:wait
-
-      - name: Run Workflow Evals
-        run: pnpm eval:workflow
-
-      - name: Publish Workflow Summary
-        if: always()
-        run: |
-          {
-            echo "## Workflow Evals"
-            echo ""
-            echo "- command: \`pnpm eval:workflow\`"
-            echo "- model: \`${EVAL_MODEL}\`"
-            echo "- max turns: \`${EVAL_MAX_TURNS}\`"
-            echo "- allow-list stays read-only in workflowTask: \`Read, Grep, Glob, Task, Agent, Skill\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: workflow-evals
           path: evals/results
           if-no-files-found: ignore
 

@@ -83,6 +83,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     app.container.skillsRepo,
     app.container.tokenizer,
     app.container.projectContextService,
+    app.container.evalRepo,
   );
 
   app.get('/skills', async (req) => {

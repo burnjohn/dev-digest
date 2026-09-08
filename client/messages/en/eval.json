@@ -169,5 +169,61 @@
     "noCases": "No eval cases yet. Accept or dismiss a finding on a pull request, then use “Turn into eval case” there.",
     "neverRun": "This agent's cases have never been run. Run the eval set to see recall, precision and citation accuracy.",
     "oneRun": "Only one completed run exists yet — metrics are shown, but a second run is needed before deltas or a comparison are available."
+  },
+  "skill": {
+    "metricsSubtitle": "Recall / Precision / Citation lift for this skill's eval cases — with the skill present, minus without it.",
+    "tokensPerRun": "{count} tokens per run",
+    "gatesBypassedNotice": "This run injected the skill's body even though it is currently disabled, or not enabled for its carrier, in real reviews.",
+    "withArm": "With this skill",
+    "withoutArm": "Without this skill",
+    "origin": {
+      "finding": "from a finding",
+      "hand": "hand-authored"
+    },
+    "effect": {
+      "title": "Effect",
+      "helped": "helped",
+      "hurt": "hurt",
+      "noEffectPass": "no effect (passed either way)",
+      "noEffectFail": "no effect (failed either way)",
+      "none": "not run",
+      "helpedCount": "{count} helped",
+      "hurtCount": "{count} hurt",
+      "unaffectedCount": "{count} unaffected"
+    },
+    "lift": {
+      "allZero": "This skill changed no outcome on this case set in its latest run."
+    },
+    "empty": {
+      "noCases": "No eval cases yet. Create one by hand, or accept/dismiss a finding this skill was injected into and use “Turn into skill eval case” there.",
+      "neverRun": "This skill's cases have never been run. Run the eval set to see recall, precision, citation accuracy and lift."
+    },
+    "run": {
+      "title": "Run this skill's eval set",
+      "carrierLabel": "Carrier agent",
+      "carrierBypassOption": "{agent} (gate off — unvetted body)",
+      "noCarriers": "No agent is currently linked to this skill, so a run cannot be started.",
+      "estimate": "{cases, plural, one {# case} other {# cases}} → {executions, plural, one {# case execution} other {# case executions}} (once with this skill present, once without).",
+      "gatesBypassedWarning": "This skill or its link to the chosen carrier is currently disabled — running will still inject its body, which is not what a real review does today.",
+      "confirm": "Run",
+      "runAllTrigger": "Run all skills",
+      "confirmAllTitle": "Run every skill's eval set?",
+      "confirmAllBody": "This runs {skills, plural, one {# skill} other {# skills}} across {executions, plural, one {# case execution} other {# case executions}} (twice per case — once with, once without). Cost and duration vary by provider.",
+      "autoCarrierNote": "Each skill's carrier is auto-selected: the linked agent with the lowest order, ties broken by name."
+    },
+    "compare": {
+      "title": "Compare skill runs",
+      "liftDeltaTitle": "Lift delta",
+      "carrierDiffers": "These two runs used different carrier agents — the deltas above are still computed over their common cases, but the carrier itself also changed.",
+      "bodyDiff": "Skill body diff"
+    },
+    "summary": {
+      "heading": "Skills",
+      "caption": "Each skill's numbers are computed over its own case set inside a chosen carrier — not a ranking, and not merged into the agent list above.",
+      "carrier": "Carrier: {carrier}",
+      "noCarrier": "none",
+      "helpedHurt": "{helped} helped · {hurt} hurt",
+      "empty": "No skill owns an eval case yet."
+    }
   }
 }

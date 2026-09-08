@@ -40,6 +40,27 @@ export interface SkillLookup {
   enabledSkills(agentId: string): Promise<RenderableSkill[]>;
 }
 
+/**
+ * specs/15-skill-eval-cases.md §5/§6 — a skill-owned run's arm assembly needs
+ * the carrier's FULL linked-skill set (both gate states, `order`), not the
+ * already gate-ANDed `SkillLookup.enabledSkills` — D8's bypass applies only
+ * to the skill UNDER TEST; the carrier's OTHER skill blocks must still
+ * respect their own normal two-gate rule so the with/without arms differ by
+ * nothing but this skill's own block (AC-16/D7). `AgentsRepository.
+ * linkedSkills`, flattened at the composition point (`routes.ts`), satisfies
+ * this structurally.
+ */
+export interface LinkedSkillForRun extends RenderableSkill {
+  id: string;
+  order: number;
+  linkEnabled: boolean;
+  skillEnabled: boolean;
+}
+
+export interface CarrierSkillLookup {
+  linkedSkills(agentId: string): Promise<LinkedSkillForRun[]>;
+}
+
 /** Resolves an agent's configured LLM provider — `container.llm` satisfies
  *  this structurally, bound in `routes.ts`. */
 export type LlmResolver = (provider: Provider) => Promise<LLMProvider>;

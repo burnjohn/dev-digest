@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { EvalCaseOutcome, EvalExpectation } from '@devdigest/shared';
-import { matches, scoreCase, errorCaseOutcome, scoreRun } from './scoring.js';
+import {
+  matches,
+  scoreCase,
+  errorCaseOutcome,
+  scoreRun,
+  pairArms,
+  computeLift,
+  classifyEffects,
+} from './scoring.js';
 
 const mustFind: EvalExpectation = {
   type: 'must_find',
@@ -43,6 +51,16 @@ describe('matches', () => {
 
   it('matches a wide finding overlapping the expectation by one line', () => {
     expect(matches(finding({ start_line: 1, end_line: 10 }), mustFind)).toBe(true);
+  });
+
+  // Mutation testing (server/LEARNINGS.md 2026-09-07) found this boundary
+  // untested: the prior "wide finding" case above only exercises the overlap
+  // landing on the FINDING'S end_line (its low end, since start_line < end_line
+  // there). A finding whose overlap instead lands on its own start_line — i.e.
+  // it starts exactly on the expectation's end_line and extends past it — hits
+  // a different branch of `fLo`/`fHi`'s min/max normalization.
+  it('matches a finding that starts exactly on the expectation end line and extends past it', () => {
+    expect(matches(finding({ start_line: 12, end_line: 20 }), mustFind)).toBe(true);
   });
 });
 
@@ -258,5 +276,168 @@ describe('scoreRun — AC-18 … AC-22', () => {
     });
     expect(scoreRun([a, b], 100).cost_usd).toBeNull();
     expect(scoreRun([a], 100).cost_usd).toBeCloseTo(0.01);
+  });
+});
+
+// =============================================================================
+// specs/15-skill-eval-cases.md §4 — the two-arm layer (AC-16, AC-20 … AC-23)
+// =============================================================================
+
+/** A `scored`, passing outcome — the shape `scoreCase` would have produced,
+ *  built directly since these tests are about `pairArms`/`computeLift`/
+ *  `classifyEffects`, not about `scoreCase` itself. */
+function scoredOutcome(
+  overrides: Partial<EvalCaseOutcome> & Pick<EvalCaseOutcome, 'case_id'>,
+): EvalCaseOutcome {
+  return {
+    name: overrides.case_id,
+    expectation_type: 'must_find',
+    status: 'scored',
+    pass: true,
+    error_reason: null,
+    findings_total: 1,
+    findings_matched: 1,
+    grounding_kept: 1,
+    grounding_total: 1,
+    duration_ms: 5,
+    cost_usd: 0.001,
+    actual: [],
+    ...overrides,
+  };
+}
+
+describe('pairArms — AC-23', () => {
+  it('pairs two fully-scored, disjoint arms unchanged', () => {
+    const withOutcomes = [scoredOutcome({ case_id: '1', pass: true })];
+    const withoutOutcomes = [scoredOutcome({ case_id: '1', pass: false })];
+    const { with: paired, without: pairedWithout } = pairArms(withOutcomes, withoutOutcomes);
+    expect(paired).toEqual(withOutcomes);
+    expect(pairedWithout).toEqual(withoutOutcomes);
+  });
+
+  it('a case errored in the WITH arm only is rewritten to errored in BOTH arrays, and counted once in cases_errored', () => {
+    const withOutcomes = [
+      errorCaseOutcome('1', 'a', 'must_find', 'boom', 3),
+      scoredOutcome({ case_id: '2', pass: true }),
+    ];
+    const withoutOutcomes = [
+      scoredOutcome({ case_id: '1', pass: false }),
+      scoredOutcome({ case_id: '2', pass: false }),
+    ];
+    const { with: paired, without: pairedWithout } = pairArms(withOutcomes, withoutOutcomes);
+
+    expect(paired[0]!.status).toBe('errored');
+    expect(paired[0]!.error_reason).toBe('paired arm failed');
+    expect(pairedWithout[0]!.status).toBe('errored');
+    expect(pairedWithout[0]!.error_reason).toBe('paired arm failed');
+    // The unaffected case (2) survives untouched in both arrays.
+    expect(paired[1]).toEqual(withOutcomes[1]);
+    expect(pairedWithout[1]).toEqual(withoutOutcomes[1]);
+
+    // scoreRun's own cases_errored count reflects it exactly once per arm —
+    // not twice, and not zero.
+    expect(scoreRun(paired, 0).cases_errored).toBe(1);
+    expect(scoreRun(pairedWithout, 0).cases_errored).toBe(1);
+  });
+
+  it('a case errored in the WITHOUT arm only is also excluded from BOTH — half a comparison is not a comparison', () => {
+    const withOutcomes = [scoredOutcome({ case_id: '1', pass: true })];
+    const withoutOutcomes = [errorCaseOutcome('1', 'a', 'must_find', 'timeout', 4)];
+    const { with: paired, without: pairedWithout } = pairArms(withOutcomes, withoutOutcomes);
+
+    expect(paired[0]!.status).toBe('errored');
+    expect(paired[0]!.pass).toBeNull();
+    expect(pairedWithout[0]!.status).toBe('errored');
+    expect(pairedWithout[0]!.pass).toBeNull();
+  });
+
+  it('a case present in the WITH arm but entirely missing from the WITHOUT arm is also excluded from both (unpaired)', () => {
+    const withOutcomes = [scoredOutcome({ case_id: '1', pass: true })];
+    const withoutOutcomes: EvalCaseOutcome[] = [];
+    const { with: paired, without: pairedWithout } = pairArms(withOutcomes, withoutOutcomes);
+
+    expect(paired[0]!.status).toBe('errored');
+    expect(pairedWithout[0]!.status).toBe('errored');
+    expect(pairedWithout[0]!.duration_ms).toBe(0); // no real without-outcome to take a duration from
+  });
+});
+
+describe('computeLift — AC-19, AC-22', () => {
+  it('is the per-metric with-arm minus without-arm delta', () => {
+    const withMetrics = scoreRun(
+      [scoredOutcome({ case_id: '1', pass: true }), scoredOutcome({ case_id: '2', pass: true })],
+      0,
+    );
+    const withoutMetrics = scoreRun(
+      [scoredOutcome({ case_id: '1', pass: false }), scoredOutcome({ case_id: '2', pass: true })],
+      0,
+    );
+    // recall: with = 2/2 = 1, without = 1/2 = 0.5 → lift 0.5
+    const lift = computeLift(withMetrics, withoutMetrics);
+    expect(lift.recall).toBeCloseTo(0.5);
+  });
+
+  it('AC-22 — recall lift is null (never 0) when a run has no must_find cases in EITHER arm', () => {
+    const mustNotFlag = (id: string, pass: boolean) =>
+      scoredOutcome({ case_id: id, expectation_type: 'must_not_flag', pass, findings_total: 0, findings_matched: 0 });
+    const withMetrics = scoreRun([mustNotFlag('1', true)], 0);
+    const withoutMetrics = scoreRun([mustNotFlag('1', true)], 0);
+    expect(withMetrics.recall).toBeNull();
+    expect(withoutMetrics.recall).toBeNull();
+    const lift = computeLift(withMetrics, withoutMetrics);
+    expect(lift.recall).toBeNull();
+    expect(lift.recall).not.toBe(0);
+  });
+
+  it('is null when only ONE side is null (not both)', () => {
+    const mustFind = scoreRun([scoredOutcome({ case_id: '1', pass: true })], 0);
+    const mustNotFlagOnly = scoreRun(
+      [scoredOutcome({ case_id: '1', expectation_type: 'must_not_flag', pass: true, findings_total: 0, findings_matched: 0 })],
+      0,
+    );
+    expect(mustFind.recall).toBe(1);
+    expect(mustNotFlagOnly.recall).toBeNull();
+    expect(computeLift(mustFind, mustNotFlagOnly).recall).toBeNull();
+    expect(computeLift(mustNotFlagOnly, mustFind).recall).toBeNull();
+  });
+});
+
+describe('classifyEffects — D5, AC-20', () => {
+  it('classifies all four values off each case’s pass/fail pair', () => {
+    const pairedWith = [
+      scoredOutcome({ case_id: 'helped', pass: true }),
+      scoredOutcome({ case_id: 'hurt', pass: false }),
+      scoredOutcome({ case_id: 'no_effect_pass', pass: true }),
+      scoredOutcome({ case_id: 'no_effect_fail', pass: false }),
+    ];
+    const pairedWithout = [
+      scoredOutcome({ case_id: 'helped', pass: false }),
+      scoredOutcome({ case_id: 'hurt', pass: true }),
+      scoredOutcome({ case_id: 'no_effect_pass', pass: true }),
+      scoredOutcome({ case_id: 'no_effect_fail', pass: false }),
+    ];
+    const effects = classifyEffects(pairedWith, pairedWithout);
+    const byId = new Map(effects.map((e) => [e.case_id, e.effect]));
+    expect(byId.get('helped')).toBe('helped');
+    expect(byId.get('hurt')).toBe('hurt');
+    expect(byId.get('no_effect_pass')).toBe('no_effect_pass');
+    expect(byId.get('no_effect_fail')).toBe('no_effect_fail');
+    expect(effects).toHaveLength(4);
+  });
+
+  it('excludes an errored (unpaired) case entirely — never bucketed as no_effect_fail', () => {
+    const errored = errorCaseOutcome('1', 'a', 'must_find', 'paired arm failed', 0);
+    const pairedWith = [errored, scoredOutcome({ case_id: '2', pass: true })];
+    const pairedWithout = [errored, scoredOutcome({ case_id: '2', pass: true })];
+    const effects = classifyEffects(pairedWith, pairedWithout);
+    expect(effects).toHaveLength(1);
+    expect(effects[0]!.case_id).toBe('2');
+    expect(effects.some((e) => e.case_id === '1')).toBe(false);
+  });
+
+  it('excludes a case present in the with-arm but absent from the without-arm', () => {
+    const pairedWith = [scoredOutcome({ case_id: '1', pass: true })];
+    const pairedWithout: EvalCaseOutcome[] = [];
+    expect(classifyEffects(pairedWith, pairedWithout)).toHaveLength(0);
   });
 });

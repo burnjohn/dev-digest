@@ -61,6 +61,8 @@ before assuming the same is safe elsewhere.
 
 Fix: diagnosed via `git worktree list` + reading the sibling worktree's own `migrations/meta/_journal.json` and its `.sql` file to confirm exactly what it added and that it was schema-equivalent (same column/FK, only the index name differed) before touching anything. Rolled back ONLY the specific phantom drift this checkout's own migration would collide with — `ALTER TABLE agent_runs DROP CONSTRAINT/DROP COLUMN`, `DROP INDEX`, and `DELETE FROM drizzle.__drizzle_migrations WHERE id = <that specific row>` — then re-ran `pnpm db:migrate` cleanly. Deliberately left the UNRELATED sibling `devdigest-ci` worktree's own phantom migration row alone (a different id, touching `ci_installations`/`ci_runs`, nothing this pass touches) — it's expected to self-resolve harmlessly once `feat/export-to-ci` actually merges and its real migration file lands in this checkout's history with a matching hash. **Generalizes:** before trusting `pnpm db:generate < /dev/null`'s "one clean pass" as proof nothing is wrong, and before assuming a `db:migrate` failure means YOUR migration is malformed, run `git worktree list` and check whether any sibling worktree could have touched the same shared dev DB — the failure is otherwise indistinguishable from a genuine schema-authoring mistake.
 
+**2026-09-07 addendum (specs/15-skill-eval-cases.md §2, main checkout, no sibling-worktree collision this time) — the SAME symptom recurs from a plain merge artifact inside this checkout's OWN committed migration history, not a live worktree race.** `pnpm db:generate` for a clean, additive-only schema change (4 nullable columns on `eval_runs`, one composite-unique-index swap on `eval_cases`) also silently re-emitted `ALTER TABLE agent_runs ADD COLUMN multi_agent_run_id` + its FK + its index — a column already applied to the live DB by `0023_flimsy_nick_fury.sql` (the `feat/multi-agent-review` merge this branch's history already contains, per `git log`). Confirmed via `docker exec devdigest-postgres psql -d devdigest -c '\d agent_runs'` (column present) and `select * from drizzle.__drizzle_migrations` (a hash whose `created_at` matches this checkout's own `0023_flimsy_nick_fury` `when` timestamp is already recorded — this is NOT a sibling worktree's row, it's this checkout's own prior apply). Root cause: `migrations/meta/0024_snapshot.json` and `0025_snapshot.json` — both already-applied, do-not-touch files — simply don't carry `multi_agent_run_id` in their `agent_runs` table snapshot even though `0023` added it and nothing later drops it; almost certainly a merge that landed `0023_flimsy_nick_fury.sql`'s SQL without regenerating the snapshot chain on top of it. Fix: same shape as the worktree case above but the file surgery differs — left `0024`/`0025` alone entirely (they're applied; editing them is the one explicit do-not-touch), and instead hand-stripped ONLY the 3 phantom `multi_agent_run_id` statements from the NEWLY generated (not-yet-applied) `0026...sql` before running `db:migrate`. Left `0026_snapshot.json` exactly as `drizzle-kit` produced it — it correctly includes `multi_agent_run_id` (matching live DB reality via the schema file, which already had the column), so it now serves as the correct baseline for the NEXT `db:generate`, self-healing the drift going forward without touching any already-applied file. **Generalizes beyond the worktree case:** after ANY `db:generate`, read the generated `.sql` for statements touching a table your OWN schema edit didn't name — even with zero sibling worktrees involved, a stale snapshot merged in from another branch can silently reintroduce already-applied DDL for a completely unrelated table, and `pnpm db:migrate` failing loudly is the ONLY signal (schema `import type` diffs and `pnpm typecheck` see nothing wrong).
+
 ### 2026-08-04 — `reviews.it.test.ts`'s "runs a review" test intermittently times out because `intentService.resolve()` makes a REAL OpenRouter network call on a dev machine with real secrets configured
 
 `test/reviews.it.test.ts`'s `appWith()` helper only overrides `llm: { [provider]: mockLLM }` for `openai`/`anthropic` — never `openrouter`. `review_intent`'s `FEATURE_MODELS` default is `openrouter`/`deepseek-v4-flash` (unchanged since L03 v1), so every `executeRuns` batch's intent-resolution step calls the REAL, un-mocked `container.llm('openrouter')` → a genuine network call to OpenRouter, IF `~/.devdigest/secrets.json` has a real `OPENROUTER_API_KEY` (as it does on a dev machine that's used the app for real). Without that key it fails fast with a `ConfigError` (no network attempt) and the flake doesn't happen — this is why it may not reproduce in a clean CI sandbox.
@@ -614,6 +616,59 @@ an import of `modules/ci/ingest.ts`'s `ARCHIVE_ENTRY_LIMIT`/`MAX_ENTRY_BYTES`
 caps would be a backwards dependency (adapters are outer-ring; a module-
 specific constant isn't a port), so the two stay independently declared with a
 comment cross-referencing each other for consistency instead.
+
+### 2026-09-07 — `@stryker-mutator/core@10.0.0` pulls in a broken Babel 8 tree; pin to `9.6.1`, and a `pnpm install --force` does NOT clean up the wreckage
+
+Set up mutation testing on `src/modules/eval/scoring.ts` (`stryker.config.json`,
+`stryker.vitest.config.ts` — a narrowed vitest config scoping `include` to just
+`scoring.test.ts` so a mutation run stays under a minute instead of re-running
+the full ~745-test suite per mutant). `pnpm add -D @stryker-mutator/core
+@stryker-mutator/vitest-runner` resolved `^10.0.0` (latest), which pulls in
+`@babel/core@8.0.1` transitively (Stryker's own instrumenter depends on Babel
+presets/plugins with loose ranges) — Babel 8 at this dist-tag has an internal
+ESM/CJS interop bug (`@babel/plugin-proposal-decorators`'s ESM build required
+via CJS from `@babel/core`), so every mutation run crashed with
+`ERR_REQUIRE_ESM` before instrumenting anything.
+
+**Do not try to fix this with `pnpm.overrides`.** Pinning just `@babel/core` +
+`@babel/plugin-proposal-decorators` to `^7.x` left OTHER Babel packages in the
+same tree (`@babel/preset-typescript`, `@babel/preset-react`, `@babel/helper-
+create-class-features-plugin`, …) still resolving independently to `8.0.1`
+(their own ranges weren't covered by the override), producing a split-brain
+7/8 install and a DIFFERENT crash (`@babel/helper-compilation-targets`
+requiring a `lru-cache` whose export shape didn't match what it expected).
+**The fix that actually worked: downgrade to `@stryker-mutator/core@9.6.1` +
+`@stryker-mutator/vitest-runner@9.6.1`** (the last pre-10.x release) — its
+Babel tree resolves uniformly to `7.29.7`, no overrides needed.
+
+Even after downgrading, the crash didn't go away on the first retry — `pnpm
+install` (with or without `--force`) reuses/relinks existing on-disk nested
+`node_modules/` directories under `node_modules/@babel/*` rather than purging
+ones a prior (bad) install left behind; 18 stale nested `node_modules` dirs
+survived three separate `pnpm add`/`pnpm install --force` cycles, each still
+pointing at Babel-8-era packages (confirmed via `node -e "require.resolve('lru-
+cache', {paths:[...]})"`, which resolved to a completely different file than
+`pnpm why lru-cache` reported). **The only fix that reliably cleared it: `rm
+-rf node_modules && pnpm install`** — a full wipe, not a targeted one. If a
+future dependency swap in `server/` produces a `require`/interop error that
+persists across `pnpm install --force`, suspect stale nested `node_modules`
+before suspecting the lockfile or the new package itself.
+
+Mutation score on `scoring.ts`: 150/161 mutants killed (93.17%) after adding
+one boundary test for `matches()`'s range-intersection — the existing "wide
+finding overlapping by one line" test only covered the overlap landing on the
+*finding's* low end (`start_line < end_line`, overlap at `end_line`); nothing
+covered a finding whose overlap lands on its own `start_line` (starts exactly
+on the expectation's `end_line` and extends past it), which is a different
+branch of the `Math.min`/`Math.max` normalization in `matches()` — that gap
+alone left two independent mutants (a `Math.min`→`Math.max` swap and a
+`<=`→`<` swap, both on the same two lines) surviving simultaneously. The
+remaining 11 survivors are lower-value: dead-ish branches in `classifyEffects`
+guarded by conditions the paired-case invariant from `pairArms` already makes
+unreachable in practice, and one `traces_passed` mutant equivalent to "count
+scored cases" vs "count passing cases" that no existing fixture happens to
+distinguish — left as open follow-up, not fixed here (task scope was "kill
+one").
 
 ## Recurring Errors & Fixes
 

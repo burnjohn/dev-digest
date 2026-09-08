@@ -1,0 +1,167 @@
+name: eval-workflow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CLAUDE.md'
+      - '.claude/**'
+      - 'evals/**'
+      - '.github/workflows/eval-workflow.yml'
+  pull_request:
+    paths:
+      - 'CLAUDE.md'
+      - '.claude/**'
+      - 'evals/**'
+      - '.github/workflows/eval-workflow.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-workflow-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  OPENROUTER_BASE_URL: http://localhost:4000
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  EVAL_MODEL: google/gemini-2.5-flash
+  EVAL_JUDGE_MODEL: google/gemini-2.5-flash
+  EVAL_MAX_TURNS: 6
+  EVAL_BENCHMARK_RUNS: 2
+
+jobs:
+  detect:
+    name: Detect Eval Scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_workflow: ${{ steps.detect.outputs.run_workflow }}
+      has_openrouter_key: ${{ steps.secret_check.outputs.has_openrouter_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect Changed Files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > /tmp/eval-changed.txt
+          else
+            git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > /tmp/eval-changed.txt
+          fi
+
+      - id: detect
+        name: Map Changes To Evals
+        run: |
+          CHANGED_FILES="$(cat /tmp/eval-changed.txt)"
+          export CHANGED_FILES
+          node evals/scripts/ci-detect.mjs
+
+      - id: secret_check
+        name: Check Model Eval Secret Availability
+        run: |
+          if [ -n "${{ secrets.OPENROUTER_API_KEY }}" ]; then
+            echo "has_openrouter_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_openrouter_key=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish Detection Summary
+        run: |
+          {
+            echo "## Eval Scope — Workflow"
+            echo ""
+            echo "- workflow: `${{ steps.detect.outputs.run_workflow }}`"
+            echo "- OpenRouter key available: `${{ steps.secret_check.outputs.has_openrouter_key }}`"
+            if [ "${{ steps.secret_check.outputs.has_openrouter_key }}" != "true" ]; then
+              echo "- model-based eval jobs will be skipped because the OpenRouter secret is unavailable in this run"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    name: Eval Quality
+    needs: detect
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm eval:quality
+
+  workflow:
+    name: Workflow Evals
+    needs: [detect, quality]
+    if: needs.detect.outputs.run_workflow == 'true' && needs.detect.outputs.has_openrouter_key == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm proxy:up
+
+      - run: pnpm proxy:wait
+
+      - name: Run Workflow Evals
+        run: pnpm eval:workflow
+
+      - name: Publish Workflow Summary
+        if: always()
+        run: |
+          {
+            echo "## Workflow Evals"
+            echo ""
+            echo "- command: \`pnpm eval:workflow\`"
+            echo "- model: \`${EVAL_MODEL}\`"
+            echo "- max turns: \`${EVAL_MAX_TURNS}\`"
+            echo "- allow-list stays read-only in workflowTask: \`Read, Grep, Glob, Task, Agent, Skill\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-evals
+          path: evals/results
+          if-no-files-found: ignore
+
+      - if: always()
+        run: pnpm proxy:down

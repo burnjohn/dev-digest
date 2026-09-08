@@ -154,7 +154,7 @@ export function SkillsView({ selectedId }: { selectedId?: string }) {
                   kind="secondary"
                   size="sm"
                   icon="FlaskConical"
-                  disabled
+                  onClick={() => setTab("evals")}
                   title={t("editor.runEvalsTooltip")}
                 >
                   {t("editor.runEvals")}

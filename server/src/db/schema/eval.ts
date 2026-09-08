@@ -9,10 +9,11 @@ import {
   doublePrecision,
   uniqueIndex,
   index,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
-import type { EvalExpectation, EvalCaseOutcome } from '@devdigest/shared';
+import type { EvalExpectation, EvalCaseOutcome, EvalRun } from '@devdigest/shared';
 
 // ============================================================ Eval / Conformance / Compose
 //
@@ -51,10 +52,20 @@ export const evalCases = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    // D17/AC-1 — idempotency enforced in the database: re-activating the
-    // turn-into-eval-case action on the same finding can never create a
-    // second row.
-    sourceFindingUq: uniqueIndex('eval_cases_source_finding_uq').on(t.sourceFindingId),
+    // D17/AC-1, widened by specs/15-skill-eval-cases.md clarification 2 —
+    // idempotency is scoped to the finding AND THE OWNER, not the finding
+    // alone: SPEC-12 already writes an agent-owned case from a triaged
+    // finding, so a single-column unique index would collide the moment a
+    // skill-owned case is created from the same finding (and vice versa —
+    // "the same finding turned into cases for three different injected
+    // skills" is an explicit, allowed edge case). Postgres still lets many
+    // NULLs through a unique index, so hand-authored/fixture cases
+    // (`sourceFindingId: null`) are unaffected either way.
+    sourceFindingUq: uniqueIndex('eval_cases_source_finding_uq').on(
+      t.sourceFindingId,
+      t.ownerKind,
+      t.ownerId,
+    ),
     ownerIdx: index('eval_cases_owner_idx').on(t.workspaceId, t.ownerKind, t.ownerId),
   }),
 );
@@ -73,7 +84,11 @@ export const evalRuns = pgTable(
     status: text('status', { enum: ['running', 'completed', 'errored'] })
       .notNull()
       .default('running'),
-    // D4 — the agent configuration version this run executed against.
+    // D4 — the configuration version this run executed against: the AGENT's
+    // own version on an agent-owned run, and (specs/15-skill-eval-cases.md
+    // D6) the CARRIER's version on a skill-owned run — same column, same
+    // meaning ("the config version this run executed against"), never a
+    // second column.
     agentVersion: integer('agent_version'),
     // D5 — the exact set of case ids this run covered (apples-to-apples
     // comparison, AC-33).
@@ -92,6 +107,21 @@ export const evalRuns = pgTable(
     citationAccuracy: doublePrecision('citation_accuracy'),
     durationMs: integer('duration_ms'),
     costUsd: doublePrecision('cost_usd'),
+    // ---- specs/15-skill-eval-cases.md (R1) — skill-owned run identity ----
+    // All four are null on every agent-owned run, past and future.
+    // D6 — the `skills.version` this run injected into the with-arm.
+    skillVersion: integer('skill_version'),
+    // D2/D6/D11 — the carrier agent's identity. Deliberately no FK, matching
+    // `ownerId`'s existing polymorphic posture above; cascade-on-delete is
+    // application-side (see `SkillsService.delete`'s `evalCleanup` port).
+    carrierAgentId: uuid('carrier_agent_id'),
+    // D8/AC-52 — true when either enable gate was off for this skill/carrier
+    // at run time (the with-arm still injected the body regardless).
+    gatesBypassed: boolean('gates_bypassed').notNull().default(false),
+    // D3 — the without-arm's whole `EvalRun` (its own `per_case` included),
+    // persisted in full per clarification 5 (AC-36 needs the complete
+    // finding sets, not aggregates only). Null on every agent-owned run.
+    armWithout: jsonb('arm_without').$type<EvalRun>(),
   },
   (t) => ({
     ownerIdx: index('eval_runs_owner_idx').on(

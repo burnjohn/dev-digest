@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 
 const startRunMutate = vi.fn();
 const deleteCaseMutate = vi.fn();
+const createCaseMutate = vi.fn();
 const successToast = vi.fn();
 
 vi.mock("@/lib/toast", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/lib/hooks/eval", () => ({
   useDeleteEvalCase: () => ({ mutate: deleteCaseMutate }),
   useEvalCase: () => ({ data: undefined, isLoading: true }),
   useUpdateEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateEvalCase: () => ({ mutate: createCaseMutate, isPending: false }),
 }));
 
 import { EvalsTab } from "./EvalsTab";
@@ -166,5 +168,24 @@ describe("EvalsTab", () => {
     expect(confirmSpy).toHaveBeenCalled();
     expect(deleteCaseMutate).toHaveBeenCalledWith({ id: "c1", ownerId: "agent-1" });
     confirmSpy.mockRestore();
+  });
+
+  it("opens the new-case modal and submits a hand-authored case owned by this agent", () => {
+    CASES = [];
+    RUNS = [];
+    renderWithIntl(<EvalsTab agent={AGENT} />);
+    fireEvent.click(screen.getByRole("button", { name: messages.caseEditor.newCase }));
+
+    const nameInput = document.getElementById("agent-new-case-name") as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: "hand-authored-case" } });
+    fireEvent.click(screen.getByRole("button", { name: messages.caseEditor.save }));
+
+    expect(createCaseMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        input: expect.objectContaining({ name: "hand-authored-case" }),
+      }),
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
   });
 });

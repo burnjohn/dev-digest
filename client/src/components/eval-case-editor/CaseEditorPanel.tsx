@@ -6,26 +6,37 @@ import { Modal, Button, TextInput, Textarea, SelectInput, Skeleton, Tabs } from 
 import type { EvalCaseOutcome, EvalExpectationType } from "@devdigest/shared/contracts/knowledge";
 import { useEvalCase, useUpdateEvalCase } from "@/lib/hooks/eval";
 import { useToast } from "@/lib/toast";
+import { DiffInputField } from "./DiffInputField";
 import { EXPECTATION_TYPES } from "./constants";
 import { s } from "./styles";
 
 /**
- * AC-39 — WHEN a user opens a case: name, frozen input split into diff /
- * files / PR metadata, the expectation in an editable form, and its outcome
- * in the latest run that covered it. AC-12/AC-13: name, notes, frozen input
- * and expectation are all editable here; the server re-validates on save
- * (frozen-input.ts) and 422s a rejected edit with a stated reason.
+ * AC-39 (agent) / AC-36 (skill) — WHEN a user opens a case: name, frozen
+ * input split into diff / files / PR metadata, the expectation in an
+ * editable form, and its outcome in the latest run that covered it. AC-12/
+ * AC-13: name, notes, frozen input and expectation are all editable here;
+ * the server re-validates on save (frozen-input.ts) and 422s a rejected edit
+ * with a stated reason.
  *
  * Recommendation followed (plan §8): a panel inside the tab, not a route —
  * AC-39 says "opens a case", never "navigates to".
+ *
+ * `withoutOutcome` is an additive, optional prop (client/LEARNINGS.md
+ * 2026-08-21 — gated on `!== undefined`, not truthiness, so a `null`
+ * without-arm outcome — e.g. this case errored out of the pair — still
+ * renders the side-by-side layout with its own "no outcome" message). The
+ * agent tab's call site never supplies it and renders exactly as before this
+ * widening (specs/15-skill-eval-cases.md plan §11, AC-36's side-by-side arms).
  */
 export function CaseEditorPanel({
   caseId,
   outcome,
+  withoutOutcome,
   onClose,
 }: {
   caseId: string;
   outcome: EvalCaseOutcome | null;
+  withoutOutcome?: EvalCaseOutcome | null;
   onClose: () => void;
 }) {
   const t = useTranslations("eval");
@@ -123,7 +134,20 @@ export function CaseEditorPanel({
 
         <div style={s.formField}>
           <span style={s.label}>{t("caseEditorPanel.outcomeTitle")}</span>
-          <OutcomeSummary outcome={outcome} />
+          {withoutOutcome !== undefined ? (
+            <div style={s.formRow}>
+              <div style={s.formField}>
+                <span style={s.label}>{t("skill.withArm")}</span>
+                <OutcomeSummary outcome={outcome} />
+              </div>
+              <div style={s.formField}>
+                <span style={s.label}>{t("skill.withoutArm")}</span>
+                <OutcomeSummary outcome={withoutOutcome} />
+              </div>
+            </div>
+          ) : (
+            <OutcomeSummary outcome={outcome} />
+          )}
         </div>
 
         <div style={s.formField}>
@@ -138,15 +162,13 @@ export function CaseEditorPanel({
             pad="0"
           />
           {inputTab === "diff" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <Textarea value={diff} onChange={setDiff} rows={8} mono />
-              <div style={s.formField}>
-                <label style={s.label} htmlFor="eval-case-files">
-                  {t("caseEditorPanel.filesLabel")}
-                </label>
-                <TextInput id="eval-case-files" value={files} onChange={setFiles} mono />
-              </div>
-            </div>
+            <DiffInputField
+              diff={diff}
+              onDiffChange={setDiff}
+              files={files}
+              onFilesChange={setFiles}
+              filesId="eval-case-files"
+            />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={s.formField}>
@@ -159,7 +181,7 @@ export function CaseEditorPanel({
                 <label style={s.label} htmlFor="eval-case-pr-body">
                   {t("caseEditorPanel.prBodyLabel")}
                 </label>
-                <Textarea value={prBody} onChange={setPrBody} rows={4} />
+                <Textarea id="eval-case-pr-body" value={prBody} onChange={setPrBody} rows={4} />
               </div>
             </div>
           )}
@@ -173,6 +195,7 @@ export function CaseEditorPanel({
                 {t("caseEditorPanel.expectationType")}
               </label>
               <SelectInput
+                id="eval-case-exp-type"
                 value={expType}
                 onChange={(v) => setExpType(v as EvalExpectationType)}
                 options={EXPECTATION_TYPES.map((v) => ({
@@ -232,7 +255,7 @@ export function CaseEditorPanel({
           <label style={s.label} htmlFor="eval-case-notes">
             {t("caseEditorPanel.notesLabel")}
           </label>
-          <Textarea value={notes} onChange={setNotes} rows={2} />
+          <Textarea id="eval-case-notes" value={notes} onChange={setNotes} rows={2} />
         </div>
 
         <div style={s.footer}>

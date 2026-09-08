@@ -7,7 +7,7 @@ import { Button, EmptyState, Icon } from "@devdigest/ui";
 import type { EvalRunRecord } from "@devdigest/shared/contracts/eval-ci";
 import { formatCost, relativeTime } from "@/lib/format";
 import { formatMetricPct } from "@/lib/eval-format";
-import { MAX_COMPARE_SELECTION } from "./constants";
+import { MAX_COMPARE_SELECTION } from "@/components/eval-case-editor";
 import { s } from "./styles";
 
 /**

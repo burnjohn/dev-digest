@@ -66,6 +66,16 @@ d('eval module (DB-backed)', () => {
     return row!.id;
   }
 
+  /** R2/AC-30/AC-31 — the seeded skill-owned fixture, four cases (two of each
+   *  expectation type), carried by `Security Reviewer`. */
+  async function secretLeakageGateId(): Promise<string> {
+    const [row] = await pg.handle.db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, 'secret-leakage-gate')));
+    return row!.id;
+  }
+
   /** AC-27 — a SEPARATE app instance, built with a non-`test` `NODE_ENV`, so
    *  `@fastify/rate-limit` is actually registered (`app.ts`: "Disabled under
    *  test so integration suites can hammer endpoints via inject()"). The
@@ -351,5 +361,216 @@ d('eval module (DB-backed)', () => {
     } finally {
       await db.delete(t.evalCases).where(eq(t.evalCases.sourceFindingId, findingId));
     }
+  });
+
+  // ===========================================================================
+  // specs/15-skill-eval-cases.md §7 — skill-owned eval routes (AC-45, AC-53,
+  // AC-55). Follows this file's existing setup/teardown and fixture patterns
+  // exactly — no new test harness.
+  // ===========================================================================
+  describe('skill-owned eval routes', () => {
+    it('AC-2 — GET /findings/:id/eval-skills returns the empty-offer state for a finding whose review predates run_skills', async () => {
+      const app = await makeApp();
+      const [findingRow] = await pg.handle.db
+        .select({ id: t.findings.id })
+        .from(t.findings)
+        .where(eq(t.findings.title, 'Hardcoded Stripe secret key in commit'));
+      const res = await app.inject({
+        method: 'GET',
+        url: `/findings/${findingRow!.id}/eval-skills`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([]);
+      await app.close();
+    });
+
+    it('serves the skill routes over their documented surface: cases (incl. AC-8 hand-authored), carriers, estimate, a full two-arm run, and compare', async () => {
+      const app = await makeApp();
+      const skillId = await secretLeakageGateId();
+      const carrierId = await securityReviewerId();
+
+      const casesRes = await app.inject({ method: 'GET', url: `/skills/${skillId}/eval/cases` });
+      expect(casesRes.statusCode).toBe(200);
+      expect(casesRes.json()).toHaveLength(4);
+
+      // AC-11 — the carrier picker states both gate states.
+      const carriersRes = await app.inject({ method: 'GET', url: `/skills/${skillId}/eval/carriers` });
+      expect(carriersRes.statusCode).toBe(200);
+      const securityCarrier = carriersRes
+        .json()
+        .find((c: { agent_id: string }) => c.agent_id === carrierId);
+      expect(securityCarrier).toMatchObject({ skill_enabled: true, link_enabled: true });
+
+      // AC-8 — hand-authored case creation, same shape as `EvalCaseInput`.
+      const createCaseRes = await app.inject({
+        method: 'POST',
+        url: `/skills/${skillId}/eval/cases`,
+        payload: {
+          name: 'hand-authored-case',
+          input_diff:
+            'diff --git a/src/handler.ts b/src/handler.ts\n--- a/src/handler.ts\n+++ b/src/handler.ts\n@@ -1,1 +1,1 @@\n-x\n+const key = "sk_live_abcdef";',
+          input_files: ['src/handler.ts'],
+          input_meta: { pr_number: null, title: 'hand-authored', body: null },
+          expectation: { type: 'must_find', file: 'src/handler.ts', start_line: 1, end_line: 1 },
+        },
+      });
+      expect(createCaseRes.statusCode).toBe(201);
+
+      // AC-25 — executions_total is 2 x cases_total, stated before any run.
+      const estimateRes = await app.inject({
+        method: 'GET',
+        url: `/skills/${skillId}/eval/estimate?carrier_agent_id=${carrierId}`,
+      });
+      expect(estimateRes.statusCode).toBe(200);
+      const estimate = estimateRes.json();
+      expect(estimate.cases_total).toBe(5);
+      expect(estimate.executions_total).toBe(10);
+      expect(estimate.gates_bypassed).toBe(false);
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: `/skills/${skillId}/eval/runs`,
+        payload: { carrier_agent_id: carrierId },
+      });
+      expect(startRes.statusCode).toBe(202);
+      const { run_id: firstRunId, status, estimate: startEstimate } = startRes.json();
+      expect(status).toBe('running');
+      expect(startEstimate.executions_total).toBe(10);
+
+      const final = await waitForRunCompletion(app, firstRunId);
+      expect(final.status).toBe('completed');
+      // R1/D6 — the skill-owned identity columns and the derived two-arm
+      // figures ride alongside the base `EvalRunRecord` fields (AC-18).
+      expect(final.skill_version).toEqual(expect.any(Number));
+      expect(final.carrier_agent_id).toBe(carrierId);
+      expect(final.carrier_agent_name).toBe('Security Reviewer');
+      expect(final.gates_bypassed).toBe(false);
+      expect(final.arm_without).not.toBeNull();
+      expect(final.lift).not.toBeNull();
+      expect(Array.isArray(final.effects)).toBe(true);
+      const counts = final.effect_counts as Record<string, number>;
+      expect(counts.helped + counts.hurt + counts.no_effect_pass + counts.no_effect_fail).toBe(5);
+
+      const listRunsRes = await app.inject({ method: 'GET', url: `/skills/${skillId}/eval/runs` });
+      expect(listRunsRes.statusCode).toBe(200);
+      expect(listRunsRes.json().some((r: { id: string }) => r.id === firstRunId)).toBe(true);
+
+      // A second completed run of the same skill, so compare has two records.
+      const secondStart = await app.inject({
+        method: 'POST',
+        url: `/skills/${skillId}/eval/runs`,
+        payload: { carrier_agent_id: carrierId },
+      });
+      expect(secondStart.statusCode).toBe(202);
+      const secondFinal = await waitForRunCompletion(app, secondStart.json().run_id);
+      expect(secondFinal.status).toBe('completed');
+
+      // AC-32/AC-33 — compare over the two skill-owned runs.
+      const compareRes = await app.inject({
+        method: 'GET',
+        url: `/eval/skills/compare?a=${firstRunId}&b=${secondFinal.id}`,
+      });
+      expect(compareRes.statusCode).toBe(200);
+      const compare = compareRes.json();
+      expect(compare.carrier_differs).toBe(false);
+      expect(compare.old.id).toBeDefined();
+      expect(compare.new.id).toBeDefined();
+      expect(Array.isArray(compare.skill_body_diff)).toBe(true);
+
+      await app.close();
+    }, 30_000);
+
+    it('AC-26 — POST /eval/skills/runs/all runs every skill owning cases with a deterministically auto-selected carrier', async () => {
+      const app = await makeApp();
+      const skillId = await secretLeakageGateId();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/eval/skills/runs/all',
+        payload: { confirm: true },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      const entry = body.started.find((s: { skill_id: string }) => s.skill_id === skillId);
+      expect(entry).toBeDefined();
+      expect(entry.carrier_agent_name).toBe('Security Reviewer');
+      expect(entry.run_id).not.toBeNull();
+
+      const final = await waitForRunCompletion(app, entry.run_id);
+      expect(final.status).toBe('completed');
+
+      await app.close();
+    }, 30_000);
+
+    it('AC-53 — a cross-workspace carrier is refused before any case row is read', async () => {
+      const { db } = pg.handle;
+      const [otherWs] = await db
+        .insert(t.workspaces)
+        .values({ name: 'other-skill-eval-ws' })
+        .returning();
+      const [foreignAgent] = await db
+        .insert(t.agents)
+        .values({
+          workspaceId: otherWs!.id,
+          name: 'Foreign Skill Agent',
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          systemPrompt: 'x',
+        })
+        .returning();
+
+      // A brand-new skill in THIS workspace with ZERO eval cases. Case-count
+      // order matters here: if the implementation read cases before
+      // resolving the carrier, this would 422 `no_cases` instead — the
+      // AC-53 order (resolve skill + carrier, BOTH workspace-scoped, before
+      // any case row is read) means the cross-workspace carrier is refused
+      // first, with a 404, regardless of the empty case set.
+      const [emptySkill] = await db
+        .insert(t.skills)
+        .values({
+          workspaceId,
+          name: `empty-skill-${randomUUID().slice(0, 8)}`,
+          description: 'no cases',
+          type: 'custom',
+          source: 'manual',
+          body: 'x',
+          enabled: true,
+          version: 1,
+        })
+        .returning();
+
+      const app = await makeApp();
+      const res = await app.inject({
+        method: 'POST',
+        url: `/skills/${emptySkill!.id}/eval/runs`,
+        payload: { carrier_agent_id: foreignAgent!.id },
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it('AC-45 — a skill’s GET /skills/:id/stats payload is byte-identical before and after a completed eval run', async () => {
+      const app = await makeApp();
+      const skillId = await secretLeakageGateId();
+      const carrierId = await securityReviewerId();
+
+      const before = await app.inject({ method: 'GET', url: `/skills/${skillId}/stats` });
+      expect(before.statusCode).toBe(200);
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: `/skills/${skillId}/eval/runs`,
+        payload: { carrier_agent_id: carrierId },
+      });
+      expect(startRes.statusCode).toBe(202);
+      const final = await waitForRunCompletion(app, startRes.json().run_id);
+      expect(final.status).toBe('completed');
+
+      const after = await app.inject({ method: 'GET', url: `/skills/${skillId}/stats` });
+      expect(after.statusCode).toBe(200);
+      expect(after.json()).toEqual(before.json());
+
+      await app.close();
+    }, 20_000);
   });
 });

@@ -2,8 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import type { EvalCaseMeta, EvalExpectation } from '@devdigest/shared';
 import { AppError, ConfigError, NotFoundError } from '../../platform/errors.js';
 import { EvalService } from './service.js';
-import type { EvalCaseRow, EvalRunRow, FindingForCase } from './repository.js';
-import type { AgentRecord } from './ports.js';
+import type {
+  CarrierForSkill,
+  EvalCaseRow,
+  EvalRunRow,
+  FindingForCase,
+  InjectedSkillForFinding,
+  SkillForEval,
+} from './repository.js';
+import type { AgentRecord, LinkedSkillForRun } from './ports.js';
 
 /**
  * A hand-written fake satisfying `EvalRepository`'s public surface
@@ -24,9 +31,16 @@ class FakeEvalRepository {
     return this.findings.get(findingId);
   }
 
-  async getCaseBySourceFinding(workspaceId: string, findingId: string): Promise<EvalCaseRow | undefined> {
+  async getCaseBySourceFindingForOwner(
+    workspaceId: string,
+    findingId: string,
+    ownerKind: string,
+    ownerId: string,
+  ): Promise<EvalCaseRow | undefined> {
     void workspaceId;
-    return [...this.cases.values()].find((c) => c.sourceFindingId === findingId);
+    return [...this.cases.values()].find(
+      (c) => c.sourceFindingId === findingId && c.ownerKind === ownerKind && c.ownerId === ownerId,
+    );
   }
 
   async filePatch(prId: string, path: string): Promise<string | null | undefined> {
@@ -50,7 +64,12 @@ class FakeEvalRepository {
     sourceFindingId?: string | null;
   }): Promise<EvalCaseRow> {
     if (values.sourceFindingId) {
-      const clash = await this.getCaseBySourceFinding(values.workspaceId, values.sourceFindingId);
+      const clash = await this.getCaseBySourceFindingForOwner(
+        values.workspaceId,
+        values.sourceFindingId,
+        values.ownerKind,
+        values.ownerId,
+      );
       if (clash) {
         const err = new Error('duplicate key value violates unique constraint');
         (err as { code?: string }).code = '23505';
@@ -129,6 +148,9 @@ class FakeEvalRepository {
     ownerId: string;
     agentVersion: number | null;
     caseIds: string[];
+    skillVersion?: number | null;
+    carrierAgentId?: string | null;
+    gatesBypassed?: boolean;
   }): Promise<EvalRunRow> {
     const id = `run-${++this.runSeq}`;
     const row: EvalRunRow = {
@@ -151,6 +173,10 @@ class FakeEvalRepository {
       citationAccuracy: null,
       durationMs: null,
       costUsd: null,
+      skillVersion: values.skillVersion ?? null,
+      carrierAgentId: values.carrierAgentId ?? null,
+      gatesBypassed: values.gatesBypassed ?? false,
+      armWithout: null,
     } as EvalRunRow;
     this.runs.set(id, row);
     return row;
@@ -209,6 +235,51 @@ class FakeEvalRepository {
   async agentsWithCases(workspaceId: string): Promise<string[]> {
     return [...new Set([...this.cases.values()].filter((c) => c.workspaceId === workspaceId).map((c) => c.ownerId))];
   }
+
+  // ---- specs/15-skill-eval-cases.md — skill-owned lookups ------------------
+  skillRows = new Map<string, SkillForEval & { workspaceId: string }>();
+  carriersByskill = new Map<string, CarrierForSkill[]>();
+  skillVersionBodies = new Map<string, string>();
+  injectedForFinding = new Map<string, InjectedSkillForFinding[]>();
+
+  async skillForEval(workspaceId: string, skillId: string): Promise<SkillForEval | undefined> {
+    const row = this.skillRows.get(skillId);
+    if (!row || row.workspaceId !== workspaceId) return undefined;
+    const { workspaceId: _ws, ...rest } = row;
+    return rest;
+  }
+
+  async carriersForSkill(workspaceId: string, skillId: string): Promise<CarrierForSkill[]> {
+    void workspaceId;
+    // Mirrors the real repository's `ORDER BY agent_skills.order, agents.name`
+    // (R5's deterministic tie-break) — sorted here rather than trusting test
+    // setup to insert in the right order.
+    return [...(this.carriersByskill.get(skillId) ?? [])].sort(
+      (a, b) => a.order - b.order || a.agentName.localeCompare(b.agentName),
+    );
+  }
+
+  async skillsInjectedForFinding(workspaceId: string, findingId: string): Promise<InjectedSkillForFinding[]> {
+    void workspaceId;
+    return this.injectedForFinding.get(findingId) ?? [];
+  }
+
+  async skillVersionBody(workspaceId: string, skillId: string, version: number): Promise<string | undefined> {
+    const skill = await this.skillForEval(workspaceId, skillId);
+    if (!skill) return undefined;
+    if (skill.version === version) return skill.body;
+    return this.skillVersionBodies.get(`${skillId}:${version}`);
+  }
+
+  async ownersWithCases(workspaceId: string, ownerKind: string): Promise<string[]> {
+    return [
+      ...new Set(
+        [...this.cases.values()]
+          .filter((c) => c.workspaceId === workspaceId && c.ownerKind === ownerKind)
+          .map((c) => c.ownerId),
+      ),
+    ];
+  }
 }
 
 function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
@@ -224,13 +295,26 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
   };
 }
 
+function makeSkill(overrides: Partial<SkillForEval> = {}): SkillForEval {
+  return {
+    id: 'skill-1',
+    name: 'secret-leakage-gate',
+    type: 'security',
+    body: 'Flag secrets.',
+    version: 1,
+    enabled: true,
+    ...overrides,
+  };
+}
+
 function makeService(
   repo: FakeEvalRepository,
   opts: {
     getById?: (workspaceId: string, id: string) => Promise<AgentRecord | null | undefined>;
     listEnabled?: (workspaceId: string) => Promise<AgentRecord[]>;
     resolveLlm?: () => Promise<unknown>;
-    runCase?: () => Promise<unknown>;
+    runCase?: (agent: unknown, skillBlocks: unknown, llm: unknown, evalCase: unknown) => Promise<unknown>;
+    linkedSkills?: (agentId: string) => Promise<LinkedSkillForRun[]>;
   } = {},
 ) {
   const agents = {
@@ -250,6 +334,7 @@ function makeService(
     assembly: {} as never,
   })) };
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const carrierSkills = { linkedSkills: opts.linkedSkills ?? (async () => []) };
   return new EvalService(
     repo as never,
     agents as never,
@@ -258,6 +343,7 @@ function makeService(
     () => 0.001,
     logger,
     executor as never,
+    carrierSkills,
   );
 }
 
@@ -890,5 +976,541 @@ describe('EvalService.updateCase / deleteCase — AC-12 … AC-14', () => {
 
     const after = JSON.stringify(await repo.getRun('ws1', run.id));
     expect(after).toBe(before);
+  });
+});
+
+// =============================================================================
+// specs/15-skill-eval-cases.md — skill-owned service surface. Same fake-
+// repo/port style as the agent-owned suites above; `plans/15-skill-eval-
+// cases.md` didn't mandate these AS explicitly as scoring.ts/executor.ts, but
+// the plan-verifier gate flagged the ~10 new skill-owned methods as
+// unit-untested, and several have edge cases the DB-backed `eval.it.test.ts`
+// happy-path coverage doesn't reach (refusals, idempotency, in-flight guard,
+// gate-bypass estimate, per-arm error isolation).
+// =============================================================================
+
+function makeCarrier(overrides: Partial<CarrierForSkill> = {}): CarrierForSkill {
+  return {
+    agentId: 'agent-1',
+    agentName: 'Security Reviewer',
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    systemPrompt: 'system',
+    strategy: 'single-pass',
+    agentVersion: 1,
+    order: 1,
+    linkEnabled: true,
+    skillEnabled: true,
+    ...overrides,
+  };
+}
+
+describe('EvalService.listSkillOffersForFinding / createCaseFromFindingForSkill — AC-1, AC-2', () => {
+  const findingBase: FindingForCase = {
+    finding: {
+      id: 'finding-1',
+      file: 'src/config.ts',
+      startLine: 12,
+      endLine: 12,
+      severity: 'CRITICAL',
+      category: 'security',
+      title: 'Hardcoded secret',
+      acceptedAt: null,
+      dismissedAt: null,
+    },
+    agentId: 'agent-1',
+    prId: 'pr-1',
+    prNumber: 42,
+    prTitle: 'PR title',
+    prBody: 'body',
+  };
+  const PATCH = '@@ -10,3 +10,4 @@\n context\n+  key: "sk_live_x",\n context';
+
+  it('AC-2 — the offer list is scoped to skills the finding’s OWN review actually injected, with has_case stated', async () => {
+    const repo = new FakeEvalRepository();
+    repo.findings.set('finding-1', {
+      ...findingBase,
+      finding: { ...findingBase.finding, acceptedAt: new Date() },
+    });
+    repo.injectedForFinding.set('finding-1', [{ skillId: 'skill-1', skillName: 'secret-leakage-gate' }]);
+    const service = makeService(repo);
+
+    const offers = await service.listSkillOffersForFinding('ws1', 'finding-1');
+    expect(offers).toEqual([{ skill_id: 'skill-1', skill_name: 'secret-leakage-gate', has_case: false }]);
+  });
+
+  it('AC-1 — refuses a skill that was NOT injected into the finding’s own review, even if the skill exists', async () => {
+    const repo = new FakeEvalRepository();
+    repo.findings.set('finding-1', {
+      ...findingBase,
+      finding: { ...findingBase.finding, acceptedAt: new Date() },
+    });
+    repo.injectedForFinding.set('finding-1', []); // this review injected nothing
+    const service = makeService(repo);
+
+    await expect(service.createCaseFromFindingForSkill('ws1', 'finding-1', 'skill-1')).rejects.toThrow(
+      /not present in the prompt/i,
+    );
+    expect(await repo.listCasesForOwner('ws1', 'skill', 'skill-1')).toHaveLength(0);
+  });
+
+  it('AC-1/D17 — activating twice for the SAME skill returns the SAME case, and the offer list then states has_case: true', async () => {
+    const repo = new FakeEvalRepository();
+    repo.findings.set('finding-1', {
+      ...findingBase,
+      finding: { ...findingBase.finding, acceptedAt: new Date() },
+    });
+    repo.injectedForFinding.set('finding-1', [{ skillId: 'skill-1', skillName: 'secret-leakage-gate' }]);
+    repo.filePatches.set('pr-1:src/config.ts', PATCH);
+    const service = makeService(repo);
+
+    const first = await service.createCaseFromFindingForSkill('ws1', 'finding-1', 'skill-1');
+    const second = await service.createCaseFromFindingForSkill('ws1', 'finding-1', 'skill-1');
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.case.id).toBe(first.case.id);
+    expect(first.case.owner_kind).toBe('skill');
+    expect(first.case.owner_id).toBe('skill-1');
+    expect(await repo.listCasesForOwner('ws1', 'skill', 'skill-1')).toHaveLength(1);
+
+    const offers = await service.listSkillOffersForFinding('ws1', 'finding-1');
+    expect(offers[0]).toMatchObject({ skill_id: 'skill-1', has_case: true });
+  });
+});
+
+describe('EvalService.createSkillCase — AC-8, AC-9', () => {
+  const input = {
+    name: 'hand-authored',
+    input_diff:
+      'diff --git a/src/config.ts b/src/config.ts\n--- a/src/config.ts\n+++ b/src/config.ts\n@@ -1,2 +1,3 @@\n context\n+  key: "sk_live_x",\n context',
+    input_files: ['src/config.ts'],
+    input_meta: { pr_number: null, title: 't', body: null },
+    // Line 2 of the new file is the added `+` line above (AC-9's grounding
+    // check needs a real hunk match, not just a plausible-looking line pair).
+    expectation: { type: 'must_find' as const, file: 'src/config.ts', start_line: 2, end_line: 2 },
+  };
+
+  it('creates a hand-authored case owned by the skill, with no source finding', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    const service = makeService(repo);
+    const evalCase = await service.createSkillCase('ws1', 'skill-1', input);
+    expect(evalCase.owner_kind).toBe('skill');
+    expect(evalCase.owner_id).toBe('skill-1');
+    expect(evalCase.source_finding_id).toBeNull();
+  });
+
+  it('AC-9 — refuses an expectation outside every hunk of the supplied diff, and creates no case', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    const service = makeService(repo);
+    await expect(
+      service.createSkillCase('ws1', 'skill-1', {
+        ...input,
+        expectation: { ...input.expectation, start_line: 999, end_line: 999 },
+      }),
+    ).rejects.toThrow(AppError);
+    expect(await repo.listCasesForOwner('ws1', 'skill', 'skill-1')).toHaveLength(0);
+  });
+
+  it('404s for an unknown or cross-workspace skill', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(service.createSkillCase('ws1', 'ghost-skill', input)).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe('EvalService.createAgentCase — the agent-owned mirror of createSkillCase (AC-8, AC-9)', () => {
+  const input = {
+    name: 'hand-authored',
+    input_diff:
+      'diff --git a/src/config.ts b/src/config.ts\n--- a/src/config.ts\n+++ b/src/config.ts\n@@ -1,2 +1,3 @@\n context\n+  key: "sk_live_x",\n context',
+    input_files: ['src/config.ts'],
+    input_meta: { pr_number: null, title: 't', body: null },
+    expectation: { type: 'must_find' as const, file: 'src/config.ts', start_line: 2, end_line: 2 },
+  };
+
+  it('creates a hand-authored case owned by the agent, with no source finding', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo); // default getById resolves 'agent-1'
+    const evalCase = await service.createAgentCase('ws1', 'agent-1', input);
+    expect(evalCase.owner_kind).toBe('agent');
+    expect(evalCase.owner_id).toBe('agent-1');
+    expect(evalCase.source_finding_id).toBeNull();
+  });
+
+  it('AC-9 — refuses an expectation outside every hunk of the supplied diff, and creates no case', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(
+      service.createAgentCase('ws1', 'agent-1', {
+        ...input,
+        expectation: { ...input.expectation, start_line: 999, end_line: 999 },
+      }),
+    ).rejects.toThrow(AppError);
+    expect(await repo.listCasesForOwner('ws1', 'agent', 'agent-1')).toHaveLength(0);
+  });
+
+  it('404s for an unknown or cross-workspace agent', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(service.createAgentCase('ws1', 'ghost-agent', input)).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe('EvalService.startSkillRun — AC-11, AC-14, AC-15, AC-49, AC-52, D8, D19, AC-53', () => {
+  function seedSkillWithCase(repo: FakeEvalRepository, skillOverrides: Partial<SkillForEval> = {}) {
+    repo.skillRows.set('skill-1', { ...makeSkill(skillOverrides), workspaceId: 'ws1' });
+    return repo.insertCase({
+      workspaceId: 'ws1',
+      ownerKind: 'skill',
+      ownerId: 'skill-1',
+      name: 'c1',
+      inputDiff: 'd',
+      inputFiles: ['f'],
+      inputMeta: { pr_number: 1, title: 't', body: null },
+      expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+    });
+  }
+
+  it('404s for an unknown skill — before touching the carrier or any case row', async () => {
+    const repo = new FakeEvalRepository();
+    const service = makeService(repo);
+    await expect(service.startSkillRun('ws1', 'ghost-skill', 'agent-1')).rejects.toThrow(NotFoundError);
+  });
+
+  it('AC-53 — 404s for a carrier the workspace-scoped port cannot resolve, even when the skill already has cases', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo);
+    const service = makeService(repo, { getById: async () => undefined });
+    await expect(service.startSkillRun('ws1', 'skill-1', 'foreign-agent')).rejects.toThrow(NotFoundError);
+  });
+
+  it('AC-49 — no_agent_linked when the resolved carrier is not linked to this skill', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo);
+    repo.carriersByskill.set('skill-1', []); // no link at all
+    const service = makeService(repo);
+    await expect(service.startSkillRun('ws1', 'skill-1', 'agent-1')).rejects.toThrow(/not linked/i);
+  });
+
+  it('AC-49 — refuses to start with no cases, and creates no run record', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    repo.carriersByskill.set('skill-1', [makeCarrier()]);
+    const service = makeService(repo);
+    await expect(service.startSkillRun('ws1', 'skill-1', 'agent-1')).rejects.toThrow(/no eval cases/i);
+    expect(await repo.listRunsForOwner('ws1', 'skill', 'skill-1')).toHaveLength(0);
+  });
+
+  it('AC-49/finding 9 — ConfigError from the LLM resolver surfaces as a 422, and creates no run record', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo);
+    repo.carriersByskill.set('skill-1', [makeCarrier()]);
+    const service = makeService(repo, {
+      resolveLlm: async () => {
+        throw new ConfigError('OPENAI_API_KEY is not configured');
+      },
+    });
+    let caught: unknown;
+    try {
+      await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).statusCode).toBe(422);
+    expect(await repo.listRunsForOwner('ws1', 'skill', 'skill-1')).toHaveLength(0);
+  });
+
+  it('AC-15 — a second start while one is in flight is refused; exactly one run exists', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo);
+    repo.carriersByskill.set('skill-1', [makeCarrier()]);
+    const service = makeService(repo, { runCase: () => new Promise(() => {}) });
+
+    const first = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    await expect(service.startSkillRun('ws1', 'skill-1', 'agent-1')).rejects.toThrow(/already in progress/i);
+
+    const runs = await repo.listRunsForOwner('ws1', 'skill', 'skill-1');
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.id).toBe(first.run_id);
+  });
+
+  it('D19 — a stale running skill run is reconciled to errored before the guard, unblocking a new start', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo);
+    repo.carriersByskill.set('skill-1', [makeCarrier()]);
+    const stale = await repo.insertRun({
+      workspaceId: 'ws1',
+      ownerKind: 'skill',
+      ownerId: 'skill-1',
+      agentVersion: 1,
+      caseIds: [],
+    });
+    repo.runs.set(stale.id, { ...stale, ranAt: new Date(Date.now() - 20 * 60_000) });
+
+    const service = makeService(repo);
+    const result = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    expect(result.run_id).not.toBe(stale.id);
+    const staleRow = await repo.getRun('ws1', stale.id);
+    expect(staleRow!.status).toBe('errored');
+  });
+
+  it('AC-52/D8 — gates_bypassed is true when EITHER gate is off (here: the workspace/vetting gate)', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo, { enabled: false });
+    repo.carriersByskill.set('skill-1', [makeCarrier({ linkEnabled: true })]);
+    const service = makeService(repo);
+    const result = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    expect(result.estimate.gates_bypassed).toBe(true);
+  });
+
+  it('AC-52/D8 — gates_bypassed is false when BOTH gates are on', async () => {
+    const repo = new FakeEvalRepository();
+    await seedSkillWithCase(repo, { enabled: true });
+    repo.carriersByskill.set('skill-1', [makeCarrier({ linkEnabled: true })]);
+    const service = makeService(repo);
+    const result = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    expect(result.estimate.gates_bypassed).toBe(false);
+  });
+});
+
+describe('EvalService.executeSkillRun (via startSkillRun, background) — AC-16, AC-23, AC-24', () => {
+  it('stores both arms with lift derivable from them on a clean completed run', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    repo.carriersByskill.set('skill-1', [makeCarrier()]);
+    await repo.insertCase({
+      workspaceId: 'ws1',
+      ownerKind: 'skill',
+      ownerId: 'skill-1',
+      name: 'c1',
+      inputDiff: 'd',
+      inputFiles: ['f'],
+      inputMeta: { pr_number: 1, title: 't', body: null },
+      expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+    });
+
+    const service = makeService(repo, {
+      // The skill-under-test's block only appears in the WITH arm (AC-16) —
+      // use that to make the with-arm "find" the case and the without-arm
+      // "miss" it, so the run has a real, non-degenerate lift to assert on.
+      runCase: async (_agent, skillBlocks) => {
+        const isWithArm = (skillBlocks as { name: string }[]).some((s) => s.name === 'secret-leakage-gate');
+        return {
+          findings: isWithArm
+            ? [{ file: 'f', start_line: 1, end_line: 1, severity: 'CRITICAL', category: 'security', title: 't' }]
+            : [],
+          groundingKept: isWithArm ? 1 : 0,
+          groundingTotal: isWithArm ? 1 : 0,
+          tokensIn: 1,
+          tokensOut: 1,
+          costUsd: 0.001,
+          durationMs: 1,
+          assembly: {} as never,
+        };
+      },
+    });
+
+    const started = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+    await new Promise((r) => setTimeout(r, 20));
+
+    const row = await repo.getRun('ws1', started.run_id);
+    expect(row!.status).toBe('completed');
+    // The with-arm (stored in the base columns) found the case; recall = 1.
+    expect(row!.recall).toBe(1);
+    // The without-arm (stored separately) never found it; recall = 0 — the
+    // skill's own block is what made the difference (D8's whole point).
+    expect(row!.armWithout).not.toBeNull();
+    expect(row!.armWithout!.recall).toBe(0);
+  });
+
+  it('AC-23 — a case erroring in only the WITHOUT arm is rewritten to errored in BOTH stored arms, and counted once', async () => {
+    // The `startSkillRun` caller does not await `executeSkillRun` — it
+    // fires the background run via `void this.executeSkillRun(...).catch(...)`
+    // (service.ts) and returns immediately. The prior version of this test
+    // synchronized on that background completion with a real
+    // `await new Promise((r) => setTimeout(r, 20))`, i.e. a genuine 20ms
+    // wall-clock sleep — a CI-flake risk if the background chain (a handful
+    // of chained `await`s against the in-memory fake repo, no real I/O)
+    // ever takes longer than 20 real milliseconds on a loaded runner. Fake
+    // timers make the wait deterministic instead: `advanceTimersByTimeAsync`
+    // flushes every pending microtask (the awaited repo/LLM calls) between
+    // simulated ticks, so the background run provably completes without
+    // depending on real elapsed time.
+    vi.useFakeTimers();
+    try {
+      const repo = new FakeEvalRepository();
+      repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+      repo.carriersByskill.set('skill-1', [makeCarrier()]);
+      await repo.insertCase({
+        workspaceId: 'ws1',
+        ownerKind: 'skill',
+        ownerId: 'skill-1',
+        name: 'flaky',
+        inputDiff: 'd',
+        inputFiles: ['f'],
+        inputMeta: { pr_number: 1, title: 't', body: null },
+        expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+      });
+
+      const service = makeService(repo, {
+        runCase: async (_agent, skillBlocks) => {
+          const isWithArm = (skillBlocks as { name: string }[]).some((s) => s.name === 'secret-leakage-gate');
+          if (!isWithArm) throw new Error('provider timeout');
+          return {
+            findings: [],
+            groundingKept: 0,
+            groundingTotal: 0,
+            tokensIn: 1,
+            tokensOut: 1,
+            costUsd: 0.001,
+            durationMs: 1,
+            assembly: {} as never,
+          };
+        },
+      });
+
+      const started = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+      await vi.advanceTimersByTimeAsync(20);
+
+      const row = await repo.getRun('ws1', started.run_id);
+      expect(row!.status).toBe('completed');
+      expect(row!.casesErrored).toBe(1);
+      const errored = row!.perCase.find((o) => o.status === 'errored');
+      expect(errored?.error_reason).toBe('paired arm failed');
+      // The without-arm's OWN stored `cases_errored` reflects the same
+      // exclusion — never zero, never double-counted.
+      expect(row!.armWithout!.cases_errored).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('EvalService.skillCompare — AC-32, AC-33', () => {
+  async function completedSkillRun(
+    repo: FakeEvalRepository,
+    overrides: { carrierAgentId?: string | null; ranAt?: Date } = {},
+  ) {
+    const run = await repo.insertRun({
+      workspaceId: 'ws1',
+      ownerKind: 'skill',
+      ownerId: 'skill-1',
+      agentVersion: 1,
+      caseIds: ['case-1'],
+      skillVersion: 1,
+      carrierAgentId: overrides.carrierAgentId ?? 'agent-1',
+    });
+    if (overrides.ranAt) repo.runs.set(run.id, { ...repo.runs.get(run.id)!, ranAt: overrides.ranAt });
+    await repo.completeRun(run.id, {
+      status: 'completed',
+      perCase: [],
+      casesErrored: 0,
+      tracesPassed: 0,
+      tracesTotal: 0,
+      recall: null,
+      precision: null,
+      citationAccuracy: null,
+      durationMs: 5,
+      costUsd: 0.001,
+      armWithout: { recall: null, precision: null, citation_accuracy: null, traces_passed: 0, traces_total: 0, cases_errored: 0, duration_ms: 5, cost_usd: 0.001, per_case: [] },
+    });
+    return repo.getRun('ws1', run.id) as Promise<EvalRunRow>;
+  }
+
+  it('rejects comparing two runs of DIFFERENT skills', async () => {
+    const repo = new FakeEvalRepository();
+    const a = await completedSkillRun(repo);
+    const run2 = await repo.insertRun({
+      workspaceId: 'ws1',
+      ownerKind: 'skill',
+      ownerId: 'skill-2',
+      agentVersion: 1,
+      caseIds: [],
+      skillVersion: 1,
+      carrierAgentId: 'agent-1',
+    });
+    await repo.completeRun(run2.id, {
+      status: 'completed', perCase: [], casesErrored: 0, tracesPassed: 0, tracesTotal: 0,
+      recall: null, precision: null, citationAccuracy: null, durationMs: 1, costUsd: 0,
+    });
+
+    const service = makeService(repo);
+    await expect(service.skillCompare('ws1', a.id, run2.id)).rejects.toThrow(/same skill/i);
+  });
+
+  it('rejects comparing a NON-skill-owned (agent) run through the skill-compare route', async () => {
+    const repo = new FakeEvalRepository();
+    const a = await completedSkillRun(repo);
+    const agentRun = await repo.insertRun({
+      workspaceId: 'ws1', ownerKind: 'agent', ownerId: 'agent-1', agentVersion: 1, caseIds: [],
+    });
+    await repo.completeRun(agentRun.id, {
+      status: 'completed', perCase: [], casesErrored: 0, tracesPassed: 0, tracesTotal: 0,
+      recall: null, precision: null, citationAccuracy: null, durationMs: 1, costUsd: 0,
+    });
+
+    const service = makeService(repo);
+    await expect(service.skillCompare('ws1', a.id, agentRun.id)).rejects.toThrow(/skill-owned/i);
+  });
+
+  it('states carrier_differs when the two skill runs used different carriers', async () => {
+    const repo = new FakeEvalRepository();
+    const older = await completedSkillRun(repo, { carrierAgentId: 'agent-1', ranAt: new Date('2026-01-01') });
+    const newer = await completedSkillRun(repo, { carrierAgentId: 'agent-2', ranAt: new Date('2026-01-02') });
+
+    const service = makeService(repo, {
+      getById: async (_ws, id) => (id === 'agent-1' || id === 'agent-2' ? makeAgent({ id, name: id }) : undefined),
+    });
+    const result = await service.skillCompare('ws1', older.id, newer.id);
+    expect(result.carrier_differs).toBe(true);
+    expect(result.old.id).toBe(older.id);
+    expect(result.new.id).toBe(newer.id);
+  });
+});
+
+describe('EvalService.runAllSkills — R5, AC-26', () => {
+  it('skips a skill with zero linked agents, stating the reason, and starts none for it', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    repo.carriersByskill.set('skill-1', []);
+    await repo.insertCase({
+      workspaceId: 'ws1', ownerKind: 'skill', ownerId: 'skill-1', name: 'c1',
+      inputDiff: 'd', inputFiles: ['f'], inputMeta: { pr_number: 1, title: 't', body: null },
+      expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+    });
+
+    const service = makeService(repo);
+    const result = await service.runAllSkills('ws1');
+    expect(result.started).toHaveLength(1);
+    expect(result.started[0]).toMatchObject({
+      skill_id: 'skill-1',
+      run_id: null,
+      refused_reason: expect.stringMatching(/no agent is linked/i),
+    });
+  });
+
+  it('auto-selects the linked agent with the LOWEST order as carrier (R5), and starts a real run', async () => {
+    const repo = new FakeEvalRepository();
+    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+    repo.carriersByskill.set('skill-1', [
+      makeCarrier({ agentId: 'agent-2', agentName: 'Later Carrier', order: 2 }),
+      makeCarrier({ agentId: 'agent-1', agentName: 'Security Reviewer', order: 0 }),
+    ]);
+    await repo.insertCase({
+      workspaceId: 'ws1', ownerKind: 'skill', ownerId: 'skill-1', name: 'c1',
+      inputDiff: 'd', inputFiles: ['f'], inputMeta: { pr_number: 1, title: 't', body: null },
+      expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+    });
+
+    const service = makeService(repo, {
+      getById: async (_ws, id) => (id === 'agent-1' || id === 'agent-2' ? makeAgent({ id }) : undefined),
+    });
+    const result = await service.runAllSkills('ws1');
+    const entry = result.started.find((s) => s.skill_id === 'skill-1');
+    expect(entry?.carrier_agent_id).toBe('agent-1');
+    expect(entry?.run_id).not.toBeNull();
   });
 });

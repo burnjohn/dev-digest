@@ -14,9 +14,9 @@ import {
 } from "@/lib/hooks/eval";
 import { useToast } from "@/lib/toast";
 import { ApiError } from "@/lib/api";
+import { CaseList, CaseEditorPanel } from "@/components/eval-case-editor";
 import { MetricTiles } from "./MetricTiles";
-import { CaseList } from "./CaseList";
-import { CaseEditorPanel } from "./CaseEditorPanel";
+import { NewAgentCaseModal } from "./NewAgentCaseModal";
 import { RunHistory } from "./RunHistory";
 import { s } from "./styles";
 
@@ -41,6 +41,7 @@ export function EvalsTab({ agent }: { agent: Agent }) {
 
   const [openCaseId, setOpenCaseId] = React.useState<string | null>(null);
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
+  const [showNewCaseModal, setShowNewCaseModal] = React.useState(false);
 
   const latestRun = runs?.[0] ?? null;
   const latestCompleted = React.useMemo(() => runs?.find((r) => r.status === "completed") ?? null, [runs]);
@@ -122,7 +123,14 @@ export function EvalsTab({ agent }: { agent: Agent }) {
       )}
 
       <div style={s.section}>
-        <SectionLabel icon="ListChecks">{t("evalsTab.casesHeading")}</SectionLabel>
+        <div style={s.sectionHead}>
+          <SectionLabel icon="ListChecks">{t("evalsTab.casesHeading")}</SectionLabel>
+          <div style={s.headSpacer}>
+            <Button kind="secondary" size="sm" icon="Plus" onClick={() => setShowNewCaseModal(true)}>
+              {t("caseEditor.newCase")}
+            </Button>
+          </div>
+        </div>
         <CaseList
           cases={cases}
           isLoading={casesLoading}
@@ -146,6 +154,8 @@ export function EvalsTab({ agent }: { agent: Agent }) {
           onClose={() => setOpenCaseId(null)}
         />
       )}
+
+      {showNewCaseModal && <NewAgentCaseModal agent={agent} onClose={() => setShowNewCaseModal(false)} />}
     </div>
   );
 }

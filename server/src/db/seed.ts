@@ -400,6 +400,72 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     }
   }
 
+  // ---- skill-owned eval cases (specs/15-skill-eval-cases.md AC-30/AC-31, R2) ----
+  // Owner: `secret-leakage-gate` — already linked to `Security Reviewer`
+  // (`SEED_AGENT_SKILLS`), the carrier for AC-31's demonstration (delete the
+  // `sk_live_` bullet from the skill body, re-run, watch recall lift fall).
+  // Four of the seven fixture cases over the SAME fixture PR #491, satisfying
+  // AC-30's "at least four, at least one of each expectation type" with two
+  // of each. `source_finding_id: null`, no `eval_runs` seeded — same
+  // no-fabricated-history / empty-state posture as the agent-owned block above.
+  const [secretLeakageGate] = await db
+    .select()
+    .from(t.skills)
+    .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, 'secret-leakage-gate')));
+  if (secretLeakageGate) {
+    const existingSkillCases = await db
+      .select({ id: t.evalCases.id })
+      .from(t.evalCases)
+      .where(
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.ownerKind, 'skill'),
+          eq(t.evalCases.ownerId, secretLeakageGate.id),
+        ),
+      );
+    if (existingSkillCases.length === 0) {
+      const SKILL_FIXTURE_CASE_NAMES = new Set([
+        'hardcoded-session-signing-secret',
+        'refresh-token-payload-logged-in-plaintext',
+        'crypto-import-is-clean',
+        'rate-limiter-addition-is-clean',
+      ]);
+      const patchByPath = new Map(EVAL_FIXTURE_PR.files.map((f) => [f.path, f.patch]));
+      const skillFixtureCases = EVAL_FIXTURE_CASES.filter((c) => SKILL_FIXTURE_CASE_NAMES.has(c.name));
+      await db.insert(t.evalCases).values(
+        skillFixtureCases.map((c) => {
+          const patch = patchByPath.get(c.file)!;
+          const expectation: EvalExpectation = {
+            type: c.type,
+            file: c.file,
+            start_line: c.start_line,
+            end_line: c.end_line,
+            severity: c.severity,
+            category: c.category,
+            title: c.title,
+          };
+          const inputMeta: EvalCaseMeta = {
+            pr_number: EVAL_FIXTURE_PR.number,
+            title: EVAL_FIXTURE_PR.title,
+            body: EVAL_FIXTURE_PR.body,
+          };
+          return {
+            workspaceId,
+            ownerKind: 'skill' as const,
+            ownerId: secretLeakageGate.id,
+            name: c.name,
+            inputDiff: synthesizeFrozenDiff(c.file, patch),
+            inputFiles: [c.file],
+            inputMeta,
+            expectedOutput: expectation,
+            notes: null,
+            sourceFindingId: null,
+          };
+        }),
+      );
+    }
+  }
+
   return { workspaceId, userId };
 }
 

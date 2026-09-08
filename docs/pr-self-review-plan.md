@@ -1,15 +1,16 @@
 # Plan — `pr-self-review` skill
 
-> **Status — built and run once** (updated 2026-08-02).
+> **Status — built and run once** (updated 2026-08-02; PreToolUse hook added 2026-09-07).
 > The skill ships at [`.claude/skills/pr-self-review/`](../.claude/skills/pr-self-review/SKILL.md)
-> v1.0.1. 17 of 20 sections are implemented. What remains is the automation and
-> the feedback loop — deliberately, per §10.
+> v1.0.2. 18 of 20 sections are implemented. What remains is the tuning
+> feedback loop and the client-side deterministic-check gap — deliberately,
+> per §10.
 >
 > | § | Item | Status |
 > |---|---|---|
-> | 1 | Four enforcement layers | 🟡 2 of 4 — skill ✅, branch protection ✅ (no CI gate) |
+> | 1 | Four enforcement layers | 🟡 3 of 4 — skill ✅, PreToolUse hook ✅ (personal/local, see §2), branch protection ✅ (no CI gate) |
 > | 2 | Manual trigger `/pr-self-review` | ✅ `user-invocable: true` |
-> | 2 | `PreToolUse` hook | ⬜ `.claude/settings.json` has permissions, no hooks |
+> | 2 | `PreToolUse` hook | ✅ `.claude/settings.json` — `scripts/pre-push-gate.sh` (2026-09-07). That settings file is gitignored in this repo, so the hook is per-machine, not team-shared |
 > | 2 | Escape hatch `PR_SELF_REVIEW=0` | ✅ |
 > | 3 | Routing table | ✅ Phase 3, cap 4 |
 > | 4 | Severity model | ✅ **option A** — the skill owns the rubric |
@@ -18,8 +19,7 @@
 > | 7 | Output + `ReportFindings` | ✅ |
 > | 8 | Differentiation from `/code-review`, `/review` | ✅ in `when_to_use` |
 > | 9 | File layout | ✅ SKILL + examples + README |
-> | 10 | Build order steps 1–7 | ✅ |
-> | 10 | Build order step 8 (`PreToolUse` hook) | ⬜ |
+> | 10 | Build order steps 1–8 (`PreToolUse` hook) | ✅ |
 > | 10 | Build order step 9 (branch protection) | 🟡 rule active, no CI gate |
 > | 11 | Determinism — verdict split | ✅ the load-bearing decision |
 > | 12 | Changed lines, not files | ✅ Phase 0 exclusions + Phase 5 |
@@ -81,8 +81,8 @@ anything:
 
 | Layer | Blocks what | Bypassable by | Exists today |
 |---|---|---|---|
-| The skill itself | nothing — it reports | ignoring the output | ✅ built, v1.0.1 |
-| Claude Code hook (`PreToolUse` on Bash) | the **agent** running `git push` | running push in a terminal | ⬜ `.claude/settings.json` exists but carries only `permissions` |
+| The skill itself | nothing — it reports | ignoring the output | ✅ built, v1.0.2 |
+| Claude Code hook (`PreToolUse` on Bash) | the **agent** running `git push` | running push in a terminal, `PR_SELF_REVIEW=0` | ✅ built (2026-09-07), `.claude/settings.json` → `scripts/pre-push-gate.sh` — personal/local, that file is gitignored in this repo |
 | `.git/hooks/pre-push` | any push **from this machine** | `--no-verify`, another clone | ⬜ no git hooks installed |
 | GitHub branch protection + required check | the **actual merge button** | admin override | 🟡 rule active on `main` and sane, but **zero required status checks** — see §20 q5 |
 
@@ -277,9 +277,10 @@ Plus, outside the skill:
 5. ~~Verification pass + noise budget (§13, §15)~~ ✅
 6. ~~Repo-specific and cheap deterministic checks (§6, §16)~~ ✅
 7. ~~By-products: PR description draft (§17)~~ ✅
-8. `PreToolUse` hook (§2) — ⬜ **next.** Only once the skill is trusted; one real
-   run is arguably not yet "trusted", and the v1.0.1 fixes have not themselves
-   been exercised end to end
+8. ~~`PreToolUse` hook (§2)~~ ✅ (2026-09-07) — `scripts/pre-push-gate.sh`,
+   verified with a deliberate `server/` typecheck break (blocked) and a clean
+   run (allowed). Personal/local only — `.claude/settings.json` is gitignored
+   in this repo
 9. Branch protection — ⬜ the actual gate. Blocked on two repo problems found
    while looking: three workflow jobs share the name `tests`, and all five
    workflows filter `pull_request` by path. `scripts/setup-branch-protection.sh`

@@ -39,6 +39,7 @@ import { BriefService } from '../modules/brief/service.js';
 import { readSpecFile } from '../modules/brief/clone.js';
 import { EvalRepository } from '../modules/eval/repository.js';
 import { EvalService } from '../modules/eval/service.js';
+import { EvalExecutor } from '../modules/eval/executor.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { resolveFeatureModel as resolveFeatureModelForWorkspace } from '../modules/settings/feature-models.js';
@@ -147,6 +148,7 @@ export class Container {
       this.skillsRepo,
       this.tokenizer,
       this.projectContextService,
+      this.evalRepo,
     ));
   }
 
@@ -264,6 +266,26 @@ export class Container {
       (id) => this.llm(id),
       (model, tokensIn, tokensOut) => this.priceBook.estimate(model, tokensIn, tokensOut),
       console,
+      new EvalExecutor(),
+      // specs/15-skill-eval-cases.md §5/§8 — `AgentsRepository.linkedSkills`
+      // adapted to the flat `LinkedSkillForRun` shape the arm-assembly
+      // helper needs (id/name/type/body + order + BOTH gate states), the
+      // same adaptation shape `ciService`'s `enabledSkills` port already uses.
+      {
+        linkedSkills: (agentId: string) =>
+          this.agentsRepo.linkedSkills(agentId).then((rows) =>
+            rows.map((r) => ({
+              id: r.skill.id,
+              name: r.skill.name,
+              type: r.skill.type,
+              body: r.skill.body,
+              order: r.order,
+              linkEnabled: r.enabled,
+              skillEnabled: r.skill.enabled,
+            })),
+          ),
+      },
+      this.tokenizer,
     ));
   }
 

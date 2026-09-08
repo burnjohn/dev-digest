@@ -9,8 +9,9 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "mutation:eval-scoring": "stryker run stryker.config.json",
     "verify:l03": "vitest run src/modules/reviews/smart-diff.test.ts",
-    "verify:l06": "vitest run src/modules/eval/scoring.test.ts src/modules/eval/frozen-input.test.ts test/eval-contract-parity.test.ts test/contracts.test.ts test/eval.it.test.ts",
+    "verify:l06": "vitest run src/modules/eval/scoring.test.ts src/modules/eval/frozen-input.test.ts src/modules/eval/executor.test.ts test/eval-contract-parity.test.ts test/contracts.test.ts test/eval.it.test.ts",
     "verify:l07": "vitest run src/modules/ci/ test/ci-export.it.test.ts test/ci-contract-parity.test.ts test/ci-ingest.it.test.ts",
     "arch": "depcruise src --ignore-known",
     "arch:all": "depcruise src",
@@ -47,6 +48,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@testcontainers/postgresql": "^10.16.0",
     "@types/node": "^22.10.0",
     "drizzle-kit": "^0.30.1",

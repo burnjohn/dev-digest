@@ -7,15 +7,17 @@ export function Textarea({
   placeholder,
   rows = 5,
   mono,
+  ...rest
 }: {
   value: string;
   onChange?: (v: string) => void;
   placeholder?: string;
   rows?: number;
   mono?: boolean;
-}) {
+} & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "rows">) {
   return (
     <textarea
+      {...rest}
       className={mono ? "mono" : undefined}
       value={value}
       rows={rows}
