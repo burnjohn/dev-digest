@@ -181,7 +181,7 @@ export function CaseEditorPanel({
                 <label style={s.label} htmlFor="eval-case-pr-body">
                   {t("caseEditorPanel.prBodyLabel")}
                 </label>
-                <Textarea value={prBody} onChange={setPrBody} rows={4} />
+                <Textarea id="eval-case-pr-body" value={prBody} onChange={setPrBody} rows={4} />
               </div>
             </div>
           )}
@@ -195,6 +195,7 @@ export function CaseEditorPanel({
                 {t("caseEditorPanel.expectationType")}
               </label>
               <SelectInput
+                id="eval-case-exp-type"
                 value={expType}
                 onChange={(v) => setExpType(v as EvalExpectationType)}
                 options={EXPECTATION_TYPES.map((v) => ({
@@ -254,7 +255,7 @@ export function CaseEditorPanel({
           <label style={s.label} htmlFor="eval-case-notes">
             {t("caseEditorPanel.notesLabel")}
           </label>
-          <Textarea value={notes} onChange={setNotes} rows={2} />
+          <Textarea id="eval-case-notes" value={notes} onChange={setNotes} rows={2} />
         </div>
 
         <div style={s.footer}>

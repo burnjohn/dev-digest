@@ -31,6 +31,7 @@ export function CarrierPicker({
         {t("skill.run.carrierLabel")}
       </label>
       <SelectInput
+        id="skill-eval-carrier"
         value={value ?? ""}
         onChange={onChange}
         options={carriers.map((c) => ({

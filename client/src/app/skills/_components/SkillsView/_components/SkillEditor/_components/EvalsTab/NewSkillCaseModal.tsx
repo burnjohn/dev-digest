@@ -124,6 +124,7 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
                   {t("caseEditorPanel.prBodyLabel")}
                 </label>
                 <Textarea
+                  id="skill-new-case-pr-body"
                   value={prBody}
                   onChange={setPrBody}
                   rows={4}
@@ -142,6 +143,7 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
                 {t("caseEditorPanel.expectationType")}
               </label>
               <SelectInput
+                id="skill-new-case-exp-type"
                 value={expType}
                 onChange={(v) => setExpType(v as EvalExpectationType)}
                 options={EXPECTATION_TYPES.map((v) => ({
@@ -201,7 +203,7 @@ export function NewSkillCaseModal({ skill, onClose }: { skill: Skill; onClose: (
           <label style={s.label} htmlFor="skill-new-case-notes">
             {t("caseEditorPanel.notesLabel")}
           </label>
-          <Textarea value={notes} onChange={setNotes} rows={2} />
+          <Textarea id="skill-new-case-notes" value={notes} onChange={setNotes} rows={2} />
         </div>
 
         <div style={s.footer}>

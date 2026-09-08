@@ -1327,48 +1327,65 @@ describe('EvalService.executeSkillRun (via startSkillRun, background) — AC-16,
   });
 
   it('AC-23 — a case erroring in only the WITHOUT arm is rewritten to errored in BOTH stored arms, and counted once', async () => {
-    const repo = new FakeEvalRepository();
-    repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
-    repo.carriersByskill.set('skill-1', [makeCarrier()]);
-    await repo.insertCase({
-      workspaceId: 'ws1',
-      ownerKind: 'skill',
-      ownerId: 'skill-1',
-      name: 'flaky',
-      inputDiff: 'd',
-      inputFiles: ['f'],
-      inputMeta: { pr_number: 1, title: 't', body: null },
-      expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
-    });
+    // The `startSkillRun` caller does not await `executeSkillRun` — it
+    // fires the background run via `void this.executeSkillRun(...).catch(...)`
+    // (service.ts) and returns immediately. The prior version of this test
+    // synchronized on that background completion with a real
+    // `await new Promise((r) => setTimeout(r, 20))`, i.e. a genuine 20ms
+    // wall-clock sleep — a CI-flake risk if the background chain (a handful
+    // of chained `await`s against the in-memory fake repo, no real I/O)
+    // ever takes longer than 20 real milliseconds on a loaded runner. Fake
+    // timers make the wait deterministic instead: `advanceTimersByTimeAsync`
+    // flushes every pending microtask (the awaited repo/LLM calls) between
+    // simulated ticks, so the background run provably completes without
+    // depending on real elapsed time.
+    vi.useFakeTimers();
+    try {
+      const repo = new FakeEvalRepository();
+      repo.skillRows.set('skill-1', { ...makeSkill(), workspaceId: 'ws1' });
+      repo.carriersByskill.set('skill-1', [makeCarrier()]);
+      await repo.insertCase({
+        workspaceId: 'ws1',
+        ownerKind: 'skill',
+        ownerId: 'skill-1',
+        name: 'flaky',
+        inputDiff: 'd',
+        inputFiles: ['f'],
+        inputMeta: { pr_number: 1, title: 't', body: null },
+        expectation: { type: 'must_find', file: 'f', start_line: 1, end_line: 1 },
+      });
 
-    const service = makeService(repo, {
-      runCase: async (_agent, skillBlocks) => {
-        const isWithArm = (skillBlocks as { name: string }[]).some((s) => s.name === 'secret-leakage-gate');
-        if (!isWithArm) throw new Error('provider timeout');
-        return {
-          findings: [],
-          groundingKept: 0,
-          groundingTotal: 0,
-          tokensIn: 1,
-          tokensOut: 1,
-          costUsd: 0.001,
-          durationMs: 1,
-          assembly: {} as never,
-        };
-      },
-    });
+      const service = makeService(repo, {
+        runCase: async (_agent, skillBlocks) => {
+          const isWithArm = (skillBlocks as { name: string }[]).some((s) => s.name === 'secret-leakage-gate');
+          if (!isWithArm) throw new Error('provider timeout');
+          return {
+            findings: [],
+            groundingKept: 0,
+            groundingTotal: 0,
+            tokensIn: 1,
+            tokensOut: 1,
+            costUsd: 0.001,
+            durationMs: 1,
+            assembly: {} as never,
+          };
+        },
+      });
 
-    const started = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
-    await new Promise((r) => setTimeout(r, 20));
+      const started = await service.startSkillRun('ws1', 'skill-1', 'agent-1');
+      await vi.advanceTimersByTimeAsync(20);
 
-    const row = await repo.getRun('ws1', started.run_id);
-    expect(row!.status).toBe('completed');
-    expect(row!.casesErrored).toBe(1);
-    const errored = row!.perCase.find((o) => o.status === 'errored');
-    expect(errored?.error_reason).toBe('paired arm failed');
-    // The without-arm's OWN stored `cases_errored` reflects the same
-    // exclusion — never zero, never double-counted.
-    expect(row!.armWithout!.cases_errored).toBe(1);
+      const row = await repo.getRun('ws1', started.run_id);
+      expect(row!.status).toBe('completed');
+      expect(row!.casesErrored).toBe(1);
+      const errored = row!.perCase.find((o) => o.status === 'errored');
+      expect(errored?.error_reason).toBe('paired arm failed');
+      // The without-arm's OWN stored `cases_errored` reflects the same
+      // exclusion — never zero, never double-counted.
+      expect(row!.armWithout!.cases_errored).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

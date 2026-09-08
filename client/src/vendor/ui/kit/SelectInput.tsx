@@ -7,12 +7,13 @@ export function SelectInput({
   onChange,
   options,
   mono = true,
+  ...rest
 }: {
   value: string;
   onChange?: (v: string) => void;
   options: (string | { value: string; label: string })[];
   mono?: boolean;
-}) {
+} & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "value" | "onChange">) {
   return (
     <div
       style={{
@@ -27,6 +28,7 @@ export function SelectInput({
       }}
     >
       <select
+        {...rest}
         className={mono ? "mono" : undefined}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
