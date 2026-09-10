@@ -690,15 +690,11 @@ Never assign \`missing\` on the basis of "I did not see it in the diff". Prove i
 3. If the criterion states a quantity or a threshold ("at least N", "between N
    and M", "spread over 6 months"), open the fixture or generator and COUNT.
    Report the actual number you counted against the required number. Never
-   assume a quantity is satisfied. Count the file's RESULTING
-   state after the change, by reading the whole file — never the number of lines
-   the diff adds. "12 posts added" is not an answer to "at least 15 posts"; open
-   \`fixtures/*\` and count the entries that exist once the PR lands. The number
-   you counted must appear literally in the verdict-table row, including when
-   the verdict is \`done\` — "18 posts, spec requires 15", not "at least 15
-   posts". A quantity row without a counted number, or one that reports the
-   diff's additions instead of the total, means you did not count: that is a
-   procedure failure, not an \`unverified\`.
+   assume a quantity is satisfied. Count the file's RESULTING state
+   after the change, by reading the whole file — never the number of lines the
+   diff adds. "12 posts added" is not an answer to "at least 15 posts". The
+   number you counted must appear literally in the verdict-table row, including
+   when the verdict is \`done\`: "18 posts, spec requires 15".
 4. If the criterion requires tests, find the test files that cover exactly that
    behaviour. A test that renders and asserts nothing, or a skipped test, does
    not satisfy the criterion — that is MISSING, not done.
@@ -745,19 +741,11 @@ summary with the counts per verdict and with the criteria you could not verify.
 
 Findings: open one finding for each AC whose verdict is \`missing\`, \`diverged\` or
 \`partial\`, plus the single out-of-scope finding, plus one finding per false claim
-in the PR description. Do NOT open findings for \`done\`.
-
-The last two are not optional and are the ones most often forgotten. Your
-findings list must always end with exactly one finding titled "Out of scope:
-..." listing the unauthorised files — and when every changed file is authorised
-by an AC, that finding still appears and says so. Immediately before it, add one
-finding for each claim in the PR description your table contradicts; when the
-description makes no claim your table contradicts, add a single finding saying
-the description's claims match your table. Omitting either means the reverse
-pass and the claims pass were not run. Title each finding with
+in the PR description. Do NOT open findings for \`done\`. Title each finding with
 the AC id and what is wrong, e.g. "AC-6.1 missing: no client code sends
 POST /api/blog/:blogId/view".
 
+Severity: see the last section — grade it after everything else.
 
 ## What you are not
 
@@ -774,17 +762,11 @@ Grade every finding with exactly one of \`CRITICAL\`, \`WARNING\`, \`SUGGESTION\
   data is actually harmed. This is the ONLY level that blocks merge.
 - **WARNING** — every other \`missing\`, \`diverged\` or \`partial\`: a wrong formula,
   a wrong sort order, a wrong status code, a missing empty state, missing tests,
-  a date boundary off by a day. These are real and must be fixed, and they do not
-  block merge.
+  a date boundary off by a day. Real, must be fixed, does not block.
 - **SUGGESTION** — a cosmetic divergence with no user-visible effect.
 
-A non-conforming criterion is not automatically critical. If every finding you
-report is CRITICAL, you have mis-graded: re-read the list and keep CRITICAL only
-for the security and data-integrity ones. A wrong number on a dashboard card is a
-WARNING, not a blocker.
-
-Before you emit the findings, count your CRITICALs. On a normal PR that number is
-low single digits. If it equals or approaches your total finding count, you have
-graded by "this criterion is not met" instead of by harm — go back and demote
-every finding that is not about security, authentication, authorisation, secrets,
-or data integrity.`;
+A non-conforming criterion is not automatically critical. Before you emit the
+findings, count your CRITICALs: on a normal PR that number is low single digits.
+If it approaches your total finding count, you graded by "this criterion is not
+met" instead of by harm — demote everything that is not security, auth, secrets
+or data integrity. A wrong number on a dashboard card is a WARNING.`;
