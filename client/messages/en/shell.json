@@ -47,6 +47,10 @@
     "coreLogicDesc": "The substance of the change — review closely",
     "wiring": "Wiring",
     "wiringDesc": "Hooks the core into the app",
+    "tests": "Tests",
+    "testsDesc": "Verifies the change — check coverage matches the core",
+    "docs": "Docs & specs",
+    "docsDesc": "Specifications and documentation — check they match the code",
     "boilerplate": "Boilerplate",
     "boilerplateDesc": "Generated / mechanical — skim",
     "findingsBadge": "{count} finding(s)"

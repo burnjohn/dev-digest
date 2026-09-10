@@ -58,7 +58,7 @@ describe("PrDetailHeader — no confidence badge (specs/05-intent-layer.md revis
         prId="pr-1"
         repoId="repo-1"
         tab="overview"
-        findingsCount={0}
+        runsCount={0}
         onSetTab={() => {}}
         onRunStart={() => {}}
         onRunsStarted={() => {}}
@@ -79,7 +79,7 @@ describe("PrDetailHeader — no confidence badge (specs/05-intent-layer.md revis
         prId="pr-1"
         repoId="repo-1"
         tab="overview"
-        findingsCount={0}
+        runsCount={0}
         onSetTab={() => {}}
         onRunStart={() => {}}
         onRunsStarted={() => {}}
@@ -97,7 +97,7 @@ describe("PrDetailHeader — AC-68 resume affordance", () => {
         prId="pr-1"
         repoId="repo-1"
         tab="overview"
-        findingsCount={0}
+        runsCount={0}
         onSetTab={() => {}}
         onRunStart={() => {}}
         onRunsStarted={() => {}}
@@ -114,7 +114,7 @@ describe("PrDetailHeader — AC-68 resume affordance", () => {
         prId="pr-1"
         repoId="repo-1"
         tab="overview"
-        findingsCount={0}
+        runsCount={0}
         onSetTab={() => {}}
         onRunStart={() => {}}
         onRunsStarted={() => {}}
@@ -125,5 +125,33 @@ describe("PrDetailHeader — AC-68 resume affordance", () => {
     const button = screen.getByText("Multi-agent results");
     button.click();
     expect(onOpenMultiAgent).toHaveBeenCalledTimes(1);
+  });
+
+});
+
+describe("PrDetailHeader — Agent runs tab badge", () => {
+  const header = (runsCount: number) => (
+    <PrDetailHeader
+      pr={BASE_PR}
+      prId="pr-1"
+      repoId="repo-1"
+      tab="overview"
+      runsCount={runsCount}
+      onSetTab={() => {}}
+      onRunStart={() => {}}
+      onRunsStarted={() => {}}
+    />
+  );
+
+  it("badges the tab with the number of runs, not the number of findings", () => {
+    renderWithIntl(header(8));
+    const tab = screen.getByText("Agent runs").closest("button")!;
+    expect(tab).toHaveTextContent("8");
+  });
+
+  it("shows no badge when the PR has no runs yet", () => {
+    renderWithIntl(header(0));
+    const tab = screen.getByText("Agent runs").closest("button")!;
+    expect(tab).not.toHaveTextContent(/\d/);
   });
 });

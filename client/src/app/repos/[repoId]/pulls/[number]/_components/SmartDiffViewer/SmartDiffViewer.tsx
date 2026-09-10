@@ -8,7 +8,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge } from "@devdigest/ui";
+import { Badge, Icon } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import type { FindingRecord, SmartDiffGroup, SmartDiffRole } from "@devdigest/shared";
 import { FileCard, type DiffCommentApi } from "@/components/diff-viewer";
@@ -18,11 +18,15 @@ import { firstFindingForFile } from "./helpers";
 const ROLE_LABEL_KEY: Record<SmartDiffRole, string> = {
   core: "coreLogic",
   wiring: "wiring",
+  tests: "tests",
+  docs: "docs",
   boilerplate: "boilerplate",
 };
 const ROLE_DESC_KEY: Record<SmartDiffRole, string> = {
   core: "coreLogicDesc",
   wiring: "wiringDesc",
+  tests: "testsDesc",
+  docs: "docsDesc",
   boilerplate: "boilerplateDesc",
 };
 
@@ -48,6 +52,14 @@ export function SmartDiffViewer({
 }) {
   const t = useTranslations("shell");
 
+  // Per-group expand/collapse — the group header is an accordion toggle so a
+  // reviewer can fold away a whole role (e.g. 65 core files) and see what
+  // comes next. Groups start expanded; individual boilerplate files still
+  // default-collapse inside their group (unchanged behaviour).
+  const [collapsed, setCollapsed] = React.useState<Partial<Record<SmartDiffRole, boolean>>>({});
+  const toggleGroup = (role: SmartDiffRole) =>
+    setCollapsed((c) => ({ ...c, [role]: !c[role] }));
+
   const filesByPath = React.useMemo(() => {
     const m = new Map<string, PrFile>();
     for (const f of files) m.set(f.path, f);
@@ -62,17 +74,41 @@ export function SmartDiffViewer({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {orderedGroups.map((group) => (
+      {orderedGroups.map((group) => {
+        const isOpen = !collapsed[group.role];
+        const label = t(`diffViewer.${ROLE_LABEL_KEY[group.role]}`);
+        return (
         <div key={group.role}>
-          <div
+          <button
+            type="button"
+            aria-expanded={isOpen}
+            aria-label={label}
+            onClick={() => toggleGroup(group.role)}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
               padding: "4px 2px 10px",
               fontSize: 13,
+              width: "100%",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              textAlign: "left",
+              color: "inherit",
+              font: "inherit",
             }}
           >
+            <Icon.ChevronRight
+              size={13}
+              aria-hidden
+              style={{
+                color: "var(--text-muted)",
+                flexShrink: 0,
+                transition: "transform 120ms",
+                transform: isOpen ? "rotate(90deg)" : "none",
+              }}
+            />
             <span
               aria-hidden
               style={{
@@ -83,9 +119,7 @@ export function SmartDiffViewer({
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-              {t(`diffViewer.${ROLE_LABEL_KEY[group.role]}`)}
-            </span>
+            <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{label}</span>
             <span style={{ color: "var(--text-muted)" }}>
               {t(`diffViewer.${ROLE_DESC_KEY[group.role]}`)}
             </span>
@@ -93,7 +127,8 @@ export function SmartDiffViewer({
             <span className="mono tnum" style={{ color: "var(--text-muted)" }}>
               {group.files.length}
             </span>
-          </div>
+          </button>
+          {isOpen && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {group.files.map((sf) => {
               const file = filesByPath.get(sf.path);
@@ -131,8 +166,10 @@ export function SmartDiffViewer({
               );
             })}
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -6,13 +6,19 @@ the conventions that keep findings, scores, and verdicts consistent.
 These are the prompts that drive each reviewer agent (stored on `agents.system_prompt`
 in the DB). The canonical, reviewable copies live next to this file:
 
-- [`general-reviewer.md`](./general-reviewer.md)
-- [`security-reviewer.md`](./security-reviewer.md)
-- [`performance-reviewer.md`](./performance-reviewer.md)
-- [`test-quality-reviewer.md`](./test-quality-reviewer.md) — deliberately thin;
-  its review signal comes from linked **skills**, not from the prompt
-- [`api-contract-reviewer.md`](./api-contract-reviewer.md) — same reasoning;
-  breaking-change detection comes from linked skills, not the prompt
+- [`general-reviewer.md`](./general-reviewer.md) — correctness, logic, edge cases
+- [`security-reviewer.md`](./security-reviewer.md) — OWASP, secrets, lethal trifecta
+- [`performance-reviewer.md`](./performance-reviewer.md) — N+1, hot paths, memory
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md) — would the tests catch a regression
+- [`api-integration-reviewer.md`](./api-integration-reviewer.md) — client ↔ server contract and drift
+- [`data-schema-reviewer.md`](./data-schema-reviewer.md) — migrations, constraints, tenant scoping
+- [`ui-reviewer.md`](./ui-reviewer.md) — state/effect bugs, loading/error states, a11y, i18n
+- [`docs-spec-reviewer.md`](./docs-spec-reviewer.md) — diff vs spec/description, stale docs
+
+`server/src/db/seed-prompts.ts` is **generated** from these files by
+`scripts/gen-seed-prompts.py` — edit the markdown, re-run the script, commit both.
+Prompts are stack-agnostic on purpose: they tell the model to infer the stack
+from the diff and Project context, so the same agents work on any repository.
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the

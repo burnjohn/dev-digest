@@ -7,16 +7,20 @@
 import type { SmartDiff, SmartDiffFile, SmartDiffGroup, SmartDiffRole } from '@devdigest/shared';
 import {
   BOILERPLATE_PATH_PATTERNS,
+  DOCS_PATH_PATTERNS,
   SPLIT_SUGGESTION_LINE_THRESHOLD,
+  TEST_PATH_PATTERNS,
   WIRING_BASENAME_PATTERNS,
   WIRING_PATH_PATTERNS,
 } from './smart-diff-constants.js';
 
-const ROLE_ORDER: SmartDiffRole[] = ['core', 'wiring', 'boilerplate'];
+const ROLE_ORDER: SmartDiffRole[] = ['core', 'wiring', 'tests', 'docs', 'boilerplate'];
 
-/** Classify one file path into a risk role — boilerplate, then wiring, else core. */
+/** Classify one file path into a risk role — boilerplate, docs, tests, wiring, else core. */
 export function classifyFile(path: string): SmartDiffRole {
   if (BOILERPLATE_PATH_PATTERNS.some((re) => re.test(path))) return 'boilerplate';
+  if (DOCS_PATH_PATTERNS.some((re) => re.test(path))) return 'docs';
+  if (TEST_PATH_PATTERNS.some((re) => re.test(path))) return 'tests';
   const basename = path.split('/').pop() ?? path;
   if (WIRING_BASENAME_PATTERNS.some((re) => re.test(basename))) return 'wiring';
   if (WIRING_PATH_PATTERNS.some((re) => re.test(path))) return 'wiring';

@@ -7,7 +7,11 @@ import {
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
   TEST_QUALITY_REVIEWER_PROMPT,
-  API_CONTRACT_REVIEWER_PROMPT,
+  DATA_SCHEMA_REVIEWER_PROMPT,
+  UI_REVIEWER_PROMPT,
+  DOCS_SPEC_REVIEWER_PROMPT,
+  SPEC_CONFORMANCE_REVIEWER_PROMPT,
+  API_INTEGRATION_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
 import { EVAL_FIXTURE_PR, EVAL_FIXTURE_CASES } from './seed-eval-cases.js';
@@ -273,12 +277,64 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     },
     {
       workspaceId,
-      name: 'API Contract Reviewer',
+      name: 'API & Integration Reviewer',
       description:
-        'Reviews public API contracts in a PR: breaking route/param/response changes, semver discipline.',
+        'Checks the client ↔ server contract: breaking route/field changes, drift between callers and handlers, boundary validation.',
       provider: DEFAULT_PROVIDER,
       model: DEFAULT_MODEL,
-      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      systemPrompt: API_INTEGRATION_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'Data & Schema Reviewer',
+      description:
+        'Reviews migrations, schema, and queries: destructive migrations, missing indexes/constraints, tenant scoping, code↔schema drift.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: DATA_SCHEMA_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'UI Reviewer',
+      description:
+        'Reviews frontend code: state and effect bugs, missing loading/error states, accessibility, hardcoded copy.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: UI_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'Docs & Spec Reviewer',
+      description:
+        'Checks the diff against its spec and PR description (missing / extra requirements) and flags documentation that went stale.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: DOCS_SPEC_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      // Deliberately a SECOND spec agent, not a replacement for 'Docs & Spec
+      // Reviewer'. The two answer the same question from opposite directions
+      // (code→spec vs spec→code), so running both on one SHA is the demo:
+      // criteria the diff never touches are only found by this one.
+      name: 'Spec Conformance Reviewer',
+      description:
+        'Walks every acceptance criterion in the attached spec and rules done / diverged / partial / missing, proving absence before claiming it.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: SPEC_CONFORMANCE_REVIEWER_PROMPT,
       enabled: true,
       version: 1,
       createdBy: userId,

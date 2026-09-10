@@ -95,6 +95,23 @@ describe("SmartDiffViewer", () => {
     expect(onSelectFinding).toHaveBeenCalledWith("finding-1");
   });
 
+  it("collapses and re-expands a whole group when its header is clicked", () => {
+    renderWithIntl(<SmartDiffViewer files={FILES} groups={GROUPS} />);
+    const header = screen.getByRole("button", { name: "Core logic" });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("src/middleware/ratelimit.ts")).toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("src/middleware/ratelimit.ts")).not.toBeInTheDocument();
+    // Other groups are unaffected.
+    expect(screen.getByText("package-lock.json")).toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("src/middleware/ratelimit.ts")).toBeInTheDocument();
+  });
+
   it("renders nothing when there are no groups", () => {
     const { container } = renderWithIntl(<SmartDiffViewer files={FILES} groups={[]} />);
     expect(container).toBeEmptyDOMElement();

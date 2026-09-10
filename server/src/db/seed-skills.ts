@@ -11,7 +11,7 @@
  * dynamic, the router) when the skill applies.
  *
  * NOT seeded here: `api-contract-guard` (Test Quality Reviewer, spec 02) and
- * `deprecation-policy` (API Contract Reviewer, specs/03). Both are imported
+ * `deprecation-policy` (API & Integration Reviewer, specs/03). Both are imported
  * live through the UI's preview-then-confirm flow so the import path gets
  * exercised end to end — see `demo-assets/deprecation-policy.SKILL.md`.
  */
@@ -280,5 +280,6 @@ and name the specific breaking change that justifies the higher bump.`,
 export const SEED_AGENT_SKILLS: Record<string, string[]> = {
   'Security Reviewer': ['pr-quality-rubric', 'secret-leakage-gate', 'lethal-trifecta'],
   'Test Quality Reviewer': ['test-coverage-nudge', 'corner-case-checklist', 'mock-discipline'],
-  'API Contract Reviewer': ['breaking-change', 'response-schema', 'semver-discipline'],
+  'API & Integration Reviewer': ['breaking-change', 'response-schema', 'semver-discipline'],
+  'General Reviewer': ['pr-quality-rubric', 'no-then-chains', 'phantom-api-gate'],
 };
